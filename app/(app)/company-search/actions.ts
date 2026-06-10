@@ -121,10 +121,22 @@ export async function advanceSearchPage(
   if (error) throw new Error(error.message)
 }
 
+export async function triggerExtraction(jobId: string, datasetId: string) {
+  const MAKE_EXTRACTION_WEBHOOK = process.env.MAKE_COMPANY_EXTRACTION_WEBHOOK_URL
+  if (!MAKE_EXTRACTION_WEBHOOK) throw new Error("MAKE_COMPANY_EXTRACTION_WEBHOOK_URL no configurado")
+
+  const callbackUrl = `${APP_URL}/api/webhooks/make/company-extraction`
+  await fetch(MAKE_EXTRACTION_WEBHOOK, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId, defaultDatasetId: datasetId, callbackUrl }),
+  })
+}
+
 export async function getJobStatus(jobId: string) {
   const { data, error } = await supabase
     .from("search_jobs")
-    .select("status, results_count, estimated_ready_at")
+    .select("status, results_count, estimated_ready_at, dataset_id")
     .eq("id", jobId)
     .single()
   if (error) return null

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus } from "./actions"
+import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus, triggerExtraction } from "./actions"
 
 type Campaign = {
   id: string
@@ -31,6 +31,7 @@ type SearchJob = {
   created_at: string
   completed_at: string | null
   estimated_ready_at?: string | null
+  dataset_id?: string | null
   campaigns: { week_label: string; rep_name: string; industry: string } | null
 }
 
@@ -42,10 +43,11 @@ type SearchConfig = {
 const MAX_OPTIONS = [25, 50, 100, 200]
 
 const JOB_STATUS_CONFIG = {
-  pending:   { label: "Pendiente",  icon: Clock,        class: "bg-zinc-100 text-zinc-600" },
-  running:   { label: "Scrapeando", icon: Loader2,      class: "bg-blue-50 text-blue-700" },
-  completed: { label: "Listo",      icon: CheckCircle2, class: "bg-green-50 text-green-700" },
-  failed:    { label: "Error",      icon: XCircle,      class: "bg-red-50 text-red-700" },
+  pending:    { label: "Pendiente",   icon: Clock,        class: "bg-zinc-100 text-zinc-600" },
+  running:    { label: "Scrapeando",  icon: Loader2,      class: "bg-blue-50 text-blue-700" },
+  extracting: { label: "Extrayendo",  icon: Loader2,      class: "bg-violet-50 text-violet-700" },
+  completed:  { label: "Listo",       icon: CheckCircle2, class: "bg-green-50 text-green-700" },
+  failed:     { label: "Error",       icon: XCircle,      class: "bg-red-50 text-red-700" },
 }
 
 function useCountdown(targetIso: string | null | undefined) {
@@ -75,10 +77,20 @@ function formatCountdown(ms: number) {
   return min > 0 ? `~${min} min` : `${sec}s`
 }
 
-function JobCard({ job }: { job: SearchJob }) {
+function JobCard({ job, onExtractionTriggered }: { job: SearchJob; onExtractionTriggered: (jobId: string) => void }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
+  const [extracting, setExtracting] = useState(false)
+
+  // Cuando el timer llega a 0 y tenemos datasetId, disparamos la extracción automáticamente
+  useEffect(() => {
+    if (remaining !== 0 || extracting || job.status !== "running" || !job.dataset_id) return
+    setExtracting(true)
+    triggerExtraction(job.id, job.dataset_id)
+      .then(() => onExtractionTriggered(job.id))
+      .catch(() => setExtracting(false))
+  }, [remaining, job.status, job.dataset_id, extracting])
 
   return (
     <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
@@ -91,7 +103,7 @@ function JobCard({ job }: { job: SearchJob }) {
           {job.status === "running" && remaining !== null && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Timer className="size-3" />
-              {formatCountdown(remaining)}
+              {extracting ? "extrayendo..." : formatCountdown(remaining)}
             </span>
           )}
           {job.status === "completed" && (
@@ -165,11 +177,11 @@ export function CompanySearchClient({
     const interval = setInterval(async () => {
       for (const job of running) {
         const result = await getJobStatus(job.id)
-        if (result && (result.status === "completed" || result.status === "failed")) {
+        if (result) {
           setJobs((prev) =>
             prev.map((j) =>
               j.id === job.id
-                ? { ...j, status: result.status, results_count: result.results_count }
+                ? { ...j, status: result.status, results_count: result.results_count, dataset_id: result.dataset_id }
                 : j
             )
           )
@@ -393,7 +405,13 @@ export function CompanySearchClient({
             ) : (
               <div className="space-y-2">
                 {jobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onExtractionTriggered={(id) =>
+                      setJobs((prev) => prev.map((j) => j.id === id ? { ...j, status: "extracting" } : j))
+                    }
+                  />
                 ))}
               </div>
             )}
