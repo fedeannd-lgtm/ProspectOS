@@ -6,6 +6,11 @@ import { supabase, supabaseAdmin } from "@/lib/supabase"
 const MAKE_WEBHOOK = process.env.MAKE_COMPANY_SEARCH_WEBHOOK_URL!
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 
+// 50 empresas ≈ 20 min → 0.4 min por empresa
+function estimatedMinutes(maxResults: number) {
+  return Math.ceil((maxResults / 50) * 20)
+}
+
 export async function getCampaigns() {
   const { data, error } = await supabase
     .from("campaigns")
@@ -64,6 +69,8 @@ export async function triggerCompanySearch(
   const config = await getSearchConfig(repName, industry)
   if (!config) throw new Error("No hay URL configurada para este rep+industria")
 
+  const estimatedReadyAt = new Date(Date.now() + estimatedMinutes(maxResults) * 60 * 1000).toISOString()
+
   const { data: job, error } = await supabase
     .from("search_jobs")
     .insert({
@@ -71,6 +78,8 @@ export async function triggerCompanySearch(
       job_type: "company_search",
       sales_nav_url: config.base_url,
       status: "running",
+      max_results: maxResults,
+      estimated_ready_at: estimatedReadyAt,
     })
     .select()
     .single()
@@ -92,7 +101,7 @@ export async function triggerCompanySearch(
   })
 
   revalidatePath("/company-search")
-  return job.id
+  return { jobId: job.id, estimatedReadyAt }
 }
 
 export async function advanceSearchPage(
@@ -115,7 +124,7 @@ export async function advanceSearchPage(
 export async function getJobStatus(jobId: string) {
   const { data, error } = await supabase
     .from("search_jobs")
-    .select("status, results_count")
+    .select("status, results_count, estimated_ready_at")
     .eq("id", jobId)
     .single()
   if (error) return null

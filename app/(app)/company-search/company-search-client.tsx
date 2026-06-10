@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
-import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw } from "lucide-react"
+import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,7 @@ type SearchJob = {
   results_count: number
   created_at: string
   completed_at: string | null
+  estimated_ready_at?: string | null
   campaigns: { week_label: string; rep_name: string; industry: string } | null
 }
 
@@ -41,10 +42,73 @@ type SearchConfig = {
 const MAX_OPTIONS = [25, 50, 100, 200]
 
 const JOB_STATUS_CONFIG = {
-  pending:   { label: "Pendiente", icon: Clock,         class: "bg-zinc-100 text-zinc-600" },
-  running:   { label: "Corriendo", icon: Loader2,       class: "bg-blue-50 text-blue-700" },
-  completed: { label: "Listo",     icon: CheckCircle2,  class: "bg-green-50 text-green-700" },
-  failed:    { label: "Error",     icon: XCircle,       class: "bg-red-50 text-red-700" },
+  pending:   { label: "Pendiente",  icon: Clock,        class: "bg-zinc-100 text-zinc-600" },
+  running:   { label: "Scrapeando", icon: Loader2,      class: "bg-blue-50 text-blue-700" },
+  completed: { label: "Listo",      icon: CheckCircle2, class: "bg-green-50 text-green-700" },
+  failed:    { label: "Error",      icon: XCircle,      class: "bg-red-50 text-red-700" },
+}
+
+function useCountdown(targetIso: string | null | undefined) {
+  const [remaining, setRemaining] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!targetIso) { setRemaining(null); return }
+
+    function tick() {
+      const diff = Math.max(0, new Date(targetIso!).getTime() - Date.now())
+      setRemaining(diff)
+    }
+
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [targetIso])
+
+  return remaining
+}
+
+function formatCountdown(ms: number) {
+  if (ms <= 0) return "extrayendo..."
+  const totalSec = Math.ceil(ms / 1000)
+  const min = Math.floor(totalSec / 60)
+  const sec = totalSec % 60
+  return min > 0 ? `~${min} min` : `${sec}s`
+}
+
+function JobCard({ job }: { job: SearchJob }) {
+  const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
+  const Icon = cfg.icon
+  const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
+
+  return (
+    <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.class}`}>
+            <Icon className={`size-3 ${job.status === "running" ? "animate-spin" : ""}`} />
+            {cfg.label}
+          </span>
+          {job.status === "running" && remaining !== null && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Timer className="size-3" />
+              {formatCountdown(remaining)}
+            </span>
+          )}
+          {job.status === "completed" && (
+            <span className="text-xs text-muted-foreground">{job.results_count} empresas</span>
+          )}
+        </div>
+        {job.campaigns && (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {job.campaigns.week_label} · {job.campaigns.rep_name} · {job.campaigns.industry}
+          </p>
+        )}
+      </div>
+      <span className="ml-3 shrink-0 text-xs text-muted-foreground">
+        {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
+      </span>
+    </div>
+  )
 }
 
 export function CompanySearchClient({
@@ -68,7 +132,6 @@ export function CompanySearchClient({
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
-  // Load config when campaign changes
   useEffect(() => {
     if (!selectedCampaign) {
       setConfig(null)
@@ -94,7 +157,7 @@ export function CompanySearchClient({
       .finally(() => setConfigLoading(false))
   }, [selectedCampaign?.rep_name, selectedCampaign?.industry])
 
-  // Poll running jobs every 5s
+  // Poll running jobs every 10s
   useEffect(() => {
     const running = jobs.filter((j) => j.status === "running" || j.status === "pending")
     if (running.length === 0) return
@@ -104,11 +167,15 @@ export function CompanySearchClient({
         const result = await getJobStatus(job.id)
         if (result && (result.status === "completed" || result.status === "failed")) {
           setJobs((prev) =>
-            prev.map((j) => j.id === job.id ? { ...j, status: result.status, results_count: result.results_count } : j)
+            prev.map((j) =>
+              j.id === job.id
+                ? { ...j, status: result.status, results_count: result.results_count }
+                : j
+            )
           )
         }
       }
-    }, 5000)
+    }, 10000)
 
     return () => clearInterval(interval)
   }, [jobs])
@@ -136,7 +203,12 @@ export function CompanySearchClient({
 
     startTransition(async () => {
       try {
-        const jobId = await triggerCompanySearch(campaignId, selectedCampaign.rep_name, selectedCampaign.industry, maxResults)
+        const { jobId, estimatedReadyAt } = await triggerCompanySearch(
+          campaignId,
+          selectedCampaign.rep_name,
+          selectedCampaign.industry,
+          maxResults
+        )
         const newJob: SearchJob = {
           id: jobId,
           campaign_id: campaignId,
@@ -145,10 +217,14 @@ export function CompanySearchClient({
           results_count: 0,
           created_at: new Date().toISOString(),
           completed_at: null,
-          campaigns: { week_label: selectedCampaign.week_label, rep_name: selectedCampaign.rep_name, industry: selectedCampaign.industry },
+          estimated_ready_at: estimatedReadyAt,
+          campaigns: {
+            week_label: selectedCampaign.week_label,
+            rep_name: selectedCampaign.rep_name,
+            industry: selectedCampaign.industry,
+          },
         }
         setJobs((prev) => [newJob, ...prev])
-        // Optimistic: advance page locally
         const pagesConsumed = Math.max(1, Math.ceil(maxResults / 25))
         setConfig((prev) => prev ? { ...prev, next_page: prev.next_page + pagesConsumed } : prev)
       } catch (e) {
@@ -162,7 +238,7 @@ export function CompanySearchClient({
       <div>
         <h1 className="text-2xl font-semibold">Company Search</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Buscá empresas en Sales Navigator. ProspectOS trackea la página y dispara el scraping vía Make.
+          Disparás el scraping desde acá. ProspectOS trackea el progreso y extrae los resultados automáticamente.
         </p>
       </div>
 
@@ -176,7 +252,6 @@ export function CompanySearchClient({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Campaign selector */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Campaña</label>
               <Select value={campaignId} onValueChange={(v) => setCampaignId(v ?? "")}>
@@ -193,7 +268,6 @@ export function CompanySearchClient({
               </Select>
             </div>
 
-            {/* Config section — only shown when campaign selected */}
             {selectedCampaign && (
               <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
                 {configLoading ? (
@@ -208,7 +282,9 @@ export function CompanySearchClient({
                         <CheckCircle2 className="size-4 text-green-600" />
                         <span className="font-medium">URL configurada</span>
                         <span className="text-muted-foreground">·</span>
-                        <span className="text-muted-foreground">Próxima pág: <strong className="text-foreground">{config.next_page}</strong></span>
+                        <span className="text-muted-foreground">
+                          Próxima pág: <strong className="text-foreground">{config.next_page}</strong>
+                        </span>
                       </div>
                       <Button
                         variant="ghost"
@@ -249,12 +325,7 @@ export function CompanySearchClient({
                           onChange={(e) => setPageInput(Math.max(1, parseInt(e.target.value) || 1))}
                           className="h-8 w-20 text-sm"
                         />
-                        <Button
-                          size="sm"
-                          className="h-8"
-                          onClick={handleSaveConfig}
-                          disabled={isSavingConfig}
-                        >
+                        <Button size="sm" className="h-8" onClick={handleSaveConfig} disabled={isSavingConfig}>
                           {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
                         </Button>
                         {config && (
@@ -269,7 +340,6 @@ export function CompanySearchClient({
               </div>
             )}
 
-            {/* Max results */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Empresas a scrapear</label>
               <div className="flex gap-2">
@@ -287,14 +357,12 @@ export function CompanySearchClient({
               </div>
               {selectedCampaign && config && (
                 <p className="text-xs text-muted-foreground">
-                  Scrapeará páginas {config.next_page}–{config.next_page + Math.ceil(maxResults / 25) - 1} ({maxResults} empresas)
+                  Páginas {config.next_page}–{config.next_page + Math.ceil(maxResults / 25) - 1} · listo en ~{Math.ceil((maxResults / 50) * 20)} min
                 </p>
               )}
             </div>
 
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
             <Button
               className="w-full"
@@ -324,38 +392,9 @@ export function CompanySearchClient({
               </div>
             ) : (
               <div className="space-y-2">
-                {jobs.map((job) => {
-                  const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
-                  const Icon = cfg.icon
-                  return (
-                    <div
-                      key={job.id}
-                      className="flex items-center justify-between rounded-lg border px-3 py-2.5"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.class}`}>
-                            <Icon className={`size-3 ${job.status === "running" ? "animate-spin" : ""}`} />
-                            {cfg.label}
-                          </span>
-                          {job.status === "completed" && (
-                            <span className="text-xs text-muted-foreground">
-                              {job.results_count} empresas
-                            </span>
-                          )}
-                        </div>
-                        {job.campaigns && (
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {job.campaigns.week_label} · {job.campaigns.rep_name} · {job.campaigns.industry}
-                          </p>
-                        )}
-                      </div>
-                      <span className="ml-3 shrink-0 text-xs text-muted-foreground">
-                        {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
-                      </span>
-                    </div>
-                  )
-                })}
+                {jobs.map((job) => (
+                  <JobCard key={job.id} job={job} />
+                ))}
               </div>
             )}
           </CardContent>
