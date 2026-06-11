@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     .update({ accounts_found: accounts.length })
     .eq("id", job.campaign_id)
 
-  const campaign = job.campaigns as { rep_name: string; industry: string } | null
+  const campaign = job.campaigns as unknown as { rep_name: string; industry: string } | null
   if (campaign) {
     await advanceSearchPage(campaign.rep_name, campaign.industry, accounts.length)
   }
