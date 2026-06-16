@@ -86,7 +86,7 @@ export async function triggerCompanySearch(
 
   if (error) throw new Error(error.message)
 
-  const callbackUrl = `${APP_URL}/api/webhooks/make/company-search`
+  const callbackUrl = `${APP_URL}/api/webhooks/make/company-extraction`
   await fetch(MAKE_WEBHOOK, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
