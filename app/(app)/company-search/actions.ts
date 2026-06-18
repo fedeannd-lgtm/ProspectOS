@@ -93,6 +93,7 @@ export async function triggerCompanySearch(
     body: JSON.stringify({
       jobId: job.id,
       campaignId,
+      repName,
       salesNavUrl: config.base_url,
       page: config.next_page,
       maxResults,
