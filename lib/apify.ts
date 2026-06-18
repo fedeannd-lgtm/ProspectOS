@@ -24,6 +24,28 @@ export async function startSalesNavRun(input: object, webhookUrl: string): Promi
   return data.id as string
 }
 
+export async function startAccountListActor(
+  input: object,
+  webhookUrl: string
+): Promise<string> {
+  const actorId = process.env.ACCOUNT_LIST_ACTOR_ID!
+  const webhooksParam = Buffer.from(
+    JSON.stringify([{
+      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED"],
+      requestUrl: webhookUrl,
+    }])
+  ).toString("base64")
+
+  const res = await fetch(`${BASE}/acts/${actorId}/runs?webhooks=${webhooksParam}`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) throw new Error(`Account list actor failed: ${await res.text()}`)
+  const { data } = await res.json()
+  return data.id as string
+}
+
 export async function getDatasetItems<T = Record<string, unknown>>(datasetId: string): Promise<T[]> {
   const res = await fetch(`${BASE}/datasets/${datasetId}/items?clean=true`, {
     headers: authHeaders(),
