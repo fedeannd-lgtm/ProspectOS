@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus } from "./actions"
+import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus, triggerAccountList } from "./actions"
 
 type Campaign = {
   id: string
@@ -80,34 +80,71 @@ function JobCard({ job }: { job: SearchJob }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
+  const [listStatus, setListStatus] = useState<"idle" | "loading" | "done" | "error">("idle")
+  const [listName, setListName] = useState("")
+
+  async function handleCreateList() {
+    setListStatus("loading")
+    try {
+      const result = await triggerAccountList(job.id)
+      setListName(result.listName)
+      setListStatus("done")
+    } catch {
+      setListStatus("error")
+    }
+  }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.class}`}>
-            <Icon className={`size-3 ${job.status === "running" ? "animate-spin" : ""}`} />
-            {cfg.label}
-          </span>
-          {job.status === "running" && remaining !== null && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Timer className="size-3" />
-              {formatCountdown(remaining)}
+    <div className="rounded-lg border px-3 py-2.5 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.class}`}>
+              <Icon className={`size-3 ${job.status === "running" ? "animate-spin" : ""}`} />
+              {cfg.label}
             </span>
-          )}
-          {job.status === "completed" && (
-            <span className="text-xs text-muted-foreground">{job.results_count} empresas</span>
+            {job.status === "running" && remaining !== null && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Timer className="size-3" />
+                {formatCountdown(remaining)}
+              </span>
+            )}
+            {job.status === "completed" && (
+              <span className="text-xs text-muted-foreground">{job.results_count} empresas</span>
+            )}
+          </div>
+          {job.campaigns && (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {job.campaigns.week_label} · {job.campaigns.rep_name} · {job.campaigns.industry}
+            </p>
           )}
         </div>
-        {job.campaigns && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {job.campaigns.week_label} · {job.campaigns.rep_name} · {job.campaigns.industry}
-          </p>
-        )}
+        <span className="ml-3 shrink-0 text-xs text-muted-foreground">
+          {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
+        </span>
       </div>
-      <span className="ml-3 shrink-0 text-xs text-muted-foreground">
-        {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
-      </span>
+      {job.status === "completed" && (
+        <div className="flex items-center gap-2">
+          {listStatus === "idle" && (
+            <Button variant="outline" size="sm" className="h-6 text-xs" onClick={handleCreateList}>
+              Crear Account List
+            </Button>
+          )}
+          {listStatus === "loading" && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" /> Creando lista en Sales Nav…
+            </span>
+          )}
+          {listStatus === "done" && (
+            <span className="inline-flex items-center gap-1 text-xs text-green-600">
+              <CheckCircle2 className="size-3" /> Lista "{listName}" iniciada
+            </span>
+          )}
+          {listStatus === "error" && (
+            <span className="text-xs text-destructive">Error — revisá los logs</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

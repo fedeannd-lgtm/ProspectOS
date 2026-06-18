@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
-import { startSalesNavRun } from "@/lib/apify"
+import { startSalesNavRun, startAccountListActor } from "@/lib/apify"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
@@ -134,6 +134,46 @@ export async function advanceSearchPage(
     .eq("rep_name", repName)
     .eq("industry", industry)
   if (error) throw new Error(error.message)
+}
+
+export async function triggerAccountList(jobId: string) {
+  if (!process.env.ACCOUNT_LIST_ACTOR_ID) throw new Error("ACCOUNT_LIST_ACTOR_ID no configurado")
+
+  const { data: job } = await supabase
+    .from("search_jobs")
+    .select("campaign_id, campaigns(rep_name, industry)")
+    .eq("id", jobId)
+    .single()
+  if (!job) throw new Error("Job no encontrado")
+
+  const raw = job.campaigns
+  const campaign = (Array.isArray(raw) ? raw[0] : raw) as { rep_name: string; industry: string } | null
+  if (!campaign) throw new Error("Campaña no encontrada")
+
+  const { data: accounts } = await supabase
+    .from("accounts")
+    .select("sales_nav_id, company_name")
+    .eq("campaign_id", job.campaign_id)
+  if (!accounts?.length) throw new Error("No hay empresas para esta campaña")
+
+  const { data: repConfig } = await supabase
+    .from("rep_configs")
+    .select("linkedin_cookie")
+    .eq("rep_name", campaign.rep_name)
+    .maybeSingle()
+  if (!repConfig?.linkedin_cookie) throw new Error(`Cookie no configurada para ${campaign.rep_name}`)
+
+  let cookieParsed: unknown
+  try { cookieParsed = JSON.parse(repConfig.linkedin_cookie) } catch {
+    throw new Error("Cookie inválida — re-exportala desde Cookie-Editor")
+  }
+
+  const today = new Date().toLocaleDateString("es-AR", { day: "numeric", month: "numeric", year: "numeric" })
+  const listName = `Empresas ${campaign.rep_name} ${campaign.industry} ${today}`
+  const webhookUrl = `${APP_URL}/api/webhooks/apify/list-created?jobId=${jobId}`
+
+  await startAccountListActor({ cookie: cookieParsed, companyIds: accounts.map(a => a.sales_nav_id).filter(Boolean), listName }, webhookUrl)
+  return { listName }
 }
 
 export async function getJobStatus(jobId: string) {
