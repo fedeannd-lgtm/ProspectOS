@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL
+  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
 // 50 empresas ≈ 20 min
 function estimatedMinutes(maxResults: number) {
