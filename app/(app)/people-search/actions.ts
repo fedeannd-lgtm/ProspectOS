@@ -102,9 +102,16 @@ export async function triggerPeopleSearch(
 
   if (error) throw new Error(error.message)
 
+  let cookieParsed: unknown
+  try {
+    cookieParsed = JSON.parse(repConfig.linkedin_cookie)
+  } catch {
+    throw new Error(`La cookie de ${repName} no es JSON válido. Exportala desde Cookie-Editor como JSON y pegala de nuevo en Settings.`)
+  }
+
   const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
   const runId = await startSalesNavRun({
-    cookie: JSON.parse(repConfig.linkedin_cookie),
+    cookie: cookieParsed,
     searchUrl: config.base_url,
     count: maxResults,
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",

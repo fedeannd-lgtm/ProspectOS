@@ -91,9 +91,16 @@ export async function triggerCompanySearch(
 
   if (error) throw new Error(error.message)
 
+  let cookieParsed: unknown
+  try {
+    cookieParsed = JSON.parse(repConfig.linkedin_cookie)
+  } catch {
+    throw new Error(`La cookie de ${repName} no es JSON válido. Exportala desde Cookie-Editor como JSON y pegala de nuevo en Settings.`)
+  }
+
   const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
   const runId = await startSalesNavRun({
-    cookie: JSON.parse(repConfig.linkedin_cookie),
+    cookie: cookieParsed,
     searchUrl: config.base_url,
     count: maxResults,
     startPage: config.next_page,
