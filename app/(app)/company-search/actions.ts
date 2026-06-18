@@ -2,11 +2,11 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
+import { startSalesNavRun } from "@/lib/apify"
 
-const MAKE_WEBHOOK = process.env.MAKE_COMPANY_SEARCH_WEBHOOK_URL!
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 
-// 50 empresas ≈ 20 min → 0.4 min por empresa
+// 50 empresas ≈ 20 min
 function estimatedMinutes(maxResults: number) {
   return Math.ceil((maxResults / 50) * 20)
 }
@@ -64,10 +64,15 @@ export async function triggerCompanySearch(
   industry: string,
   maxResults: number
 ) {
-  if (!MAKE_WEBHOOK) throw new Error("MAKE_COMPANY_SEARCH_WEBHOOK_URL no configurado en .env.local")
-
   const config = await getSearchConfig(repName, industry)
   if (!config) throw new Error("No hay URL configurada para este rep+industria")
+
+  const { data: repConfig } = await supabase
+    .from("rep_configs")
+    .select("linkedin_cookie")
+    .eq("rep_name", repName)
+    .maybeSingle()
+  if (!repConfig?.linkedin_cookie) throw new Error(`Cookie no configurada para ${repName}. Actualizala en Settings.`)
 
   const estimatedReadyAt = new Date(Date.now() + estimatedMinutes(maxResults) * 60 * 1000).toISOString()
 
@@ -86,29 +91,20 @@ export async function triggerCompanySearch(
 
   if (error) throw new Error(error.message)
 
-  const { data: repConfig } = await supabase
-    .from("rep_configs")
-    .select("linkedin_cookie")
-    .eq("rep_name", repName)
-    .maybeSingle()
+  const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
+  const runId = await startSalesNavRun({
+    cookie: repConfig.linkedin_cookie,
+    searchUrl: config.base_url,
+    count: maxResults,
+    startPage: config.next_page,
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+    deepScrape: true,
+    stopOnRateLimit: true,
+    minDelay: 5,
+    maxDelay: 30,
+  }, webhookUrl)
 
-  if (!repConfig?.linkedin_cookie) throw new Error(`Cookie no configurada para ${repName}. Actualizala en Settings.`)
-
-  const callbackUrl = `${APP_URL}/api/webhooks/make/company-extraction`
-  await fetch(MAKE_WEBHOOK, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jobId: job.id,
-      campaignId,
-      repName,
-      cookie: repConfig.linkedin_cookie,
-      salesNavUrl: config.base_url,
-      page: config.next_page,
-      maxResults,
-      callbackUrl,
-    }),
-  })
+  await supabase.from("search_jobs").update({ apify_run_id: runId }).eq("id", job.id)
 
   revalidatePath("/company-search")
   return { jobId: job.id, estimatedReadyAt }
@@ -131,22 +127,10 @@ export async function advanceSearchPage(
   if (error) throw new Error(error.message)
 }
 
-export async function triggerExtraction(jobId: string, datasetId: string) {
-  const MAKE_EXTRACTION_WEBHOOK = process.env.MAKE_COMPANY_EXTRACTION_WEBHOOK_URL
-  if (!MAKE_EXTRACTION_WEBHOOK) throw new Error("MAKE_COMPANY_EXTRACTION_WEBHOOK_URL no configurado")
-
-  const callbackUrl = `${APP_URL}/api/webhooks/make/company-extraction`
-  await fetch(MAKE_EXTRACTION_WEBHOOK, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jobId, defaultDatasetId: datasetId, callbackUrl }),
-  })
-}
-
 export async function getJobStatus(jobId: string) {
   const { data, error } = await supabase
     .from("search_jobs")
-    .select("status, results_count, estimated_ready_at, dataset_id")
+    .select("status, results_count, estimated_ready_at")
     .eq("id", jobId)
     .single()
   if (error) return null
