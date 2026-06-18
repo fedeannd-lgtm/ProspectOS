@@ -97,6 +97,14 @@ export async function triggerPeopleSearch(
 
   if (error) throw new Error(error.message)
 
+  const { data: repConfig } = await supabase
+    .from("rep_configs")
+    .select("linkedin_cookie")
+    .eq("rep_name", repName)
+    .maybeSingle()
+
+  if (!repConfig?.linkedin_cookie) throw new Error(`Cookie no configurada para ${repName}. Actualizala en Settings.`)
+
   const callbackUrl = `${APP_URL}/api/webhooks/make/people-extraction`
   await fetch(MAKE_WEBHOOK, {
     method: "POST",
@@ -104,6 +112,8 @@ export async function triggerPeopleSearch(
     body: JSON.stringify({
       jobId: job.id,
       campaignId,
+      repName,
+      cookie: repConfig.linkedin_cookie,
       salesNavUrl: config.base_url,
       maxResults,
       callbackUrl,
