@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
 
   if (!job) return NextResponse.json({ error: "Job no encontrado" }, { status: 404 })
 
-  const campaign = job.campaigns as { rep_name: string; industry: string } | null
+  const raw = job.campaigns
+  const campaign = (Array.isArray(raw) ? raw[0] : raw) as { rep_name: string; industry: string } | null
   if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
 
   // Fetch current people search URL
