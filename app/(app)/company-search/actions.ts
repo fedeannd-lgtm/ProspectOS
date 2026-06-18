@@ -5,7 +5,7 @@ import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
-  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
 // 50 empresas ≈ 20 min
 function estimatedMinutes(maxResults: number) {
@@ -100,6 +100,7 @@ export async function triggerCompanySearch(
   }
 
   const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
+  console.log("[company-search] APP_URL:", APP_URL, "webhookUrl:", webhookUrl)
   const runId = await startSalesNavRun({
     cookie: cookieParsed,
     searchUrl: config.base_url,

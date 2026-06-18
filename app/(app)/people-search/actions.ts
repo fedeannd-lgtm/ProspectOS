@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
-  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
 // 500 personas ≈ 20 min
 function estimatedMinutes(maxResults: number) {
