@@ -93,7 +93,7 @@ export async function triggerCompanySearch(
 
   const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
   const runId = await startSalesNavRun({
-    cookie: repConfig.linkedin_cookie,
+    cookie: JSON.parse(repConfig.linkedin_cookie),
     searchUrl: config.base_url,
     count: maxResults,
     startPage: config.next_page,
