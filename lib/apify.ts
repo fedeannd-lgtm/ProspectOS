@@ -7,25 +7,20 @@ function authHeaders() {
 }
 
 export async function startSalesNavRun(input: object, webhookUrl: string): Promise<string> {
-  const res = await fetch(`${BASE}/acts/${SALES_NAV_ACTOR}/runs`, {
+  const webhooksParam = Buffer.from(
+    JSON.stringify([{
+      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED"],
+      requestUrl: webhookUrl,
+    }])
+  ).toString("base64")
+
+  const res = await fetch(`${BASE}/acts/${SALES_NAV_ACTOR}/runs?webhooks=${webhooksParam}`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(input),
   })
   if (!res.ok) throw new Error(`Apify run failed: ${await res.text()}`)
   const { data } = await res.json()
-
-  await fetch(`${BASE}/webhooks`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({
-      eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED"],
-      requestUrl: webhookUrl,
-      condition: { actorRunId: data.id },
-      isAdHoc: true,
-    }),
-  })
-
   return data.id as string
 }
 
