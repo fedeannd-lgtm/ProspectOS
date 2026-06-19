@@ -134,6 +134,16 @@ async function triggerAccountListCreation(
   }
 }
 
+function extractDomain(raw: string): string {
+  if (!raw) return ""
+  try {
+    const url = raw.startsWith("http") ? raw : `https://${raw}`
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase()
+  } catch {
+    return raw.replace(/^https?:\/\/(www\.)?/, "").split("/")[0].toLowerCase()
+  }
+}
+
 function normalizeCompanyName(name: string): string {
   return name
     .toLowerCase()
@@ -157,7 +167,10 @@ async function processPeopleSearch(
   const nameToAccount = new Map<string, { id: string; domain: string }>()
   accounts?.forEach((a) => {
     if (a.company_name) {
-      nameToAccount.set(normalizeCompanyName(a.company_name), { id: a.id, domain: a.domain ?? "" })
+      nameToAccount.set(normalizeCompanyName(a.company_name), {
+        id: a.id,
+        domain: extractDomain(a.domain ?? ""),
+      })
     }
   })
 
