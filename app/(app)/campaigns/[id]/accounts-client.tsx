@@ -42,6 +42,9 @@ const STATUS_CYCLE: Record<string, string> = {
 
 function generateScript(listId: string, companies: { sales_nav_id: string; company_name: string }[], repName: string, industry: string) {
   const ids = companies.map((c) => c.sales_nav_id).filter(Boolean)
+  // Always extract just the numeric ID, whether user pasted URL or raw ID
+  const cleanId = listId.match(/\d{10,}/)?.[0] ?? listId.trim()
+  listId = cleanId
   return `// ProspectOS — ejecutar en el Sales Navigator de ${repName} (${industry})
 // Asegurate de estar logueado como ${repName} antes de correr esto.
 (async () => {
