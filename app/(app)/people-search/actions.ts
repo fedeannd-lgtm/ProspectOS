@@ -153,9 +153,10 @@ export async function triggerPeopleSearch(
     searchUrl: config.base_url,
     count: maxResults,
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-    deepScrape: true,
+    deepScrape: false,
     stopOnRateLimit: true,
-    minDelay: 5,
+    startPage: 1,
+    minDelay: 15,
     maxDelay: 30,
   }, webhookUrl)
 
