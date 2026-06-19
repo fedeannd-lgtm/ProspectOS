@@ -149,6 +149,7 @@ export function PeopleSearchClient({
   const [pickedListId, setPickedListId] = useState("")
   const [pickedListName, setPickedListName] = useState("")
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
+  const [urlWarning, setUrlWarning] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
@@ -174,6 +175,7 @@ export function PeopleSearchClient({
     setPickedListId(selectedCampaign.list_id ?? "")
     setPickedListName(selectedCampaign.list_name ?? "")
     setGeneratedUrl(null)
+    setUrlWarning("")
 
     setConfigLoading(true)
     setError("")
@@ -340,6 +342,7 @@ export function PeopleSearchClient({
                           setPickedListId(v)
                           setPickedListName(list?.list_name || "")
                           setGeneratedUrl(null)
+                          setUrlWarning("")
                         }}
                       >
                         <SelectTrigger>
@@ -362,14 +365,18 @@ export function PeopleSearchClient({
                         onClick={async () => {
                           setIsGenerating(true)
                           setError("")
+                          setUrlWarning("")
                           try {
-                            const url = await generatePeopleSearchUrl(
+                            const { url, replaced } = await generatePeopleSearchUrl(
                               selectedCampaign.rep_name,
                               selectedCampaign.industry,
                               pickedListId,
                               pickedListName
                             )
                             setGeneratedUrl(url)
+                            if (!replaced) {
+                              setUrlWarning("La URL base no tiene un filtro de lista de cuentas — la URL generada es idéntica a la base. Para que funcione, abrí la URL base en Sales Navigator, agregá cualquier lista de cuentas como filtro y guardá esa URL como nueva URL base.")
+                            }
                           } catch (e) {
                             setError(e instanceof Error ? e.message : "Error generando URL")
                           } finally {
@@ -389,7 +396,7 @@ export function PeopleSearchClient({
                       )}
 
                       {generatedUrl && (
-                        <div className="rounded-md bg-muted/50 border px-3 py-2 space-y-1.5">
+                        <div className="rounded-md border px-3 py-2 space-y-1.5">
                           <p className="text-xs font-mono text-muted-foreground truncate">{generatedUrl.slice(0, 60)}…</p>
                           <a
                             href={generatedUrl}
@@ -399,6 +406,12 @@ export function PeopleSearchClient({
                           >
                             <ExternalLink className="size-3.5" /> Abrir en Sales Navigator
                           </a>
+                          {urlWarning && (
+                            <p className="text-xs text-amber-600 flex items-start gap-1.5 pt-1 border-t">
+                              <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+                              {urlWarning}
+                            </p>
+                          )}
                         </div>
                       )}
                     </>
