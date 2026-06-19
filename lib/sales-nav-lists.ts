@@ -1,40 +1,42 @@
 /**
- * Replaces (or inserts) the INCLUDED account list entry in a Sales Navigator People Search URL.
- * Returns { url, replaced: true } if the list was swapped, or { url, replaced: false } if no
- * existing ACCOUNT_LIST section was found (meaning the base URL needs one first).
+ * Appends a new INCLUDED account list entry to the ACCOUNT_LIST section of a
+ * Sales Navigator People Search URL. Does NOT touch existing list entries.
  */
 export function updateAccountListInUrl(
   currentUrl: string,
   newListId: string,
   newListName: string
-): { url: string; replaced: boolean } {
+): string {
+  const ACCOUNT_LIST_MARKER = 'type%3AACCOUNT_LIST'
+
+  const markerIdx = currentUrl.indexOf(ACCOUNT_LIST_MARKER)
+  if (markerIdx === -1) return currentUrl
+
+  // Walk back to find the opening ( of the type:ACCOUNT_LIST group
+  const openIdx = currentUrl.lastIndexOf('(', markerIdx)
+
+  // Count parens to find the matching closing )
+  let depth = 0
+  let closeIdx = -1
+  for (let i = openIdx; i < currentUrl.length; i++) {
+    if (currentUrl[i] === '(') depth++
+    else if (currentUrl[i] === ')') {
+      depth--
+      if (depth === 0) { closeIdx = i; break }
+    }
+  }
+
+  if (closeIdx === -1) return currentUrl
+
   const encodedName = encodeURIComponent(newListName)
     .replace(/%20/g, '%2520')
     .replace(/%2C/g, '%252C')
     .replace(/%3A/g, '%253A')
 
-  const newEntry = `id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist`
+  const newEntry = `%2C(id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist)`
 
-  // Pattern 1: encoded commas (%2C) — typical Sales Nav URL
-  let result = currentUrl.replace(
-    /id%3A\d+%2Ctext%3A[^)]*?selectionType%3AINCLUDED%2Cicon%3Alist/,
-    newEntry
-  )
-  if (result !== currentUrl) return { url: result, replaced: true }
+  // Insert before the )) that close values:List and the outer group
+  const insertAt = closeIdx - 1
 
-  // Pattern 2: literal commas — some Sales Nav variants
-  const newEntryComma = `id%3A${newListId},text%3A${encodeURIComponent(newListName)},selectionType%3AINCLUDED,icon%3Alist`
-  result = currentUrl.replace(
-    /id%3A\d+,text%3A[^)]*?,selectionType%3AINCLUDED,icon%3Alist/,
-    newEntryComma
-  )
-  if (result !== currentUrl) return { url: result, replaced: true }
-
-  return { url: currentUrl, replaced: false }
-}
-
-/** Extracts the listId of the currently INCLUDED account list from a people search URL */
-export function getCurrentIncludedListId(url: string): string | null {
-  const match = url.match(/id%3A(\d+)[,%].*?selectionType%3AINCLUDED/)
-  return match ? match[1] : null
+  return currentUrl.slice(0, insertAt) + newEntry + currentUrl.slice(insertAt)
 }

@@ -50,7 +50,7 @@ export async function generatePeopleSearchUrl(
   industry: string,
   listId: string,
   listName: string
-): Promise<{ url: string; replaced: boolean }> {
+): Promise<string> {
   const { data: config } = await supabase
     .from("people_search_configs")
     .select("base_url")
