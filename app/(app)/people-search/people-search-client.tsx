@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Timer,
   Building2,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -392,10 +393,14 @@ export function PeopleSearchClient({
                 ) : (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
                     <Link2 className="size-3 shrink-0" />
-                    <span className="truncate font-mono">{config.base_url.slice(0, 55)}…</span>
-                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs ml-auto shrink-0"
+                    <span className="truncate font-mono">{config.base_url.slice(0, 45)}…</span>
+                    <a href={config.base_url} target="_blank" rel="noreferrer"
+                      className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
+                      <ExternalLink className="size-3" /> Abrir
+                    </a>
+                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs shrink-0"
                       onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}>
-                      editar URL base
+                      editar
                     </Button>
                   </div>
                 )}
