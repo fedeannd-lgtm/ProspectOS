@@ -28,6 +28,7 @@ import {
 import {
   getPeopleSearchConfig,
   upsertPeopleSearchConfig,
+  upsertPeopleSearchConfig2,
   generatePeopleSearchUrl,
   triggerPeopleSearch,
   getJobStatus,
@@ -55,7 +56,7 @@ type SearchJob = {
   campaigns: { week_label: string; rep_name: string; industry: string } | null
 }
 
-type PeopleSearchConfig = { base_url: string; list_id: string | null; list_name: string | null } | null
+type PeopleSearchConfig = { base_url: string; base_url_2: string | null; list_id: string | null; list_name: string | null } | null
 
 const MAX_OPTIONS = [25, 100, 250, 500]
 
@@ -149,6 +150,10 @@ export function PeopleSearchClient({
   const [pickedListId, setPickedListId] = useState("")
   const [pickedListName, setPickedListName] = useState("")
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
+  const [generatedUrl2, setGeneratedUrl2] = useState<string | null>(null)
+  const [urlInput2, setUrlInput2] = useState("")
+  const [showUrlEdit2, setShowUrlEdit2] = useState(false)
+  const [isSavingConfig2, startSavingConfig2] = useTransition()
   const [isGenerating, setIsGenerating] = useState(false)
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
@@ -178,14 +183,18 @@ export function PeopleSearchClient({
 
     setConfigLoading(true)
     setError("")
+    setGeneratedUrl2(null)
     getPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry)
       .then((cfg) => {
         setConfig(cfg)
         if (cfg) {
           setUrlInput(cfg.base_url)
+          setUrlInput2(cfg.base_url_2 ?? "")
           setShowUrlEdit(false)
+          setShowUrlEdit2(false)
         } else {
           setUrlInput("")
+          setUrlInput2("")
           setShowUrlEdit(true)
         }
       })
@@ -224,7 +233,7 @@ export function PeopleSearchClient({
     startSavingConfig(async () => {
       try {
         await upsertPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry, urlInput)
-        setConfig((prev) => ({ base_url: urlInput, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null }))
+        setConfig((prev) => ({ base_url: urlInput, base_url_2: prev?.base_url_2 ?? null, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null }))
         setShowUrlEdit(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error guardando configuración")
@@ -366,8 +375,7 @@ export function PeopleSearchClient({
                           setError("")
                           try {
                             const url = await generatePeopleSearchUrl(
-                              selectedCampaign.rep_name,
-                              selectedCampaign.industry,
+                              config!.base_url,
                               pickedListId,
                               pickedListName
                             )
@@ -457,6 +465,81 @@ export function PeopleSearchClient({
                       editar URL base
                     </Button>
                   </div>
+                )}
+
+                {/* URL base 2 */}
+                {config && (
+                  <>
+                    {config.base_url_2 && !showUrlEdit2 ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
+                          <Link2 className="size-3 shrink-0" />
+                          <span className="truncate font-mono">{config.base_url_2.slice(0, 45)}…</span>
+                          <Button variant="ghost" size="sm" className="h-5 px-1 text-xs ml-auto shrink-0"
+                            onClick={() => { setShowUrlEdit2(true); setUrlInput2(config.base_url_2 ?? "") }}>
+                            editar URL base 2
+                          </Button>
+                        </div>
+                        <Button
+                          size="sm" variant="outline"
+                          disabled={!pickedListId || isGenerating}
+                          onClick={async () => {
+                            setIsGenerating(true)
+                            setError("")
+                            try {
+                              const url = await generatePeopleSearchUrl(config.base_url_2!, pickedListId, pickedListName)
+                              setGeneratedUrl2(url)
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : "Error generando URL 2")
+                            } finally {
+                              setIsGenerating(false)
+                            }
+                          }}
+                        >
+                          {isGenerating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <RefreshCw className="mr-2 size-3.5" />}
+                          Generar URL 2
+                        </Button>
+                        {generatedUrl2 && (
+                          <div className="rounded-md border px-3 py-2 space-y-1.5">
+                            <p className="text-xs font-mono text-muted-foreground truncate">{generatedUrl2.slice(0, 60)}…</p>
+                            <a href={generatedUrl2} target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800">
+                              <ExternalLink className="size-3.5" /> Abrir en Sales Navigator (2)
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    ) : showUrlEdit2 ? (
+                      <div className="rounded-lg border p-3 space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">URL base 2 de People Search</p>
+                        <Input value={urlInput2} onChange={(e) => setUrlInput2(e.target.value)}
+                          placeholder="https://www.linkedin.com/sales/search/people#query=..."
+                          className="font-mono text-xs" />
+                        <div className="flex gap-2">
+                          <Button size="sm" disabled={isSavingConfig2}
+                            onClick={() => {
+                              if (!selectedCampaign) return
+                              startSavingConfig2(async () => {
+                                try {
+                                  await upsertPeopleSearchConfig2(selectedCampaign.rep_name, selectedCampaign.industry, urlInput2)
+                                  setConfig((prev) => prev ? { ...prev, base_url_2: urlInput2 } : prev)
+                                  setShowUrlEdit2(false)
+                                } catch (e) {
+                                  setError(e instanceof Error ? e.message : "Error guardando URL 2")
+                                }
+                              })
+                            }}>
+                            {isSavingConfig2 ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit2(false)}>Cancelar</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setShowUrlEdit2(true)}>
+                        + Agregar URL base 2
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             )}

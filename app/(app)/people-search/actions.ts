@@ -37,30 +37,35 @@ export async function getPeopleSearchJobs() {
 export async function getPeopleSearchConfig(repName: string, industry: string) {
   const { data, error } = await supabase
     .from("people_search_configs")
-    .select("base_url, list_id, list_name")
+    .select("base_url, base_url_2, list_id, list_name")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
   if (error) throw new Error(error.message)
-  return data as { base_url: string; list_id: string | null; list_name: string | null } | null
+  return data as { base_url: string; base_url_2: string | null; list_id: string | null; list_name: string | null } | null
 }
 
 export async function generatePeopleSearchUrl(
-  repName: string,
-  industry: string,
+  baseUrl: string,
   listId: string,
   listName: string
 ): Promise<string> {
-  const { data: config } = await supabase
+  return updateAccountListInUrl(baseUrl, listId, listName)
+}
+
+export async function upsertPeopleSearchConfig2(
+  repName: string,
+  industry: string,
+  baseUrl2: string
+) {
+  const { error } = await supabaseAdmin
     .from("people_search_configs")
-    .select("base_url")
-    .eq("rep_name", repName)
-    .eq("industry", industry)
-    .maybeSingle()
-
-  if (!config?.base_url) throw new Error("No hay URL base configurada para este rep + industria")
-
-  return updateAccountListInUrl(config.base_url, listId, listName)
+    .upsert(
+      { rep_name: repName, industry, base_url_2: baseUrl2, updated_at: new Date().toISOString() },
+      { onConflict: "rep_name,industry" }
+    )
+  if (error) throw new Error(error.message)
+  revalidatePath("/people-search")
 }
 
 export async function updateActiveList(
