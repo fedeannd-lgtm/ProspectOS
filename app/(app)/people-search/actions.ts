@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache"
 import { supabase } from "@/lib/supabase"
 import { supabaseAdmin } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
-import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
@@ -51,20 +50,10 @@ export async function updateActiveList(
   listId: string,
   listName: string
 ) {
-  const { data: config } = await supabaseAdmin
-    .from("people_search_configs")
-    .select("base_url")
-    .eq("rep_name", repName)
-    .eq("industry", industry)
-    .maybeSingle()
-
-  if (!config?.base_url) throw new Error(`No hay URL base configurada para ${repName} / ${industry}`)
-
-  const updatedUrl = updateAccountListInUrl(config.base_url, listId, listName)
-
+  // Only save list metadata — do NOT modify base_url (SDR owns the URL)
   const { error } = await supabaseAdmin
     .from("people_search_configs")
-    .update({ base_url: updatedUrl, list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
+    .update({ list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
     .eq("rep_name", repName)
     .eq("industry", industry)
 

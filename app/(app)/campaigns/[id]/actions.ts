@@ -60,20 +60,16 @@ export async function saveCampaignList(
     .eq("industry", industry)
     .maybeSingle()
 
-  if (!config?.base_url) {
-    revalidatePath(`/campaigns/${campaignId}`)
-    return { warning: `Lista guardada en la campaña. Configurá la URL base en People Search para que la URL se actualice automáticamente.` }
+  // Only save list metadata — do NOT modify base_url (SDR owns the URL)
+  if (config?.base_url) {
+    const { error } = await supabaseAdmin
+      .from("people_search_configs")
+      .update({ list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
+      .eq("rep_name", repName)
+      .eq("industry", industry)
+    if (error) throw new Error(error.message)
   }
 
-  const updatedUrl = updateAccountListInUrl(config.base_url, listId, listName)
-
-  const { error } = await supabaseAdmin
-    .from("people_search_configs")
-    .update({ base_url: updatedUrl, list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
-    .eq("rep_name", repName)
-    .eq("industry", industry)
-
-  if (error) throw new Error(error.message)
   revalidatePath(`/campaigns/${campaignId}`)
   revalidatePath("/people-search")
   return {}
