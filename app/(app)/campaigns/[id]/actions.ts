@@ -75,6 +75,7 @@ export async function saveCampaignList(
 
   if (error) throw new Error(error.message)
   revalidatePath(`/campaigns/${campaignId}`)
+  revalidatePath("/people-search")
   return {}
 }
 

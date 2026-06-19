@@ -275,12 +275,14 @@ export function PeopleSearchClient({
               <label className="text-sm font-medium">Campaña</label>
               <Select value={campaignId} onValueChange={(v) => setCampaignId(v ?? "")}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar campaña" />
+                  {selectedCampaign
+                    ? <span>{selectedCampaign.week_label} · {selectedCampaign.rep_name} · {selectedCampaign.industry}</span>
+                    : <span className="text-muted-foreground">Seleccionar campaña</span>}
                 </SelectTrigger>
                 <SelectContent>
                   {campaigns.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {`${c.week_label} · ${c.rep_name} · ${c.industry}`}
+                      {c.week_label} · {c.rep_name} · {c.industry}
                     </SelectItem>
                   ))}
                 </SelectContent>
