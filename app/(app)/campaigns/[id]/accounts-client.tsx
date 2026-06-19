@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck } from "lucide-react"
+import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { updateAccount, deleteAccount } from "./actions"
+import { updateAccount, deleteAccount, updatePeopleSearchWithList } from "./actions"
 
 type Account = {
   id: string
@@ -120,9 +120,15 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [listId, setListId] = useState("")
+  const [listName, setListName] = useState(() => {
+    const today = new Date().toLocaleDateString("es-AR", { day: "numeric", month: "numeric", year: "numeric" })
+    return `Empresas ${campaign.rep_name} ${campaign.industry} ${today}`
+  })
   const [copied, setCopied] = useState(false)
   const [showScript, setShowScript] = useState(false)
   const [script, setScript] = useState("")
+  const [peopleSearchStatus, setPeopleSearchStatus] = useState<"idle" | "loading" | "done" | "error" | "warning">("idle")
+  const [peopleSearchMsg, setPeopleSearchMsg] = useState("")
 
   const allIds = accounts.map((a) => a.id)
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id))
@@ -166,6 +172,24 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
     setScript(generated)
     setShowScript(true)
     setCopied(false)
+  }
+
+  async function handleUpdatePeopleSearch() {
+    setPeopleSearchStatus("loading")
+    try {
+      const cleanId = listId.match(/\d{10,}/)?.[0] ?? listId.trim()
+      const result = await updatePeopleSearchWithList(campaign.rep_name, campaign.industry, cleanId, listName)
+      if (result.warning) {
+        setPeopleSearchMsg(result.warning)
+        setPeopleSearchStatus("warning")
+      } else {
+        setPeopleSearchMsg("URL de People Search actualizada con la nueva lista")
+        setPeopleSearchStatus("done")
+      }
+    } catch (e) {
+      setPeopleSearchMsg(e instanceof Error ? e.message : "Error desconocido")
+      setPeopleSearchStatus("error")
+    }
   }
 
   async function handleCopy() {
@@ -272,15 +296,25 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                 </p>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  ID de la lista (lo encontrás en la URL: <span className="font-mono">/sales/lists/company/<strong>7473723596...</strong></span>)
-                </label>
-                <div className="flex gap-2">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Nombre de la lista en Sales Navigator
+                  </label>
+                  <Input
+                    value={listName}
+                    onChange={(e) => setListName(e.target.value)}
+                    className="text-sm"
+                    placeholder="Empresas Fede Manufactura 19-6-2026"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    ID de la lista (URL: <span className="font-mono">/sales/lists/company/<strong>7473723596...</strong></span>)
+                  </label>
                   <Input
                     value={listId}
                     onChange={(e) => {
-                      // Accept full URL or just the ID
                       const val = e.target.value
                       const match = val.match(/\/lists\/(?:company|account)\/(\d+)/)
                       setListId(match ? match[1] : val)
@@ -288,11 +322,28 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                     className="font-mono text-sm"
                     placeholder="7473723596373360642 o pegá la URL completa"
                   />
-                  <Button onClick={handleGenerateScript} disabled={selectedWithId === 0 || !listId.trim()} className="shrink-0">
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Button onClick={handleGenerateScript} disabled={selectedWithId === 0 || !listId.trim()} variant="outline">
                     <Code2 className="mr-2 size-4" />
-                    Generar script
+                    Generar script para Claude
+                  </Button>
+                  <Button onClick={handleUpdatePeopleSearch} disabled={!listId.trim() || peopleSearchStatus === "loading"}>
+                    <RefreshCw className={`mr-2 size-4 ${peopleSearchStatus === "loading" ? "animate-spin" : ""}`} />
+                    Actualizar People Search
                   </Button>
                 </div>
+                {peopleSearchStatus === "done" && (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <CheckCheck className="size-3" /> {peopleSearchMsg}
+                  </p>
+                )}
+                {peopleSearchStatus === "warning" && (
+                  <p className="text-xs text-amber-600">{peopleSearchMsg}</p>
+                )}
+                {peopleSearchStatus === "error" && (
+                  <p className="text-xs text-destructive">{peopleSearchMsg}</p>
+                )}
               </div>
 
               {showScript && (

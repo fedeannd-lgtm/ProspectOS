@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
+import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
 export async function getCampaignWithAccounts(campaignId: string) {
   const [campaignRes, accountsRes] = await Promise.all([
@@ -35,6 +36,35 @@ export async function updateAccount(
 
   if (error) throw new Error(error.message)
   revalidatePath(`/campaigns/${campaignId}`)
+}
+
+export async function updatePeopleSearchWithList(
+  repName: string,
+  industry: string,
+  listId: string,
+  listName: string
+): Promise<{ updated: boolean; warning?: string }> {
+  const { data: config } = await supabaseAdmin
+    .from("people_search_configs")
+    .select("base_url")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .maybeSingle()
+
+  if (!config?.base_url) {
+    return { updated: false, warning: `No hay URL de People Search configurada para ${repName} / ${industry}. Configurala primero en People Search.` }
+  }
+
+  const updatedUrl = updateAccountListInUrl(config.base_url, listId, listName)
+
+  const { error } = await supabaseAdmin
+    .from("people_search_configs")
+    .update({ base_url: updatedUrl, updated_at: new Date().toISOString() })
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+
+  if (error) throw new Error(error.message)
+  return { updated: true }
 }
 
 export async function deleteAccount(accountId: string, campaignId: string) {
