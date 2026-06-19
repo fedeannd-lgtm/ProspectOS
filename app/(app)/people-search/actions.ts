@@ -113,10 +113,14 @@ export async function triggerPeopleSearch(
   campaignId: string,
   repName: string,
   industry: string,
-  maxResults: number
+  maxResults: number,
+  urlIndex: 1 | 2 = 1
 ) {
   const config = await getPeopleSearchConfig(repName, industry)
   if (!config) throw new Error("No hay URL configurada para este rep+industria")
+
+  const searchUrl = urlIndex === 2 ? config.base_url_2 : config.base_url
+  if (!searchUrl) throw new Error(`No hay URL${urlIndex === 2 ? " 2" : ""} configurada para este rep+industria`)
 
   const { data: repConfig } = await supabase
     .from("rep_configs")
@@ -134,7 +138,7 @@ export async function triggerPeopleSearch(
     .insert({
       campaign_id: campaignId,
       job_type: "people_search",
-      sales_nav_url: config.base_url,
+      sales_nav_url: searchUrl,
       status: "running",
       max_results: maxResults,
       estimated_ready_at: estimatedReadyAt,
@@ -154,7 +158,7 @@ export async function triggerPeopleSearch(
   const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
   const runId = await startSalesNavRun({
     cookie: cookieParsed,
-    searchUrl: config.base_url,
+    searchUrl,
     count: maxResults,
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
     deepScrape: false,

@@ -150,6 +150,7 @@ export function PeopleSearchClient({
   const [pickedListId, setPickedListId] = useState("")
   const [pickedListName, setPickedListName] = useState("")
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
+  const [selectedUrlIndex, setSelectedUrlIndex] = useState<1 | 2>(1)
   const [generatedUrl2, setGeneratedUrl2] = useState<string | null>(null)
   const [urlInput2, setUrlInput2] = useState("")
   const [showUrlEdit2, setShowUrlEdit2] = useState(false)
@@ -252,7 +253,8 @@ export function PeopleSearchClient({
           campaignId,
           selectedCampaign.rep_name,
           selectedCampaign.industry,
-          maxResults
+          maxResults,
+          selectedUrlIndex
         )
         const newJob: SearchJob = {
           id: jobId,
@@ -541,6 +543,29 @@ export function PeopleSearchClient({
                     )}
                   </>
                 )}
+              </div>
+            )}
+
+            {/* Selector de URL para el scraping */}
+            {config?.base_url_2 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">URL a usar para buscar</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedUrlIndex(1)}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 1 ? "border-foreground bg-foreground text-background" : "hover:bg-muted/50"}`}
+                  >
+                    <span className="font-medium">URL 1</span>
+                    <span className="block text-xs mt-0.5 font-mono opacity-70 truncate">{config.base_url.slice(0, 40)}…</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedUrlIndex(2)}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 2 ? "border-foreground bg-foreground text-background" : "hover:bg-muted/50"}`}
+                  >
+                    <span className="font-medium">URL 2</span>
+                    <span className="block text-xs mt-0.5 font-mono opacity-70 truncate">{config.base_url_2.slice(0, 40)}…</span>
+                  </button>
+                </div>
               </div>
             )}
 
