@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
+import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
@@ -15,7 +17,7 @@ function estimatedMinutes(maxResults: number) {
 export async function getCampaigns() {
   const { data, error } = await supabase
     .from("campaigns")
-    .select("id, week_label, rep_name, industry, status")
+    .select("id, week_label, rep_name, industry, status, list_id, list_name")
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
   return data
@@ -35,12 +37,39 @@ export async function getPeopleSearchJobs() {
 export async function getPeopleSearchConfig(repName: string, industry: string) {
   const { data, error } = await supabase
     .from("people_search_configs")
-    .select("base_url")
+    .select("base_url, list_id, list_name")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
   if (error) throw new Error(error.message)
-  return data as { base_url: string } | null
+  return data as { base_url: string; list_id: string | null; list_name: string | null } | null
+}
+
+export async function updateActiveList(
+  repName: string,
+  industry: string,
+  listId: string,
+  listName: string
+) {
+  const { data: config } = await supabaseAdmin
+    .from("people_search_configs")
+    .select("base_url")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .maybeSingle()
+
+  if (!config?.base_url) throw new Error(`No hay URL base configurada para ${repName} / ${industry}`)
+
+  const updatedUrl = updateAccountListInUrl(config.base_url, listId, listName)
+
+  const { error } = await supabaseAdmin
+    .from("people_search_configs")
+    .update({ base_url: updatedUrl, list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+
+  if (error) throw new Error(error.message)
+  revalidatePath("/people-search")
 }
 
 export async function upsertPeopleSearchConfig(

@@ -27,6 +27,7 @@ import {
 import {
   getPeopleSearchConfig,
   upsertPeopleSearchConfig,
+  updateActiveList,
   triggerPeopleSearch,
   getJobStatus,
 } from "./actions"
@@ -37,6 +38,8 @@ type Campaign = {
   rep_name: string
   industry: string
   status: string
+  list_id: string | null
+  list_name: string | null
 }
 
 type SearchJob = {
@@ -51,7 +54,7 @@ type SearchJob = {
   campaigns: { week_label: string; rep_name: string; industry: string } | null
 }
 
-type PeopleSearchConfig = { base_url: string } | null
+type PeopleSearchConfig = { base_url: string; list_id: string | null; list_name: string | null } | null
 
 const MAX_OPTIONS = [25, 100, 250, 500]
 
@@ -142,6 +145,10 @@ export function PeopleSearchClient({
   const [isPending, startTransition] = useTransition()
   const [isSavingConfig, startSavingConfig] = useTransition()
   const [error, setError] = useState("")
+  const [showListEdit, setShowListEdit] = useState(false)
+  const [newListId, setNewListId] = useState("")
+  const [newListName, setNewListName] = useState("")
+  const [isUpdatingList, startUpdatingList] = useTransition()
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
@@ -200,7 +207,7 @@ export function PeopleSearchClient({
     startSavingConfig(async () => {
       try {
         await upsertPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry, urlInput)
-        setConfig({ base_url: urlInput })
+        setConfig((prev) => ({ base_url: urlInput, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null }))
         setShowUrlEdit(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error guardando configuración")
@@ -291,63 +298,119 @@ export function PeopleSearchClient({
               </Link>
             )}
 
-            {/* URL config */}
+            {/* Lista de cuentas de la campaña */}
             {selectedCampaign && (
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-                {configLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="size-3.5 animate-spin" />
-                    Cargando configuración…
-                  </div>
-                ) : config && !showUrlEdit ? (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm">
-                        <CheckCircle2 className="size-4 text-green-600" />
-                        <span className="font-medium">URL configurada</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}
-                      >
-                        <RefreshCw className="mr-1 size-3" />
-                        Actualizar URL
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Link2 className="size-3 shrink-0" />
-                      <span className="truncate font-mono">{config.base_url.slice(0, 60)}…</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 text-sm text-amber-600">
-                      <AlertTriangle className="size-4" />
-                      <span className="font-medium">
-                        {config ? "Actualizar URL de búsqueda" : "Sin URL configurada"}
-                      </span>
-                    </div>
+              <div className="space-y-2">
+                {/* Bloque: lista de la campaña */}
+                <div className="rounded-lg border p-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Lista de cuentas de esta campaña</p>
+                  {selectedCampaign.list_name ? (
                     <div className="space-y-2">
-                      <Input
-                        value={urlInput}
-                        onChange={(e) => setUrlInput(e.target.value)}
-                        placeholder="https://www.linkedin.com/sales/search/people#query=..."
-                        className="font-mono text-xs"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" className="h-8" onClick={handleSaveConfig} disabled={isSavingConfig}>
-                          {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
-                        </Button>
-                        {config && (
-                          <Button variant="ghost" size="sm" className="h-8" onClick={() => setShowUrlEdit(false)}>
-                            Cancelar
-                          </Button>
+                      <div>
+                        <p className="text-sm font-medium">{selectedCampaign.list_name}</p>
+                        {selectedCampaign.list_id && (
+                          <p className="text-xs text-muted-foreground font-mono">{selectedCampaign.list_id}</p>
                         )}
                       </div>
+                      {configLoading ? (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Loader2 className="size-3 animate-spin" /> Verificando…
+                        </div>
+                      ) : config?.list_id === selectedCampaign.list_id ? (
+                        <div className="flex items-center gap-1.5 text-xs text-green-600">
+                          <CheckCircle2 className="size-3.5" /> Lista activa en People Search
+                        </div>
+                      ) : (
+                        <Button size="sm" className="h-8"
+                          disabled={isUpdatingList}
+                          onClick={() => {
+                            startUpdatingList(async () => {
+                              try {
+                                await updateActiveList(
+                                  selectedCampaign.rep_name,
+                                  selectedCampaign.industry,
+                                  selectedCampaign.list_id!,
+                                  selectedCampaign.list_name!
+                                )
+                                setConfig((prev) => prev
+                                  ? { ...prev, list_id: selectedCampaign.list_id, list_name: selectedCampaign.list_name }
+                                  : prev
+                                )
+                              } catch (e) {
+                                setError(e instanceof Error ? e.message : "Error activando lista")
+                              }
+                            })
+                          }}>
+                          {isUpdatingList
+                            ? <><Loader2 className="mr-2 size-3.5 animate-spin" /> Actualizando…</>
+                            : <><RefreshCw className="mr-2 size-3.5" /> Activar en People Search</>}
+                        </Button>
+                      )}
                     </div>
-                  </>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground italic">Sin lista configurada para esta campaña</p>
+                      <p className="text-xs text-muted-foreground">
+                        Andá a{" "}
+                        <Link href={`/campaigns/${campaignId}`} className="underline underline-offset-2">
+                          Ver empresas
+                        </Link>
+                        {" "}→ seleccioná las empresas → ingresá el nombre e ID de la lista → "Actualizar People Search"
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bloque: URL base (colapsada, solo si hay config) */}
+                {configLoading ? null : !config ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-amber-700">
+                      <AlertTriangle className="size-4 shrink-0" />
+                      <span className="font-medium">Primero configurá la URL base de People Search</span>
+                    </div>
+                    <p className="text-xs text-amber-600">
+                      Es la URL de búsqueda de personas en Sales Navigator (sin la lista). Se guarda una vez por rep + industria.
+                    </p>
+                    {!showUrlEdit ? (
+                      <Button size="sm" variant="outline" onClick={() => setShowUrlEdit(true)}>Configurar URL base</Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
+                          placeholder="https://www.linkedin.com/sales/search/people#query=..."
+                          className="font-mono text-xs" />
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
+                            {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
+                    <Link2 className="size-3 shrink-0" />
+                    <span className="truncate font-mono">{config.base_url.slice(0, 55)}…</span>
+                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs ml-auto shrink-0"
+                      onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}>
+                      editar URL base
+                    </Button>
+                  </div>
+                )}
+
+                {showUrlEdit && config && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">URL base de People Search</p>
+                    <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
+                      placeholder="https://www.linkedin.com/sales/search/people#query=..."
+                      className="font-mono text-xs" />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
+                        {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

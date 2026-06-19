@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { updateAccount, deleteAccount, updatePeopleSearchWithList } from "./actions"
+import { updateAccount, deleteAccount, saveCampaignList } from "./actions"
 
 type Account = {
   id: string
@@ -24,6 +24,8 @@ type Campaign = {
   status: string
   accounts_found: number
   prospects_found: number
+  list_id: string | null
+  list_name: string | null
 }
 
 const STATUS_CONFIG = {
@@ -119,11 +121,14 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
   const [accounts, setAccounts] = useState(initialAccounts)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [listId, setListId] = useState("")
+  const [listId, setListId] = useState(campaign.list_id ?? "")
   const [listName, setListName] = useState(() => {
+    if (campaign.list_name) return campaign.list_name
     const today = new Date().toLocaleDateString("es-AR", { day: "numeric", month: "numeric", year: "numeric" })
     return `Empresas ${campaign.rep_name} ${campaign.industry} ${today}`
   })
+  const [savedListId, setSavedListId] = useState(campaign.list_id)
+  const [savedListName, setSavedListName] = useState(campaign.list_name)
   const [copied, setCopied] = useState(false)
   const [showScript, setShowScript] = useState(false)
   const [script, setScript] = useState("")
@@ -178,12 +183,14 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
     setPeopleSearchStatus("loading")
     try {
       const cleanId = listId.match(/\d{10,}/)?.[0] ?? listId.trim()
-      const result = await updatePeopleSearchWithList(campaign.rep_name, campaign.industry, cleanId, listName)
+      const result = await saveCampaignList(campaign.id, campaign.rep_name, campaign.industry, cleanId, listName)
+      setSavedListId(cleanId)
+      setSavedListName(listName)
       if (result.warning) {
         setPeopleSearchMsg(result.warning)
         setPeopleSearchStatus("warning")
       } else {
-        setPeopleSearchMsg("URL de People Search actualizada con la nueva lista")
+        setPeopleSearchMsg("Lista guardada en la campaña y URL de People Search actualizada")
         setPeopleSearchStatus("done")
       }
     } catch (e) {
@@ -212,6 +219,18 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
           {accounts.length} empresa{accounts.length !== 1 ? "s" : ""} · click en cualquier campo para editar
         </p>
       </div>
+
+      {/* Lista de cuentas guardada */}
+      {savedListName && (
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm">
+          <CheckCheck className="size-4 text-green-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-green-800">Lista guardada: </span>
+            <span className="text-green-700">{savedListName}</span>
+            {savedListId && <span className="ml-2 font-mono text-xs text-green-600">{savedListId}</span>}
+          </div>
+        </div>
+      )}
 
       {accounts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-sm text-muted-foreground border rounded-lg">

@@ -8,7 +8,7 @@ export async function getCampaignWithAccounts(campaignId: string) {
   const [campaignRes, accountsRes] = await Promise.all([
     supabase
       .from("campaigns")
-      .select("id, week_label, rep_name, industry, status, accounts_found, prospects_found")
+      .select("id, week_label, rep_name, industry, status, accounts_found, prospects_found, list_id, list_name")
       .eq("id", campaignId)
       .single(),
     supabase
@@ -38,12 +38,21 @@ export async function updateAccount(
   revalidatePath(`/campaigns/${campaignId}`)
 }
 
-export async function updatePeopleSearchWithList(
+export async function saveCampaignList(
+  campaignId: string,
   repName: string,
   industry: string,
   listId: string,
   listName: string
-): Promise<{ updated: boolean; warning?: string }> {
+): Promise<{ warning?: string }> {
+  // 1. Save list to the campaign record
+  const { error: campaignError } = await supabaseAdmin
+    .from("campaigns")
+    .update({ list_id: listId, list_name: listName })
+    .eq("id", campaignId)
+  if (campaignError) throw new Error(campaignError.message)
+
+  // 2. If people_search_configs exists for this rep+industry, update the URL too
   const { data: config } = await supabaseAdmin
     .from("people_search_configs")
     .select("base_url")
@@ -52,19 +61,21 @@ export async function updatePeopleSearchWithList(
     .maybeSingle()
 
   if (!config?.base_url) {
-    return { updated: false, warning: `No hay URL de People Search configurada para ${repName} / ${industry}. Configurala primero en People Search.` }
+    revalidatePath(`/campaigns/${campaignId}`)
+    return { warning: `Lista guardada en la campaña. Configurá la URL base en People Search para que la URL se actualice automáticamente.` }
   }
 
   const updatedUrl = updateAccountListInUrl(config.base_url, listId, listName)
 
   const { error } = await supabaseAdmin
     .from("people_search_configs")
-    .update({ base_url: updatedUrl, updated_at: new Date().toISOString() })
+    .update({ base_url: updatedUrl, list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
     .eq("rep_name", repName)
     .eq("industry", industry)
 
   if (error) throw new Error(error.message)
-  return { updated: true }
+  revalidatePath(`/campaigns/${campaignId}`)
+  return {}
 }
 
 export async function deleteAccount(accountId: string, campaignId: string) {
