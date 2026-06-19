@@ -158,14 +158,17 @@ async function processPeopleSearch(
   job: { campaign_id: string },
   people: ApifyPerson[]
 ) {
-  // Load accounts for this campaign to match company name → domain + account_id
+  // Load all accounts globally to match company name → domain + account_id
   const { data: accounts } = await supabaseAdmin
     .from("accounts")
-    .select("id, company_name, domain")
-    .eq("campaign_id", job.campaign_id)
+    .select("id, company_name, domain, campaign_id")
 
   const nameToAccount = new Map<string, { id: string; domain: string }>()
-  accounts?.forEach((a) => {
+  // Insert campaign accounts last so they take priority over other campaigns
+  const sorted = [...(accounts ?? [])].sort((a, b) =>
+    a.campaign_id === job.campaign_id ? 1 : b.campaign_id === job.campaign_id ? -1 : 0
+  )
+  sorted.forEach((a) => {
     if (a.company_name) {
       nameToAccount.set(normalizeCompanyName(a.company_name), {
         id: a.id,
