@@ -52,18 +52,16 @@ function generateScript(listId: string, companies: { sales_nav_id: string; compa
   const csrfToken = csrf?.startsWith('ajax:') ? csrf : \`ajax:\${csrf}\`;
 
   let ok = 0, fail = 0;
-  for (let i = 0; i < companyIds.length; i += 50) {
-    const batch = companyIds.slice(i, i + 50);
-    const r = await fetch(\`/sales-api/salesApiLists/\${listId}/listMembers\`, {
+  for (const id of companyIds) {
+    const r = await fetch('/sales-api/salesApiListEntities?action=edit', {
       method: 'POST', credentials: 'include',
       headers: {'Content-Type':'application/json','csrf-token':csrfToken,'x-restli-protocol-version':'2.0.0','x-requested-with':'XMLHttpRequest'},
-      body: JSON.stringify({elements: batch.map(id => ({type:'ACCOUNT', account:{id}}))})
+      body: JSON.stringify({entity:\`urn:li:fs_salesCompany:\${id}\`,addToLists:[listId],removeFromLists:[]})
     });
-    if (r.ok) ok += batch.length; else fail += batch.length;
-    console.log(\`[ProspectOS] Batch \${Math.ceil((i+1)/50)} status:\`, r.status);
+    if (r.ok) ok++; else { fail++; console.warn(\`[ProspectOS] Falló \${id}:\`, r.status); }
   }
 
-  alert(\`✅ \${ok} empresas agregadas a la lista.\\n\${fail > 0 ? '⚠️ ' + fail + ' fallaron.' : ''}\`);
+  alert(\`✅ \${ok}/\${companyIds.length} empresas agregadas a la lista.\${fail > 0 ? '\\n⚠️ ' + fail + ' fallaron — revisá la consola.' : ''}\`);
 })();`
 }
 
