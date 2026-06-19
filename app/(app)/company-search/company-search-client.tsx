@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
 import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus, triggerAccountList } from "./actions"
+import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus } from "./actions"
 
 type Campaign = {
   id: string
@@ -81,19 +82,6 @@ function JobCard({ job }: { job: SearchJob }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
-  const [listStatus, setListStatus] = useState<"idle" | "loading" | "done" | "error">("idle")
-  const [listName, setListName] = useState("")
-
-  async function handleCreateList() {
-    setListStatus("loading")
-    try {
-      const result = await triggerAccountList(job.id)
-      setListName(result.listName)
-      setListStatus("done")
-    } catch {
-      setListStatus("error")
-    }
-  }
 
   return (
     <div className="rounded-lg border px-3 py-2.5 space-y-1.5">
@@ -130,24 +118,6 @@ function JobCard({ job }: { job: SearchJob }) {
             <Building2 className="size-3" />
             Ver empresas
           </Link>
-          {listStatus === "idle" && (
-            <Button variant="outline" size="sm" className="h-6 text-xs" onClick={handleCreateList}>
-              Crear Account List
-            </Button>
-          )}
-          {listStatus === "loading" && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> Creando lista en Sales Nav…
-            </span>
-          )}
-          {listStatus === "done" && (
-            <span className="inline-flex items-center gap-1 text-xs text-green-600">
-              <CheckCircle2 className="size-3" /> Lista "{listName}" iniciada
-            </span>
-          )}
-          {listStatus === "error" && (
-            <span className="text-xs text-destructive">Error — revisá los logs</span>
-          )}
         </div>
       )}
     </div>
