@@ -1,5 +1,5 @@
-const { Actor } = require('apify');
-const { chromium } = require('playwright');
+import { Actor } from 'apify';
+import { chromium } from 'playwright';
 
 Actor.main(async () => {
   const input = await Actor.getInput();
@@ -12,6 +12,11 @@ Actor.main(async () => {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   });
 
+  function normalizeSameSite(val) {
+    const map = { strict: 'Strict', lax: 'Lax', none: 'None', no_restriction: 'None', unspecified: 'Lax' };
+    return map[(val || '').toLowerCase()] ?? 'Lax';
+  }
+
   await context.addCookies(
     cookie.map((c) => ({
       name: c.name,
@@ -20,7 +25,7 @@ Actor.main(async () => {
       path: c.path || '/',
       secure: c.secure !== false,
       httpOnly: c.httpOnly || false,
-      sameSite: c.sameSite || 'Lax',
+      sameSite: normalizeSameSite(c.sameSite),
     }))
   );
 
@@ -99,25 +104,60 @@ Actor.main(async () => {
       waitUntil: 'networkidle',
       timeout: 30000,
     });
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(4000);
 
-    // Click "Create account list" button (text may vary by language)
-    const createBtn = page.locator('button:has-text("Create account list"), button:has-text("New list"), button:has-text("Create list")').first();
-    await createBtn.click();
-    await page.waitForTimeout(1000);
+    // Screenshot for debugging
+    const screenshotBefore = await page.screenshot({ fullPage: true });
+    await Actor.setValue('debug_lists_page', screenshotBefore, { contentType: 'image/png' });
+
+    // Log all visible buttons for debugging
+    const allButtons = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('button')).map((b) => b.innerText.trim()).filter(Boolean)
+    );
+    console.log('Buttons found on page:', JSON.stringify(allButtons));
+
+    // Try multiple selectors
+    const buttonTexts = ['Create account list', 'New list', 'Create list', 'Crear lista de cuentas', 'Nueva lista', 'Crear lista'];
+    let clicked = false;
+
+    for (const text of buttonTexts) {
+      const btn = page.locator(`button:has-text("${text}")`).first();
+      const count = await btn.count();
+      if (count > 0) {
+        console.log(`Clicking button: "${text}"`);
+        await btn.click();
+        clicked = true;
+        break;
+      }
+    }
+
+    // Last resort: find any button with "list" in its text
+    if (!clicked) {
+      const anyListBtn = page.locator('button').filter({ hasText: /list|lista/i }).first();
+      const count = await anyListBtn.count();
+      if (count > 0) {
+        console.log('Clicking first button matching /list|lista/');
+        await anyListBtn.click();
+        clicked = true;
+      }
+    }
+
+    if (!clicked) throw new Error(`No create list button found. Buttons on page: ${JSON.stringify(allButtons)}`);
+    await page.waitForTimeout(1500);
 
     // Fill the list name
-    const nameInput = page.locator('input[placeholder*="list"], input[aria-label*="list"], input[name*="name"]').first();
+    const nameInput = page.locator('input[placeholder*="list" i], input[placeholder*="lista" i], input[aria-label*="list" i], input[aria-label*="name" i], input[name*="name"]').first();
     await nameInput.fill(listName);
     await page.waitForTimeout(500);
 
     // Submit
-    const submitBtn = page.locator('button:has-text("Create"), button[type="submit"]').last();
+    const submitBtn = page.locator('button:has-text("Create"), button:has-text("Crear"), button[type="submit"]').last();
     await submitBtn.click();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
     // Extract listId from URL after redirect
     const newUrl = page.url();
+    console.log('URL after create:', newUrl);
     const match = newUrl.match(/\/lists\/(?:company|account)\/(\d+)/);
     if (!match) throw new Error(`Could not extract list ID from URL: ${newUrl}`);
     listId = match[1];

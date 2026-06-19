@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
+import Link from "next/link"
 import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -125,6 +126,10 @@ function JobCard({ job }: { job: SearchJob }) {
       </div>
       {job.status === "completed" && (
         <div className="flex items-center gap-2">
+          <Link href={`/campaigns/${job.campaign_id}`} className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium hover:bg-muted transition-colors">
+            <Building2 className="size-3" />
+            Ver empresas
+          </Link>
           {listStatus === "idle" && (
             <Button variant="outline" size="sm" className="h-6 text-xs" onClick={handleCreateList}>
               Crear Account List
