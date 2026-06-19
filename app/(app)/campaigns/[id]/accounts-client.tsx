@@ -40,9 +40,11 @@ const STATUS_CYCLE: Record<string, string> = {
   rejected: "discovered",
 }
 
-function generateScript(listId: string, companies: { sales_nav_id: string; company_name: string }[]) {
+function generateScript(listId: string, companies: { sales_nav_id: string; company_name: string }[], repName: string, industry: string) {
   const ids = companies.map((c) => c.sales_nav_id).filter(Boolean)
-  return `(async () => {
+  return `// ProspectOS — ejecutar en el Sales Navigator de ${repName} (${industry})
+// Asegurate de estar logueado como ${repName} antes de correr esto.
+(async () => {
   const listId = ${JSON.stringify(listId)};
   const companyIds = ${JSON.stringify(ids)};
 
@@ -159,7 +161,7 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
 
   function handleGenerateScript() {
     const companies = selectedAccounts.map((a) => ({ sales_nav_id: a.sales_nav_id!, company_name: a.company_name }))
-    const generated = generateScript(listId.trim(), companies)
+    const generated = generateScript(listId.trim(), companies, campaign.rep_name, campaign.industry)
     setScript(generated)
     setShowScript(true)
     setCopied(false)
