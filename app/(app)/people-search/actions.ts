@@ -174,6 +174,16 @@ export async function triggerPeopleSearch(
   return { jobId: job.id, estimatedReadyAt }
 }
 
+export async function getProspectsForCampaign(campaignId: string) {
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("id, full_name, job_title, company_name, linkedin_url, connection_degree")
+    .eq("campaign_id", campaignId)
+    .order("created_at", { ascending: false })
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
 export async function getJobStatus(jobId: string) {
   const { data, error } = await supabase
     .from("search_jobs")

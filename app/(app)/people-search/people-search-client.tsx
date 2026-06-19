@@ -14,6 +14,8 @@ import {
   Timer,
   Building2,
   ExternalLink,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -32,6 +34,7 @@ import {
   generatePeopleSearchUrl,
   triggerPeopleSearch,
   getJobStatus,
+  getProspectsForCampaign,
 } from "./actions"
 
 type Campaign = {
@@ -94,38 +97,109 @@ function formatCountdown(ms: number) {
   return min > 0 ? `~${min} min` : `${sec}s`
 }
 
+type Prospect = { id: string; full_name: string; job_title: string; company_name: string; linkedin_url: string; connection_degree: string }
+
 function JobCard({ job }: { job: SearchJob }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
+  const [expanded, setExpanded] = useState(false)
+  const [prospects, setProspects] = useState<Prospect[] | null>(null)
+  const [loadingProspects, setLoadingProspects] = useState(false)
+
+  async function toggleExpand() {
+    if (!expanded && prospects === null) {
+      setLoadingProspects(true)
+      try {
+        const data = await getProspectsForCampaign(job.campaign_id)
+        setProspects(data)
+      } catch {
+        setProspects([])
+      } finally {
+        setLoadingProspects(false)
+      }
+    }
+    setExpanded((v) => !v)
+  }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.class}`}>
-            <Icon className={`size-3 ${job.status === "running" ? "animate-spin" : ""}`} />
-            {cfg.label}
-          </span>
-          {job.status === "running" && remaining !== null && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Timer className="size-3" />
-              {formatCountdown(remaining)}
+    <div className="rounded-lg border overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cfg.class}`}>
+              <Icon className={`size-3 ${job.status === "running" ? "animate-spin" : ""}`} />
+              {cfg.label}
             </span>
-          )}
-          {job.status === "completed" && (
-            <span className="text-xs text-muted-foreground">{job.results_count} personas</span>
+            {job.status === "running" && remaining !== null && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Timer className="size-3" />
+                {formatCountdown(remaining)}
+              </span>
+            )}
+            {job.status === "completed" && (
+              <span className="text-xs text-muted-foreground">{job.results_count} personas</span>
+            )}
+          </div>
+          {job.campaigns && (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {job.campaigns.week_label} · {job.campaigns.rep_name} · {job.campaigns.industry}
+            </p>
           )}
         </div>
-        {job.campaigns && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {job.campaigns.week_label} · {job.campaigns.rep_name} · {job.campaigns.industry}
-          </p>
-        )}
+        <div className="ml-3 flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground">
+            {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
+          </span>
+          {job.status === "completed" && (
+            <button
+              onClick={toggleExpand}
+              className="rounded p-1 hover:bg-muted/50 text-muted-foreground transition-colors"
+            >
+              {loadingProspects
+                ? <Loader2 className="size-3.5 animate-spin" />
+                : expanded
+                  ? <ChevronUp className="size-3.5" />
+                  : <ChevronDown className="size-3.5" />}
+            </button>
+          )}
+        </div>
       </div>
-      <span className="ml-3 shrink-0 text-xs text-muted-foreground">
-        {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
-      </span>
+
+      {expanded && prospects !== null && (
+        <div className="border-t bg-muted/30 max-h-72 overflow-y-auto">
+          {prospects.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-muted-foreground text-center">Sin personas guardadas para esta campaña</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Nombre</th>
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Cargo</th>
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Empresa</th>
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Grado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {prospects.map((p) => (
+                  <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
+                    <td className="px-3 py-1.5">
+                      {p.linkedin_url ? (
+                        <a href={p.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                          {p.full_name || "—"}
+                        </a>
+                      ) : (p.full_name || "—")}
+                    </td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{p.job_title || "—"}</td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{p.company_name || "—"}</td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{p.connection_degree || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   )
 }
