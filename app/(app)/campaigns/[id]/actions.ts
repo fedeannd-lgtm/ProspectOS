@@ -26,7 +26,7 @@ export async function getCampaignWithAccounts(campaignId: string) {
 export async function updateAccount(
   accountId: string,
   campaignId: string,
-  updates: { company_name?: string; domain?: string; sales_nav_id?: string; status?: string }
+  updates: { company_name?: string; domain?: string | null; sales_nav_id?: string | null; status?: string }
 ) {
   const { error } = await supabaseAdmin
     .from("accounts")
