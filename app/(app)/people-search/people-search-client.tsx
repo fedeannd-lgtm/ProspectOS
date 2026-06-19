@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
+import Link from "next/link"
 import {
   Users,
   Loader2,
@@ -12,8 +13,6 @@ import {
   RefreshCw,
   Timer,
   Building2,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -30,7 +29,6 @@ import {
   upsertPeopleSearchConfig,
   triggerPeopleSearch,
   getJobStatus,
-  getAccountsForCampaign,
 } from "./actions"
 
 type Campaign = {
@@ -51,11 +49,6 @@ type SearchJob = {
   completed_at: string | null
   estimated_ready_at?: string | null
   campaigns: { week_label: string; rep_name: string; industry: string } | null
-}
-
-type Account = {
-  company_name: string
-  domain: string | null
 }
 
 type PeopleSearchConfig = { base_url: string } | null
@@ -146,9 +139,6 @@ export function PeopleSearchClient({
   const [showUrlEdit, setShowUrlEdit] = useState(false)
   const [urlInput, setUrlInput] = useState("")
   const [maxResults, setMaxResults] = useState(100)
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [accountsLoading, setAccountsLoading] = useState(false)
-  const [accountsOpen, setAccountsOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [isSavingConfig, startSavingConfig] = useTransition()
   const [error, setError] = useState("")
@@ -158,21 +148,14 @@ export function PeopleSearchClient({
   useEffect(() => {
     if (!selectedCampaign) {
       setConfig(null)
-      setAccounts([])
       setShowUrlEdit(false)
-      setAccountsOpen(false)
       return
     }
 
     setConfigLoading(true)
-    setAccountsLoading(true)
     setError("")
-
-    Promise.all([
-      getPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry),
-      getAccountsForCampaign(selectedCampaign.id),
-    ])
-      .then(([cfg, accts]) => {
+    getPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry)
+      .then((cfg) => {
         setConfig(cfg)
         if (cfg) {
           setUrlInput(cfg.base_url)
@@ -181,13 +164,9 @@ export function PeopleSearchClient({
           setUrlInput("")
           setShowUrlEdit(true)
         }
-        setAccounts(accts)
       })
       .catch(() => setError("Error cargando configuración"))
-      .finally(() => {
-        setConfigLoading(false)
-        setAccountsLoading(false)
-      })
+      .finally(() => setConfigLoading(false))
   }, [selectedCampaign?.id, selectedCampaign?.rep_name, selectedCampaign?.industry])
 
   // Poll running jobs every 10s
@@ -294,50 +273,22 @@ export function PeopleSearchClient({
                 <SelectContent>
                   {campaigns.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.week_label} — {c.rep_name} / {c.industry}
+                      {`${c.week_label} · ${c.rep_name} · ${c.industry}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Empresas de la campaña */}
+            {/* Link a empresas de la campaña */}
             {selectedCampaign && (
-              <div className="rounded-lg border">
-                <button
-                  type="button"
-                  onClick={() => setAccountsOpen((v) => !v)}
-                  className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium"
-                >
-                  <div className="flex items-center gap-2">
-                    <Building2 className="size-4 text-muted-foreground" />
-                    <span>
-                      {accountsLoading
-                        ? "Cargando empresas…"
-                        : accounts.length > 0
-                        ? `${accounts.length} empresa${accounts.length !== 1 ? "s" : ""} para agregar a Sales Nav`
-                        : "Sin empresas en esta campaña"}
-                    </span>
-                  </div>
-                  {accounts.length > 0 && (
-                    accountsOpen ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />
-                  )}
-                </button>
-                {accountsOpen && accounts.length > 0 && (
-                  <div className="border-t px-3 py-2 max-h-48 overflow-y-auto">
-                    <ul className="space-y-1">
-                      {accounts.map((a, i) => (
-                        <li key={i} className="flex items-center justify-between text-xs">
-                          <span className="font-medium">{a.company_name}</span>
-                          {a.domain && (
-                            <span className="text-muted-foreground font-mono">{a.domain}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
+              <Link
+                href={`/campaigns/${campaignId}`}
+                className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors"
+              >
+                <Building2 className="size-4 text-muted-foreground shrink-0" />
+                <span>Ver empresas y generar script para Sales Nav</span>
+              </Link>
             )}
 
             {/* URL config */}
