@@ -60,10 +60,9 @@ export async function upsertPeopleSearchConfig2(
 ) {
   const { error } = await supabaseAdmin
     .from("people_search_configs")
-    .upsert(
-      { rep_name: repName, industry, base_url_2: baseUrl2, updated_at: new Date().toISOString() },
-      { onConflict: "rep_name,industry" }
-    )
+    .update({ base_url_2: baseUrl2, updated_at: new Date().toISOString() })
+    .eq("rep_name", repName)
+    .eq("industry", industry)
   if (error) throw new Error(error.message)
   revalidatePath("/people-search")
 }
