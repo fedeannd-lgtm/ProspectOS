@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Users, ExternalLink, Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Users, ExternalLink, Search, Download } from "lucide-react"
 
 type Prospect = {
   id: string
@@ -22,17 +22,49 @@ type Prospect = {
 }
 
 const STATUS_LABELS: Record<string, { label: string; class: string }> = {
-  scraped:   { label: "Scrapeado",  class: "bg-zinc-100 text-zinc-600" },
+  scraped:   { label: "Scrapeado",   class: "bg-zinc-100 text-zinc-600" },
   enriched:  { label: "Enriquecido", class: "bg-blue-50 text-blue-700" },
-  approved:  { label: "Aprobado",   class: "bg-green-50 text-green-700" },
-  rejected:  { label: "Rechazado",  class: "bg-red-50 text-red-700" },
-  sent:      { label: "Enviado",    class: "bg-purple-50 text-purple-700" },
+  approved:  { label: "Aprobado",    class: "bg-green-50 text-green-700" },
+  rejected:  { label: "Rechazado",   class: "bg-red-50 text-red-700" },
+  sent:      { label: "Enviado",     class: "bg-purple-50 text-purple-700" },
+}
+
+function campaignLabel(p: Prospect) {
+  if (!p.campaigns) return ""
+  return `${p.campaigns.week_label} · ${p.campaigns.rep_name} · ${p.campaigns.industry}`
+}
+
+function exportCsv(rows: Prospect[]) {
+  const headers = ["Nombre", "Cargo", "Empresa", "Email", "LinkedIn", "Grado", "ICP", "Estado", "Campaña"]
+  const escape = (v: string | null | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`
+  const lines = [
+    headers.join(","),
+    ...rows.map((p) => [
+      escape(p.full_name),
+      escape(p.job_title),
+      escape(p.company_name),
+      escape(p.email),
+      escape(p.linkedin_url),
+      escape(p.connection_degree),
+      p.icp_score > 0 ? p.icp_score : "",
+      escape(p.status),
+      escape(campaignLabel(p)),
+    ].join(",")),
+  ]
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `prospectos-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
   const [search, setSearch] = useState("")
   const [repFilter, setRepFilter] = useState("all")
   const [industryFilter, setIndustryFilter] = useState("all")
+  const [campaignFilter, setCampaignFilter] = useState("all")
 
   const reps = useMemo(() => {
     const set = new Set(prospects.map((p) => p.campaigns?.rep_name).filter(Boolean) as string[])
@@ -44,32 +76,60 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
     return Array.from(set).sort()
   }, [prospects])
 
+  // Campaigns available after rep+industry filter
+  const campaigns = useMemo(() => {
+    const seen = new Map<string, string>()
+    prospects.forEach((p) => {
+      if (!p.campaign_id || !p.campaigns) return
+      if (repFilter !== "all" && p.campaigns.rep_name !== repFilter) return
+      if (industryFilter !== "all" && p.campaigns.industry !== industryFilter) return
+      if (!seen.has(p.campaign_id)) seen.set(p.campaign_id, campaignLabel(p))
+    })
+    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [prospects, repFilter, industryFilter])
+
+  // Reset campaign filter when rep/industry changes and campaign is no longer available
+  const campaignIds = useMemo(() => new Set(campaigns.map(([id]) => id)), [campaigns])
+
   const filtered = useMemo(() => {
+    const resolvedCampaign = campaignIds.has(campaignFilter) ? campaignFilter : "all"
     const q = search.toLowerCase()
     return prospects.filter((p) => {
       if (repFilter !== "all" && p.campaigns?.rep_name !== repFilter) return false
       if (industryFilter !== "all" && p.campaigns?.industry !== industryFilter) return false
+      if (resolvedCampaign !== "all" && p.campaign_id !== resolvedCampaign) return false
       if (q && !p.full_name?.toLowerCase().includes(q) &&
                !p.job_title?.toLowerCase().includes(q) &&
                !p.company_name?.toLowerCase().includes(q) &&
                !p.email?.toLowerCase().includes(q)) return false
       return true
     })
-  }, [prospects, search, repFilter, industryFilter])
+  }, [prospects, search, repFilter, industryFilter, campaignFilter, campaignIds])
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Prospectos</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Todas las personas scrapeadas — {prospects.length} en total
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Prospectos</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Todas las personas scrapeadas — {prospects.length} en total
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => exportCsv(filtered)}
+          disabled={filtered.length === 0}
+        >
+          <Download className="mr-2 size-4" />
+          Exportar CSV ({filtered.length})
+        </Button>
       </div>
 
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-2">
+            <div className="relative">
               <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre, cargo, empresa o email…"
@@ -78,10 +138,10 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
                 className="pl-8"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <select
                 value={repFilter}
-                onChange={(e) => setRepFilter(e.target.value)}
+                onChange={(e) => { setRepFilter(e.target.value); setCampaignFilter("all") }}
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="all">Todos los reps</option>
@@ -89,11 +149,21 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
               </select>
               <select
                 value={industryFilter}
-                onChange={(e) => setIndustryFilter(e.target.value)}
+                onChange={(e) => { setIndustryFilter(e.target.value); setCampaignFilter("all") }}
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="all">Todas las industrias</option>
                 {industries.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
+              <select
+                value={campaignFilter}
+                onChange={(e) => setCampaignFilter(e.target.value)}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="all">Todas las campañas</option>
+                {campaigns.map(([id, label]) => (
+                  <option key={id} value={id}>{label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -157,7 +227,7 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                          {p.campaigns ? `${p.campaigns.week_label} · ${p.campaigns.rep_name} · ${p.campaigns.industry}` : "—"}
+                          {campaignLabel(p) || "—"}
                         </td>
                       </tr>
                     )
