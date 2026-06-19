@@ -24,7 +24,6 @@ type ApifyPerson = {
   headline?: string
   profileUrl?: string
   companyName?: string
-  companyWebsite?: string
   premium?: boolean
   connectionType?: number           // 1=FIRST, 2=SECOND, 3=THIRD
   currentPositions?: Array<{
@@ -135,13 +134,13 @@ async function triggerAccountListCreation(
   }
 }
 
-function normalizeDomain(raw: string): string {
-  try {
-    const url = raw.startsWith("http") ? raw : `https://${raw}`
-    return new URL(url).hostname.replace(/^www\./, "").toLowerCase()
-  } catch {
-    return raw.replace(/^https?:\/\/(www\.)?/, "").split("/")[0].toLowerCase()
-  }
+function normalizeCompanyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b(s\.?a\.?c?\.?i?\.?f?\.?e?\.?\s?i?\.?|s\.?r\.?l\.?|ltd\.?|inc\.?|corp\.?|s\.?a\.?s\.?|b\.?v\.?)\b/gi, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 async function processPeopleSearch(
@@ -149,22 +148,24 @@ async function processPeopleSearch(
   job: { campaign_id: string },
   people: ApifyPerson[]
 ) {
-  // Load accounts for this campaign to match website → account_id
+  // Load accounts for this campaign to match company name → domain + account_id
   const { data: accounts } = await supabaseAdmin
     .from("accounts")
-    .select("id, domain")
+    .select("id, company_name, domain")
     .eq("campaign_id", job.campaign_id)
 
-  const domainToAccountId = new Map<string, string>()
+  const nameToAccount = new Map<string, { id: string; domain: string }>()
   accounts?.forEach((a) => {
-    if (a.domain) domainToAccountId.set(normalizeDomain(a.domain), a.id)
+    if (a.company_name) {
+      nameToAccount.set(normalizeCompanyName(a.company_name), { id: a.id, domain: a.domain ?? "" })
+    }
   })
 
   const degreeLabel: Record<number, string> = { 1: "FIRST", 2: "SECOND", 3: "THIRD" }
 
   const prospects = people.map((p) => {
-    const companyDomain = p.companyWebsite ? normalizeDomain(p.companyWebsite) : ""
-    const accountId = companyDomain ? (domainToAccountId.get(companyDomain) ?? null) : null
+    const normalizedName = p.companyName ? normalizeCompanyName(p.companyName) : ""
+    const matched = normalizedName ? nameToAccount.get(normalizedName) : null
     const startedOnMonth = p.currentPositions?.[0]?.startedOn?.month ?? null
     const highlights = p.highlights
       ?.map((h) => h.name || h.description || "")
@@ -173,14 +174,14 @@ async function processPeopleSearch(
 
     return {
       campaign_id: job.campaign_id,
-      account_id: accountId,
+      account_id: matched?.id ?? null,
       first_name: p.firstName ?? "",
       last_name: p.lastName ?? "",
       full_name: p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
       job_title: p.jobTitle ?? p.currentPositions?.[0]?.title ?? p.headline ?? "",
       linkedin_url: p.profileUrl ?? "",
       company_name: p.companyName ?? "",
-      company_domain: companyDomain,
+      company_domain: matched?.domain ?? "",
       is_premium: p.premium ?? false,
       connection_degree: p.connectionType ? (degreeLabel[p.connectionType] ?? String(p.connectionType)) : "",
       started_role_months: startedOnMonth,
