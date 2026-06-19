@@ -28,7 +28,7 @@ import {
 import {
   getPeopleSearchConfig,
   upsertPeopleSearchConfig,
-  updateActiveList,
+  generatePeopleSearchUrl,
   triggerPeopleSearch,
   getJobStatus,
 } from "./actions"
@@ -146,19 +146,34 @@ export function PeopleSearchClient({
   const [isPending, startTransition] = useTransition()
   const [isSavingConfig, startSavingConfig] = useTransition()
   const [error, setError] = useState("")
-  const [showListEdit, setShowListEdit] = useState(false)
-  const [newListId, setNewListId] = useState("")
-  const [newListName, setNewListName] = useState("")
-  const [isUpdatingList, startUpdatingList] = useTransition()
+  const [pickedListId, setPickedListId] = useState("")
+  const [pickedListName, setPickedListName] = useState("")
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
+
+  const availableLists = selectedCampaign
+    ? campaigns.filter(
+        (c): c is Campaign & { list_id: string; list_name: string } =>
+          c.rep_name === selectedCampaign.rep_name &&
+          c.industry === selectedCampaign.industry &&
+          c.list_id !== null &&
+          c.list_name !== null
+      )
+    : []
 
   useEffect(() => {
     if (!selectedCampaign) {
       setConfig(null)
       setShowUrlEdit(false)
+      setGeneratedUrl(null)
       return
     }
+    // Pre-select this campaign's list
+    setPickedListId(selectedCampaign.list_id ?? "")
+    setPickedListName(selectedCampaign.list_name ?? "")
+    setGeneratedUrl(null)
 
     setConfigLoading(true)
     setError("")
@@ -301,79 +316,107 @@ export function PeopleSearchClient({
               </Link>
             )}
 
-            {/* Lista de cuentas de la campaña */}
+            {/* Generar URL de People Search */}
             {selectedCampaign && (
               <div className="space-y-2">
-                {/* Bloque: lista de la campaña */}
-                <div className="rounded-lg border p-3 space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Lista de cuentas de esta campaña</p>
-                  {selectedCampaign.list_name ? (
-                    <div className="space-y-2">
-                      <div>
-                        <p className="text-sm font-medium">{selectedCampaign.list_name}</p>
-                        {selectedCampaign.list_id && (
-                          <p className="text-xs text-muted-foreground font-mono">{selectedCampaign.list_id}</p>
-                        )}
-                      </div>
-                      {configLoading ? (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Loader2 className="size-3 animate-spin" /> Verificando…
-                        </div>
-                      ) : config?.list_id === selectedCampaign.list_id ? (
-                        <div className="flex items-center gap-1.5 text-xs text-green-600">
-                          <CheckCircle2 className="size-3.5" /> Lista activa en People Search
-                        </div>
-                      ) : (
-                        <Button size="sm" className="h-8"
-                          disabled={isUpdatingList}
-                          onClick={() => {
-                            startUpdatingList(async () => {
-                              try {
-                                await updateActiveList(
-                                  selectedCampaign.rep_name,
-                                  selectedCampaign.industry,
-                                  selectedCampaign.list_id!,
-                                  selectedCampaign.list_name!
-                                )
-                                setConfig((prev) => prev
-                                  ? { ...prev, list_id: selectedCampaign.list_id, list_name: selectedCampaign.list_name }
-                                  : prev
-                                )
-                              } catch (e) {
-                                setError(e instanceof Error ? e.message : "Error activando lista")
-                              }
-                            })
-                          }}>
-                          {isUpdatingList
-                            ? <><Loader2 className="mr-2 size-3.5 animate-spin" /> Actualizando…</>
-                            : <><RefreshCw className="mr-2 size-3.5" /> Activar en People Search</>}
-                        </Button>
-                      )}
-                    </div>
+                <div className="rounded-lg border p-3 space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground">Lista de cuentas</p>
+
+                  {availableLists.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Sin listas configuradas.{" "}
+                      <Link href={`/campaigns/${campaignId}`} className="underline underline-offset-2">
+                        Ver empresas
+                      </Link>
+                      {" "}→ seleccioná empresas → ingresá nombre + ID → "Actualizar People Search"
+                    </p>
                   ) : (
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground italic">Sin lista configurada para esta campaña</p>
-                      <p className="text-xs text-muted-foreground">
-                        Andá a{" "}
-                        <Link href={`/campaigns/${campaignId}`} className="underline underline-offset-2">
-                          Ver empresas
-                        </Link>
-                        {" "}→ seleccioná las empresas → ingresá el nombre e ID de la lista → "Actualizar People Search"
-                      </p>
-                    </div>
+                    <>
+                      <Select
+                        value={pickedListId}
+                        onValueChange={(v: string | null) => {
+                          if (!v) return
+                          const list = availableLists.find((l) => l.list_id === v)
+                          setPickedListId(v)
+                          setPickedListName(list?.list_name || "")
+                          setGeneratedUrl(null)
+                        }}
+                      >
+                        <SelectTrigger>
+                          {pickedListName
+                            ? <span>{pickedListName}</span>
+                            : <span className="text-muted-foreground">Seleccionar lista…</span>}
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableLists.map((l) => (
+                            <SelectItem key={l.list_id!} value={l.list_id!}>
+                              {l.list_name} · {l.week_label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Button
+                        size="sm"
+                        disabled={!pickedListId || !config || isGenerating || configLoading}
+                        onClick={async () => {
+                          setIsGenerating(true)
+                          setError("")
+                          try {
+                            const url = await generatePeopleSearchUrl(
+                              selectedCampaign.rep_name,
+                              selectedCampaign.industry,
+                              pickedListId,
+                              pickedListName
+                            )
+                            setGeneratedUrl(url)
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : "Error generando URL")
+                          } finally {
+                            setIsGenerating(false)
+                          }
+                        }}
+                      >
+                        {isGenerating
+                          ? <><Loader2 className="mr-2 size-3.5 animate-spin" /> Generando…</>
+                          : <><RefreshCw className="mr-2 size-3.5" /> Generar URL</>}
+                      </Button>
+
+                      {!config && !configLoading && (
+                        <p className="text-xs text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="size-3.5" /> Configurá la URL base primero (abajo)
+                        </p>
+                      )}
+
+                      {generatedUrl && (
+                        <div className="rounded-md bg-muted/50 border px-3 py-2 space-y-1.5">
+                          <p className="text-xs font-mono text-muted-foreground truncate">{generatedUrl.slice(0, 60)}…</p>
+                          <a
+                            href={generatedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800"
+                          >
+                            <ExternalLink className="size-3.5" /> Abrir en Sales Navigator
+                          </a>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
-                {/* Bloque: URL base (colapsada, solo si hay config) */}
-                {configLoading ? null : !config ? (
+                {/* URL base */}
+                {configLoading ? (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
+                    <Loader2 className="size-3 animate-spin" /> Cargando…
+                  </div>
+                ) : !config ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
                     <div className="flex items-center gap-2 text-sm text-amber-700">
                       <AlertTriangle className="size-4 shrink-0" />
-                      <span className="font-medium">Primero configurá la URL base de People Search</span>
+                      <span className="font-medium">Configurá la URL base de People Search</span>
                     </div>
-                    <p className="text-xs text-amber-600">
-                      Es la URL de búsqueda de personas en Sales Navigator (sin la lista). Se guarda una vez por rep + industria.
-                    </p>
+                    <p className="text-xs text-amber-600">URL de búsqueda de personas en Sales Navigator (con los filtros base, sin lista de cuentas). Se guarda una vez por rep + industria.</p>
                     {!showUrlEdit ? (
                       <Button size="sm" variant="outline" onClick={() => setShowUrlEdit(true)}>Configurar URL base</Button>
                     ) : (
@@ -390,22 +433,7 @@ export function PeopleSearchClient({
                       </div>
                     )}
                   </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
-                    <Link2 className="size-3 shrink-0" />
-                    <span className="truncate font-mono">{config.base_url.slice(0, 45)}…</span>
-                    <a href={config.base_url} target="_blank" rel="noreferrer"
-                      className="ml-auto shrink-0 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
-                      <ExternalLink className="size-3" /> Abrir
-                    </a>
-                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs shrink-0"
-                      onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}>
-                      editar
-                    </Button>
-                  </div>
-                )}
-
-                {showUrlEdit && config && (
+                ) : showUrlEdit ? (
                   <div className="rounded-lg border p-3 space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">URL base de People Search</p>
                     <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
@@ -417,6 +445,15 @@ export function PeopleSearchClient({
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
                     </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
+                    <Link2 className="size-3 shrink-0" />
+                    <span className="truncate font-mono">{config.base_url.slice(0, 45)}…</span>
+                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs ml-auto shrink-0"
+                      onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}>
+                      editar URL base
+                    </Button>
                   </div>
                 )}
               </div>

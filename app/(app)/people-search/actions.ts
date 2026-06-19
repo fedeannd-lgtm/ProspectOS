@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { supabase } from "@/lib/supabase"
 import { supabaseAdmin } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
+import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
@@ -42,6 +43,24 @@ export async function getPeopleSearchConfig(repName: string, industry: string) {
     .maybeSingle()
   if (error) throw new Error(error.message)
   return data as { base_url: string; list_id: string | null; list_name: string | null } | null
+}
+
+export async function generatePeopleSearchUrl(
+  repName: string,
+  industry: string,
+  listId: string,
+  listName: string
+): Promise<string> {
+  const { data: config } = await supabase
+    .from("people_search_configs")
+    .select("base_url")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .maybeSingle()
+
+  if (!config?.base_url) throw new Error("No hay URL base configurada para este rep + industria")
+
+  return updateAccountListInUrl(config.base_url, listId, listName)
 }
 
 export async function updateActiveList(
