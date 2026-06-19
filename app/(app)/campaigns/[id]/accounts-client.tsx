@@ -40,39 +40,28 @@ const STATUS_CYCLE: Record<string, string> = {
   rejected: "discovered",
 }
 
-function generateScript(listName: string, companies: { sales_nav_id: string; company_name: string }[]) {
+function generateScript(listId: string, companies: { sales_nav_id: string; company_name: string }[]) {
   const ids = companies.map((c) => c.sales_nav_id).filter(Boolean)
   return `(async () => {
-  const listName = ${JSON.stringify(listName)};
+  const listId = ${JSON.stringify(listId)};
   const companyIds = ${JSON.stringify(ids)};
 
   const csrf = document.cookie.split(';').map(c=>c.trim().split('=')).find(([k])=>k==='JSESSIONID')?.[1]?.replace(/"/g,'');
   const csrfToken = csrf?.startsWith('ajax:') ? csrf : \`ajax:\${csrf}\`;
 
-  console.log('[ProspectOS] Creando lista:', listName, 'con', companyIds.length, 'empresas');
-
-  const r = await fetch('/sales-api/salesApiLists', {
-    method: 'POST', credentials: 'include',
-    headers: {'Content-Type':'application/json','csrf-token':csrfToken,'x-restli-protocol-version':'2.0.0','x-requested-with':'XMLHttpRequest'},
-    body: JSON.stringify({name: listName, listType: 'ACCOUNT'})
-  });
-  const data = await r.json();
-  console.log('[ProspectOS] Respuesta creación:', r.status, data);
-
-  let listId = data.id ?? data.listId ?? data.entityUrn ?? '';
-  if (typeof listId === 'string' && listId.includes(':')) listId = listId.split(':').pop();
-
+  let ok = 0, fail = 0;
   for (let i = 0; i < companyIds.length; i += 50) {
     const batch = companyIds.slice(i, i + 50);
-    const ar = await fetch(\`/sales-api/salesApiLists/\${listId}/listMembers\`, {
+    const r = await fetch(\`/sales-api/salesApiLists/\${listId}/listMembers\`, {
       method: 'POST', credentials: 'include',
       headers: {'Content-Type':'application/json','csrf-token':csrfToken,'x-restli-protocol-version':'2.0.0','x-requested-with':'XMLHttpRequest'},
       body: JSON.stringify({elements: batch.map(id => ({type:'ACCOUNT', account:{id}}))})
     });
-    console.log(\`[ProspectOS] Batch \${Math.ceil((i+1)/50)} status:\`, ar.status);
+    if (r.ok) ok += batch.length; else fail += batch.length;
+    console.log(\`[ProspectOS] Batch \${Math.ceil((i+1)/50)} status:\`, r.status);
   }
 
-  alert(\`✅ Lista "\${listName}" creada con \${companyIds.length} empresas.\\nID: \${listId}\`);
+  alert(\`✅ \${ok} empresas agregadas a la lista.\\n\${fail > 0 ? '⚠️ ' + fail + ' fallaron.' : ''}\`);
 })();`
 }
 
@@ -127,10 +116,7 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
   const [accounts, setAccounts] = useState(initialAccounts)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [listName, setListName] = useState(() => {
-    const today = new Date().toLocaleDateString("es-AR", { day: "numeric", month: "numeric", year: "numeric" })
-    return `Empresas ${campaign.rep_name} ${campaign.industry} ${today}`
-  })
+  const [listId, setListId] = useState("")
   const [copied, setCopied] = useState(false)
   const [showScript, setShowScript] = useState(false)
   const [script, setScript] = useState("")
@@ -173,7 +159,7 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
 
   function handleGenerateScript() {
     const companies = selectedAccounts.map((a) => ({ sales_nav_id: a.sales_nav_id!, company_name: a.company_name }))
-    const generated = generateScript(listName, companies)
+    const generated = generateScript(listId.trim(), companies)
     setScript(generated)
     setShowScript(true)
     setCopied(false)
@@ -271,24 +257,39 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
           {/* Script generator panel */}
           {selected.size > 0 && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">
-                    {selected.size} seleccionada{selected.size !== 1 ? "s" : ""}
-                    {selectedWithId < selected.size && (
-                      <span className="text-muted-foreground font-normal"> · {selected.size - selectedWithId} sin ID de Sales Nav</span>
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Nombre de la lista en Sales Navigator:</p>
-                </div>
+              <div>
+                <p className="text-sm font-medium">
+                  {selected.size} seleccionada{selected.size !== 1 ? "s" : ""}
+                  {selectedWithId < selected.size && (
+                    <span className="text-muted-foreground font-normal"> · {selected.size - selectedWithId} sin ID de Sales Nav</span>
+                  )}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Primero creá la lista en Sales Nav manualmente, luego pegá el ID acá.
+                </p>
               </div>
-              <div className="flex gap-2">
-                <Input value={listName} onChange={(e) => setListName(e.target.value)}
-                  className="text-sm" placeholder="Nombre de la lista" />
-                <Button onClick={handleGenerateScript} disabled={selectedWithId === 0} className="shrink-0">
-                  <Code2 className="mr-2 size-4" />
-                  Generar script
-                </Button>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  ID de la lista (lo encontrás en la URL: <span className="font-mono">/sales/lists/company/<strong>7473723596...</strong></span>)
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    value={listId}
+                    onChange={(e) => {
+                      // Accept full URL or just the ID
+                      const val = e.target.value
+                      const match = val.match(/\/lists\/(?:company|account)\/(\d+)/)
+                      setListId(match ? match[1] : val)
+                    }}
+                    className="font-mono text-sm"
+                    placeholder="7473723596373360642 o pegá la URL completa"
+                  />
+                  <Button onClick={handleGenerateScript} disabled={selectedWithId === 0 || !listId.trim()} className="shrink-0">
+                    <Code2 className="mr-2 size-4" />
+                    Generar script
+                  </Button>
+                </div>
               </div>
 
               {showScript && (
@@ -297,19 +298,15 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                     <pre className="rounded-md bg-zinc-950 text-zinc-100 text-xs p-4 overflow-auto max-h-48 font-mono">
                       {script}
                     </pre>
-                    <Button variant="secondary" size="sm"
-                      className="absolute top-2 right-2 h-7 text-xs"
-                      onClick={handleCopy}>
+                    <Button variant="secondary" size="sm" className="absolute top-2 right-2 h-7 text-xs" onClick={handleCopy}>
                       {copied ? <><CheckCheck className="mr-1 size-3 text-green-500" /> Copiado</> : <><Copy className="mr-1 size-3" /> Copiar</>}
                     </Button>
                   </div>
-                  <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800 space-y-1">
-                    <p className="font-medium">Cómo usarlo:</p>
-                    <ol className="list-decimal list-inside space-y-0.5">
-                      <li>Copiá el script con el botón de arriba</li>
-                      <li>Abrí Sales Navigator en Chrome (<span className="font-mono">linkedin.com/sales/home</span>)</li>
-                      <li>Decile a Claude: <span className="font-medium italic">"ejecutá este script en esta pestaña"</span> y pegá el código</li>
-                    </ol>
+                  <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-800 space-y-1">
+                    <p className="font-medium">Decile esto a Claude (con el script pegado):</p>
+                    <p className="italic font-mono bg-blue-100 rounded px-2 py-1 select-all">
+                      ejecutá este script en la pestaña de Sales Navigator
+                    </p>
                   </div>
                 </div>
               )}
