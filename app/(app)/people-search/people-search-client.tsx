@@ -546,29 +546,6 @@ export function PeopleSearchClient({
               </div>
             )}
 
-            {/* Selector de URL para el scraping */}
-            {config?.base_url_2 && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">URL a usar para buscar</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedUrlIndex(1)}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 1 ? "border-foreground bg-foreground text-background" : "hover:bg-muted/50"}`}
-                  >
-                    <span className="font-medium">URL 1</span>
-                    <span className="block text-xs mt-0.5 font-mono opacity-70 truncate">{config.base_url.slice(0, 40)}…</span>
-                  </button>
-                  <button
-                    onClick={() => setSelectedUrlIndex(2)}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 2 ? "border-foreground bg-foreground text-background" : "hover:bg-muted/50"}`}
-                  >
-                    <span className="font-medium">URL 2</span>
-                    <span className="block text-xs mt-0.5 font-mono opacity-70 truncate">{config.base_url_2.slice(0, 40)}…</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Personas a scrapear</label>
               <div className="flex gap-2">
@@ -588,6 +565,28 @@ export function PeopleSearchClient({
                 Listo en ~{estimatedMin} min
               </p>
             </div>
+
+            {config?.base_url_2 && (
+              <div className="rounded-lg border-2 border-dashed p-3 space-y-2">
+                <label className="text-sm font-medium">¿Con cuál URL scrapea Apify?</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedUrlIndex(1)}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 1 ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted/50"}`}
+                  >
+                    <span className="font-medium">URL 1</span>
+                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 1 ? "opacity-70" : "text-muted-foreground"}`}>{config.base_url.slice(0, 38)}…</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedUrlIndex(2)}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 2 ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted/50"}`}
+                  >
+                    <span className="font-medium">URL 2</span>
+                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 2 ? "opacity-70" : "text-muted-foreground"}`}>{config.base_url_2.slice(0, 38)}…</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
