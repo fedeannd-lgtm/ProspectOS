@@ -20,14 +20,18 @@ type ApifyPerson = {
   firstName?: string
   lastName?: string
   fullName?: string
-  title?: string
+  jobTitle?: string
+  headline?: string
   profileUrl?: string
   companyName?: string
-  isPremium?: boolean
-  degree?: string
-  currentPositions?: Array<{ startedOn?: { month?: number; year?: number } }>
-  highlights?: string[] | string
-  website?: string
+  companyWebsite?: string
+  premium?: boolean
+  connectionType?: number           // 1=FIRST, 2=SECOND, 3=THIRD
+  currentPositions?: Array<{
+    title?: string
+    startedOn?: { month?: number; year?: number }
+  }>
+  highlights?: Array<{ name?: string; description?: string }>
 }
 
 export async function POST(req: NextRequest) {
@@ -156,13 +160,16 @@ async function processPeopleSearch(
     if (a.domain) domainToAccountId.set(normalizeDomain(a.domain), a.id)
   })
 
+  const degreeLabel: Record<number, string> = { 1: "FIRST", 2: "SECOND", 3: "THIRD" }
+
   const prospects = people.map((p) => {
-    const companyDomain = p.website ? normalizeDomain(p.website) : ""
+    const companyDomain = p.companyWebsite ? normalizeDomain(p.companyWebsite) : ""
     const accountId = companyDomain ? (domainToAccountId.get(companyDomain) ?? null) : null
     const startedOnMonth = p.currentPositions?.[0]?.startedOn?.month ?? null
-    const highlights = Array.isArray(p.highlights)
-      ? p.highlights.join(", ")
-      : (p.highlights ?? null)
+    const highlights = p.highlights
+      ?.map((h) => h.name || h.description || "")
+      .filter(Boolean)
+      .join(", ") || null
 
     return {
       campaign_id: job.campaign_id,
@@ -170,12 +177,12 @@ async function processPeopleSearch(
       first_name: p.firstName ?? "",
       last_name: p.lastName ?? "",
       full_name: p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
-      job_title: p.title ?? "",
+      job_title: p.jobTitle ?? p.currentPositions?.[0]?.title ?? p.headline ?? "",
       linkedin_url: p.profileUrl ?? "",
       company_name: p.companyName ?? "",
       company_domain: companyDomain,
-      is_premium: p.isPremium ?? false,
-      connection_degree: p.degree ?? "",
+      is_premium: p.premium ?? false,
+      connection_degree: p.connectionType ? (degreeLabel[p.connectionType] ?? String(p.connectionType)) : "",
       started_role_months: startedOnMonth,
       highlights,
     }
