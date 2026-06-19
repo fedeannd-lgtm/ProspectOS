@@ -16,6 +16,7 @@ type Prospect = {
   connection_degree: string
   email: string | null
   icp_score: number
+  is_premium: boolean
   status: string
   started_role_months: number | null
   highlights: string | null
@@ -51,7 +52,7 @@ function exportCsv(rows: Prospect[]) {
       escape(p.linkedin_url),
       escape(p.connection_degree),
       p.started_role_months ?? "",
-      p.highlights ? "TRUE" : "",
+      p.is_premium ? "TRUE" : "FALSE",
       escape(p.highlights),
       p.icp_score > 0 ? p.icp_score : "",
       escape(p.status),
@@ -206,19 +207,24 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
                     return (
                       <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-2.5">
-                          {p.linkedin_url ? (
-                            <a
-                              href={p.linkedin_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
-                            >
-                              {p.full_name || "—"}
-                              <ExternalLink className="size-3 opacity-60" />
-                            </a>
-                          ) : (
-                            <span className="font-medium">{p.full_name || "—"}</span>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {p.linkedin_url ? (
+                              <a
+                                href={p.linkedin_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
+                              >
+                                {p.full_name || "—"}
+                                <ExternalLink className="size-3 opacity-60" />
+                              </a>
+                            ) : (
+                              <span className="font-medium">{p.full_name || "—"}</span>
+                            )}
+                            {p.is_premium && (
+                              <span className="rounded px-1 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 leading-none">PRO</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.job_title || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.company_name || "—"}</td>
