@@ -11,11 +11,14 @@ type Prospect = {
   full_name: string
   job_title: string
   company_name: string
+  company_domain: string | null
   linkedin_url: string
   connection_degree: string
   email: string | null
   icp_score: number
   status: string
+  started_role_months: number | null
+  highlights: string | null
   created_at: string
   campaign_id: string
   campaigns: { week_label: string; rep_name: string; industry: string } | null
@@ -35,7 +38,7 @@ function campaignLabel(p: Prospect) {
 }
 
 function exportCsv(rows: Prospect[]) {
-  const headers = ["Nombre", "Cargo", "Empresa", "Email", "LinkedIn", "Grado", "ICP", "Estado", "Campaña"]
+  const headers = ["Nombre", "Cargo", "Empresa", "Dominio", "Email", "LinkedIn", "Grado", "Antigüedad (mes)", "Premium", "Highlights", "ICP", "Estado", "Campaña"]
   const escape = (v: string | null | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`
   const lines = [
     headers.join(","),
@@ -43,9 +46,13 @@ function exportCsv(rows: Prospect[]) {
       escape(p.full_name),
       escape(p.job_title),
       escape(p.company_name),
+      escape(p.company_domain),
       escape(p.email),
       escape(p.linkedin_url),
       escape(p.connection_degree),
+      p.started_role_months ?? "",
+      p.highlights ? "TRUE" : "",
+      escape(p.highlights),
       p.icp_score > 0 ? p.icp_score : "",
       escape(p.status),
       escape(campaignLabel(p)),
@@ -183,8 +190,11 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Nombre</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Cargo</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Empresa</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Dominio</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Grado</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Mes inicio</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Highlights</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">ICP</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Estado</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Campaña</th>
@@ -212,8 +222,11 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
                         </td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.job_title || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.company_name || "—"}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground font-mono text-xs">{p.company_domain || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground font-mono text-xs">{p.email || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.connection_degree || "—"}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{p.started_role_months ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground max-w-[200px] truncate" title={p.highlights ?? ""}>{p.highlights || "—"}</td>
                         <td className="px-4 py-2.5">
                           {p.icp_score > 0 ? (
                             <span className={`font-medium ${p.icp_score >= 10 ? "text-green-700" : p.icp_score >= 5 ? "text-amber-600" : "text-muted-foreground"}`}>

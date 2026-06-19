@@ -17,9 +17,17 @@ type ApifyWebhookBody = {
 
 type ApifyCompany = { companyName?: string; id?: string; website?: string }
 type ApifyPerson = {
-  firstName?: string; lastName?: string; fullName?: string
-  title?: string; profileUrl?: string; companyName?: string
-  isPremium?: boolean; degree?: string
+  firstName?: string
+  lastName?: string
+  fullName?: string
+  title?: string
+  profileUrl?: string
+  companyName?: string
+  isPremium?: boolean
+  degree?: string
+  currentPositions?: Array<{ startedOn?: { month?: number; year?: number } }>
+  highlights?: string[] | string
+  website?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -123,22 +131,55 @@ async function triggerAccountListCreation(
   }
 }
 
+function normalizeDomain(raw: string): string {
+  try {
+    const url = raw.startsWith("http") ? raw : `https://${raw}`
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase()
+  } catch {
+    return raw.replace(/^https?:\/\/(www\.)?/, "").split("/")[0].toLowerCase()
+  }
+}
+
 async function processPeopleSearch(
   jobId: string,
   job: { campaign_id: string },
   people: ApifyPerson[]
 ) {
-  const prospects = people.map((p) => ({
-    campaign_id: job.campaign_id,
-    first_name: (p.firstName ?? "") as string,
-    last_name: (p.lastName ?? "") as string,
-    full_name: (p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim()) as string,
-    job_title: (p.title ?? "") as string,
-    linkedin_url: (p.profileUrl ?? "") as string,
-    company_name: (p.companyName ?? "") as string,
-    is_premium: p.isPremium ?? false,
-    connection_degree: (p.degree ?? "") as string,
-  }))
+  // Load accounts for this campaign to match website → account_id
+  const { data: accounts } = await supabaseAdmin
+    .from("accounts")
+    .select("id, domain")
+    .eq("campaign_id", job.campaign_id)
+
+  const domainToAccountId = new Map<string, string>()
+  accounts?.forEach((a) => {
+    if (a.domain) domainToAccountId.set(normalizeDomain(a.domain), a.id)
+  })
+
+  const prospects = people.map((p) => {
+    const companyDomain = p.website ? normalizeDomain(p.website) : ""
+    const accountId = companyDomain ? (domainToAccountId.get(companyDomain) ?? null) : null
+    const startedOnMonth = p.currentPositions?.[0]?.startedOn?.month ?? null
+    const highlights = Array.isArray(p.highlights)
+      ? p.highlights.join(", ")
+      : (p.highlights ?? null)
+
+    return {
+      campaign_id: job.campaign_id,
+      account_id: accountId,
+      first_name: p.firstName ?? "",
+      last_name: p.lastName ?? "",
+      full_name: p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
+      job_title: p.title ?? "",
+      linkedin_url: p.profileUrl ?? "",
+      company_name: p.companyName ?? "",
+      company_domain: companyDomain,
+      is_premium: p.isPremium ?? false,
+      connection_degree: p.degree ?? "",
+      started_role_months: startedOnMonth,
+      highlights,
+    }
+  })
 
   if (prospects.length > 0) await supabaseAdmin.from("prospects").insert(prospects)
 
