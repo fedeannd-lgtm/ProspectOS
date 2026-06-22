@@ -465,16 +465,48 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                   />
                 </div>
 
-                {/* Generar script — crea la lista y agrega empresas en un paso */}
+                {/* Crear lista con extensión de Chrome */}
                 <div className="space-y-2">
-                  <Button onClick={handleGenerateScript} disabled={selectedWithId === 0} variant="outline" size="sm">
-                    <Code2 className="mr-2 size-3.5" />
-                    Generar script ({selectedWithId} empresas)
+                  <Button
+                    onClick={() => {
+                      const callbackUrl = `${window.location.origin}/api/webhooks/extension/list-created`
+                      const params = new URLSearchParams({
+                        prospectOS: "create",
+                        campaignId: campaign.id,
+                        listName: btoa(unescape(encodeURIComponent(listName))),
+                        companyIds: btoa(JSON.stringify(selectedAccounts.map(a => a.sales_nav_id!))),
+                        callback: callbackUrl,
+                      })
+                      window.open(`https://www.linkedin.com/sales/lists/company?${params}`, "_blank")
+                    }}
+                    disabled={selectedWithId === 0}
+                    size="sm"
+                  >
+                    <List className="mr-2 size-3.5" />
+                    Crear Account List ({selectedWithId} empresas)
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    El script crea la lista en Sales Nav y agrega las empresas en un solo paso. Ejecutalo en la consola del browser estando en linkedin.com/sales/.
+                    Requiere la extensión de Chrome instalada. Abre Sales Navigator, crea la lista y vuelve automáticamente.
                   </p>
                 </div>
+
+                {/* Generar script (fallback sin extensión) */}
+                <details className="group">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1">
+                    <span className="group-open:hidden">▶</span>
+                    <span className="hidden group-open:inline">▼</span>
+                    Sin extensión — generar script para consola
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <Button onClick={handleGenerateScript} disabled={selectedWithId === 0} variant="outline" size="sm">
+                      <Code2 className="mr-2 size-3.5" />
+                      Generar script ({selectedWithId} empresas)
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Pegalo en la consola del browser estando en linkedin.com/sales/.
+                    </p>
+                  </div>
+                </details>
 
                 {/* Guardar ID manualmente (post-script o lista ya existente) */}
                 <details className="group">
