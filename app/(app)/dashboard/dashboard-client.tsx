@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { Plus, Pencil, Trash2, Building2, Users, Send, Zap } from "lucide-react"
+import { useState, useTransition, useMemo } from "react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Zap, LayoutList, CalendarDays } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -155,8 +156,82 @@ function CampaignTable({
   )
 }
 
+function WeeklyView({ campaigns }: { campaigns: Campaign[] }) {
+  const weeks = useMemo(() => {
+    const map = new Map<string, Campaign[]>()
+    campaigns.forEach((c) => {
+      const key = c.week_label
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(c)
+    })
+    // Sort weeks descending by label
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [campaigns])
+
+  if (weeks.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        Sin campañas
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {weeks.map(([week, cams]) => {
+        const totalAccounts = cams.reduce((s, c) => s + c.accounts_found, 0)
+        const totalProspects = cams.reduce((s, c) => s + c.prospects_found, 0)
+        const totalSent = cams.reduce((s, c) => s + c.prospects_sent, 0)
+        return (
+          <div key={week}>
+            <div className="flex items-center gap-3 mb-3">
+              <h3 className="font-semibold text-base">{week}</h3>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1"><Building2 className="size-3" />{totalAccounts} empresas</span>
+                <span className="flex items-center gap-1"><Users className="size-3" />{totalProspects} prospectos</span>
+                <span className="flex items-center gap-1"><Send className="size-3" />{totalSent} enviados</span>
+              </div>
+              <div className="flex-1 border-t" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {cams.map((c) => (
+                <Link key={c.id} href={`/campaigns/${c.id}`}>
+                  <div className="rounded-lg border p-3.5 hover:bg-muted/40 transition-colors cursor-pointer">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <p className="font-medium text-sm">{c.rep_name}</p>
+                        <p className="text-xs text-muted-foreground">{c.industry}</p>
+                      </div>
+                      <StatusBadge status={c.status} />
+                    </div>
+                    <div className="flex gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Building2 className="size-3" />
+                        {c.accounts_found}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Users className="size-3" />
+                        {c.prospects_found}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Send className="size-3" />
+                        {c.prospects_sent}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campaign[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
+  const [view, setView] = useState<"list" | "weekly">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormData>(EMPTY_FORM)
@@ -217,10 +292,28 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">Planning semanal de campañas</p>
         </div>
-        <Button onClick={openCreate} disabled={isPending}>
-          <Plus className="mr-2 size-4" />
-          Nueva campaña
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border">
+            <button
+              onClick={() => setView("list")}
+              className={`px-2.5 py-1.5 rounded-l-md transition-colors ${view === "list" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              title="Vista lista"
+            >
+              <LayoutList className="size-4" />
+            </button>
+            <button
+              onClick={() => setView("weekly")}
+              className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "weekly" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              title="Vista semanal"
+            >
+              <CalendarDays className="size-4" />
+            </button>
+          </div>
+          <Button onClick={openCreate} disabled={isPending}>
+            <Plus className="mr-2 size-4" />
+            Nueva campaña
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -262,7 +355,9 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
         </Card>
       </div>
 
-      <Tabs defaultValue="Todos">
+      {view === "weekly" && <WeeklyView campaigns={campaigns} />}
+
+      {view === "list" && <Tabs defaultValue="Todos">
         <TabsList>
           {REPS.map((r) => (
             <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
@@ -276,7 +371,7 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
             </TabsContent>
           )
         })}
-      </Tabs>
+      </Tabs>}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
