@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
-import { getDatasetItems, startAccountListActor } from "@/lib/apify"
+import { getDatasetItems } from "@/lib/apify"
 import { advanceSearchPage } from "@/app/(app)/company-search/actions"
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL
-  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
 type ApifyWebhookBody = {
   eventType: string
@@ -94,44 +92,6 @@ async function processCompanySearch(
   }
 }
 
-async function triggerAccountListCreation(
-  jobId: string,
-  campaign: { rep_name: string; industry: string },
-  accounts: { sales_nav_id: string; company_name: string }[]
-) {
-  if (!process.env.ACCOUNT_LIST_ACTOR_ID) {
-    console.log("[account-list] ACCOUNT_LIST_ACTOR_ID not set — skipping")
-    return
-  }
-
-  const companyIds = accounts.map((a) => a.sales_nav_id).filter(Boolean)
-  if (companyIds.length === 0) return
-
-  const { data: repConfig } = await supabaseAdmin
-    .from("rep_configs")
-    .select("linkedin_cookie")
-    .eq("rep_name", campaign.rep_name)
-    .maybeSingle()
-
-  if (!repConfig?.linkedin_cookie) {
-    console.warn("[account-list] No cookie for", campaign.rep_name)
-    return
-  }
-
-  let cookieParsed: unknown
-  try { cookieParsed = JSON.parse(repConfig.linkedin_cookie) } catch { return }
-
-  const today = new Date().toLocaleDateString("es-AR", { day: "numeric", month: "numeric", year: "numeric" })
-  const listName = `Empresas ${campaign.rep_name} ${campaign.industry} ${today}`
-  const webhookUrl = `${APP_URL}/api/webhooks/apify/list-created?jobId=${jobId}`
-
-  try {
-    await startAccountListActor({ cookie: cookieParsed, companyIds, listName }, webhookUrl)
-    console.log(`[account-list] Started actor for ${listName}`)
-  } catch (err) {
-    console.error("[account-list] Failed to start actor:", err)
-  }
-}
 
 function extractDomain(raw: string): string {
   if (!raw) return ""
