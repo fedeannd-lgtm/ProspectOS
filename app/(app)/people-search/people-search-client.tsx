@@ -322,33 +322,34 @@ export function PeopleSearchClient({
     if (!config) { setError("Configurá la URL de búsqueda primero"); return }
 
     startTransition(async () => {
-      try {
-        const { jobId, estimatedReadyAt } = await triggerPeopleSearch(
-          campaignId,
-          selectedCampaign.rep_name,
-          selectedCampaign.industry,
-          maxResults,
-          selectedUrlIndex
-        )
-        const newJob: SearchJob = {
-          id: jobId,
-          campaign_id: campaignId,
-          status: "running",
-          sales_nav_url: config.base_url,
-          results_count: 0,
-          created_at: new Date().toISOString(),
-          completed_at: null,
-          estimated_ready_at: estimatedReadyAt,
-          campaigns: {
-            week_label: selectedCampaign.week_label,
-            rep_name: selectedCampaign.rep_name,
-            industry: selectedCampaign.industry,
-          },
-        }
-        setJobs((prev) => [newJob, ...prev])
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Error al disparar la búsqueda")
+      const result = await triggerPeopleSearch(
+        campaignId,
+        selectedCampaign.rep_name,
+        selectedCampaign.industry,
+        maxResults,
+        selectedUrlIndex
+      )
+      if ("error" in result) {
+        setError(result.error)
+        return
       }
+      const { jobId, estimatedReadyAt } = result
+      const newJob: SearchJob = {
+        id: jobId,
+        campaign_id: campaignId,
+        status: "running",
+        sales_nav_url: config.base_url,
+        results_count: 0,
+        created_at: new Date().toISOString(),
+        completed_at: null,
+        estimated_ready_at: estimatedReadyAt,
+        campaigns: {
+          week_label: selectedCampaign.week_label,
+          rep_name: selectedCampaign.rep_name,
+          industry: selectedCampaign.industry,
+        },
+      }
+      setJobs((prev) => [newJob, ...prev])
     })
   }
 

@@ -115,63 +115,67 @@ export async function triggerPeopleSearch(
   industry: string,
   maxResults: number,
   urlIndex: 1 | 2 = 1
-) {
-  const config = await getPeopleSearchConfig(repName, industry)
-  if (!config) throw new Error("No hay URL configurada para este rep+industria")
-
-  const searchUrl = urlIndex === 2 ? config.base_url_2 : config.base_url
-  if (!searchUrl) throw new Error(`No hay URL${urlIndex === 2 ? " 2" : ""} configurada para este rep+industria`)
-
-  const { data: repConfig } = await supabase
-    .from("rep_configs")
-    .select("linkedin_cookie")
-    .eq("rep_name", repName)
-    .maybeSingle()
-  if (!repConfig?.linkedin_cookie) throw new Error(`Cookie no configurada para ${repName}. Actualizala en Settings.`)
-
-  const estimatedReadyAt = new Date(
-    Date.now() + estimatedMinutes(maxResults) * 60 * 1000
-  ).toISOString()
-
-  const { data: job, error } = await supabase
-    .from("search_jobs")
-    .insert({
-      campaign_id: campaignId,
-      job_type: "people_search",
-      sales_nav_url: searchUrl,
-      status: "running",
-      max_results: maxResults,
-      estimated_ready_at: estimatedReadyAt,
-    })
-    .select()
-    .single()
-
-  if (error) throw new Error(error.message)
-
-  let cookieParsed: unknown
+): Promise<{ jobId: string; estimatedReadyAt: string } | { error: string }> {
   try {
-    cookieParsed = JSON.parse(repConfig.linkedin_cookie)
-  } catch {
-    throw new Error(`La cookie de ${repName} no es JSON válido. Exportala desde Cookie-Editor como JSON y pegala de nuevo en Settings.`)
+    const config = await getPeopleSearchConfig(repName, industry)
+    if (!config) return { error: "No hay URL configurada para este rep+industria" }
+
+    const searchUrl = urlIndex === 2 ? config.base_url_2 : config.base_url
+    if (!searchUrl) return { error: `No hay URL${urlIndex === 2 ? " 2" : ""} configurada para este rep+industria` }
+
+    const { data: repConfig } = await supabase
+      .from("rep_configs")
+      .select("linkedin_cookie")
+      .eq("rep_name", repName)
+      .maybeSingle()
+    if (!repConfig?.linkedin_cookie) return { error: `Cookie no configurada para ${repName}. Actualizala en Settings.` }
+
+    const estimatedReadyAt = new Date(
+      Date.now() + estimatedMinutes(maxResults) * 60 * 1000
+    ).toISOString()
+
+    const { data: job, error } = await supabase
+      .from("search_jobs")
+      .insert({
+        campaign_id: campaignId,
+        job_type: "people_search",
+        sales_nav_url: searchUrl,
+        status: "running",
+        max_results: maxResults,
+        estimated_ready_at: estimatedReadyAt,
+      })
+      .select()
+      .single()
+
+    if (error) return { error: error.message }
+
+    let cookieParsed: unknown
+    try {
+      cookieParsed = JSON.parse(repConfig.linkedin_cookie)
+    } catch {
+      return { error: `La cookie de ${repName} no es JSON válido. Exportala desde Cookie-Editor como JSON y pegala de nuevo en Settings.` }
+    }
+
+    const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
+    const runId = await startSalesNavRun({
+      cookie: cookieParsed,
+      searchUrl,
+      count: maxResults,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+      deepScrape: false,
+      stopOnRateLimit: true,
+      startPage: 1,
+      minDelay: 15,
+      maxDelay: 30,
+    }, webhookUrl)
+
+    await supabase.from("search_jobs").update({ apify_run_id: runId }).eq("id", job.id)
+
+    revalidatePath("/people-search")
+    return { jobId: job.id, estimatedReadyAt }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Error al iniciar la búsqueda" }
   }
-
-  const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
-  const runId = await startSalesNavRun({
-    cookie: cookieParsed,
-    searchUrl,
-    count: maxResults,
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-    deepScrape: false,
-    stopOnRateLimit: true,
-    startPage: 1,
-    minDelay: 15,
-    maxDelay: 30,
-  }, webhookUrl)
-
-  await supabase.from("search_jobs").update({ apify_run_id: runId }).eq("id", job.id)
-
-  revalidatePath("/people-search")
-  return { jobId: job.id, estimatedReadyAt }
 }
 
 export async function getProspectsForCampaign(campaignId: string) {

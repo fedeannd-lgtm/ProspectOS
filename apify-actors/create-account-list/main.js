@@ -1,253 +1,136 @@
 import { Actor } from 'apify';
-import { chromium } from 'playwright';
+
+const SALES_NAV_BASE = 'https://www.linkedin.com';
+const BATCH_SIZE = 50;
+const DELAY_MS = 1500;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Extract a cookie value by name from the cookie array
+function getCookieValue(cookies, name) {
+  const c = cookies.find((c) => c.name === name);
+  return c?.value ?? null;
+}
+
+// Build the Cookie header string from the full array
+function buildCookieHeader(cookies) {
+  return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+}
+
+// JSESSIONID value IS the CSRF token (LinkedIn uses it directly)
+function extractCsrfToken(jsessionId) {
+  if (!jsessionId) return '';
+  // Strip surrounding quotes if present, then ensure it starts with "ajax:"
+  const clean = jsessionId.replace(/^"|"$/g, '');
+  return clean.startsWith('ajax:') ? clean : `ajax:${clean}`;
+}
 
 Actor.main(async () => {
   const input = await Actor.getInput();
   const { cookie, companyIds, listName } = input;
 
+  if (!cookie || !Array.isArray(cookie)) throw new Error('Input "cookie" must be an array of cookie objects');
+  if (!companyIds?.length) throw new Error('Input "companyIds" must be a non-empty array');
+  if (!listName) throw new Error('Input "listName" is required');
+
   console.log(`Creating list "${listName}" with ${companyIds.length} companies`);
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  const liAt = getCookieValue(cookie, 'li_at');
+  const jsessionId = getCookieValue(cookie, 'JSESSIONID');
+
+  if (!liAt) throw new Error('Cookie "li_at" not found — make sure the cookie array includes li_at');
+  if (!jsessionId) throw new Error('Cookie "JSESSIONID" not found — make sure the cookie array includes JSESSIONID');
+
+  const csrfToken = extractCsrfToken(jsessionId);
+  const cookieHeader = buildCookieHeader(cookie);
+
+  console.log('CSRF token:', csrfToken ? `${csrfToken.slice(0, 15)}...` : '(empty)');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Cookie': cookieHeader,
+    'csrf-token': csrfToken,
+    'x-restli-protocol-version': '2.0.0',
+    'x-requested-with': 'XMLHttpRequest',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Referer': 'https://www.linkedin.com/sales/lists/company',
+    'Origin': 'https://www.linkedin.com',
+  };
+
+  // ── 1. Create the list ────────────────────────────────────────────────────────
+  console.log('Creating account list via Sales Nav API...');
+  const createRes = await fetch(`${SALES_NAV_BASE}/sales-api/salesApiLists`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ name: listName, listType: 'ACCOUNT' }),
   });
 
-  function normalizeSameSite(val) {
-    const map = { strict: 'Strict', lax: 'Lax', none: 'None', no_restriction: 'None', unspecified: 'Lax' };
-    return map[(val || '').toLowerCase()] ?? 'Lax';
+  const createBody = await createRes.text();
+  console.log('Create list response:', createRes.status, createBody.slice(0, 300));
+
+  if (createRes.status === 401 || createRes.status === 403) {
+    throw new Error(`Authentication failed (${createRes.status}) — cookie may be expired. Refresh it in ProspectOS Settings.`);
+  }
+  if (!createRes.ok) {
+    throw new Error(`Failed to create list: HTTP ${createRes.status} — ${createBody.slice(0, 200)}`);
   }
 
-  await context.addCookies(
-    cookie.map((c) => ({
-      name: c.name,
-      value: c.value,
-      domain: c.domain || '.linkedin.com',
-      path: c.path || '/',
-      secure: c.secure !== false,
-      httpOnly: c.httpOnly || false,
-      sameSite: normalizeSameSite(c.sameSite),
-    }))
-  );
-
-  const page = await context.newPage();
-
-  // ── 1. Navigate to Sales Navigator ─────────────────────────────────────────
-  console.log('Loading Sales Navigator...');
-  await page.goto('https://www.linkedin.com/sales/home', {
-    waitUntil: 'domcontentloaded',
-    timeout: 30000,
-  });
-  await page.waitForTimeout(3000);
-
-  const currentUrl = page.url();
-  if (currentUrl.includes('login') || currentUrl.includes('checkpoint')) {
-    throw new Error('Not authenticated — cookie may be expired');
+  let listId;
+  try {
+    const parsed = JSON.parse(createBody);
+    let rawId = parsed.id ?? parsed.listId ?? parsed.entityUrn ?? '';
+    if (typeof rawId === 'string' && rawId.includes(':')) {
+      rawId = rawId.split(':').pop();
+    }
+    listId = String(rawId);
+  } catch {
+    throw new Error(`Could not parse list ID from response: ${createBody.slice(0, 200)}`);
   }
 
-  // ── 2. Try creating list via internal API ───────────────────────────────────
-  const csrfToken = await page.evaluate(() => {
-    for (const part of document.cookie.split(';')) {
-      const [k, v] = part.trim().split('=');
-      if (k === 'JSESSIONID') {
-        const clean = v.replace(/"/g, '');
-        return clean.startsWith('ajax:') ? clean : `ajax:${clean}`;
-      }
-    }
-    return '';
-  });
-
-  console.log('CSRF token found:', !!csrfToken);
-
-  let listId = null;
-
-  if (csrfToken) {
-    const createRes = await page.evaluate(
-      async ({ name, csrf }) => {
-        const r = await fetch('/sales-api/salesApiLists', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'csrf-token': csrf,
-            'x-restli-protocol-version': '2.0.0',
-            'x-requested-with': 'XMLHttpRequest',
-          },
-          credentials: 'include',
-          body: JSON.stringify({ name, listType: 'ACCOUNT' }),
-        });
-        return { status: r.status, body: await r.text() };
-      },
-      { name: listName, csrf: csrfToken }
-    );
-
-    console.log('Create list API response:', createRes.status, createRes.body.slice(0, 200));
-
-    if (createRes.status >= 200 && createRes.status < 300) {
-      try {
-        const parsed = JSON.parse(createRes.body);
-        let rawId = parsed.id ?? parsed.listId ?? parsed.entityUrn ?? '';
-        if (typeof rawId === 'string' && rawId.includes(':')) {
-          rawId = rawId.split(':').pop();
-        }
-        listId = String(rawId);
-        console.log('List created via API, id:', listId);
-      } catch {
-        console.warn('Could not parse list id from API response, falling back to UI');
-      }
-    }
+  if (!listId || listId === 'undefined') {
+    throw new Error(`List ID missing from response: ${createBody.slice(0, 200)}`);
   }
+  console.log('List created, ID:', listId);
 
-  // ── 3. Fallback: create list via UI ────────────────────────────────────────
-  if (!listId) {
-    console.log('Falling back to UI automation for list creation...');
-    await page.goto('https://www.linkedin.com/sales/lists/company', {
-      waitUntil: 'networkidle',
-      timeout: 30000,
-    });
-    await page.waitForTimeout(4000);
-
-    // Screenshot for debugging
-    const screenshotBefore = await page.screenshot({ fullPage: true });
-    await Actor.setValue('debug_lists_page', screenshotBefore, { contentType: 'image/png' });
-
-    // Log all visible buttons for debugging
-    const allButtons = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('button')).map((b) => b.innerText.trim()).filter(Boolean)
-    );
-    console.log('Buttons found on page:', JSON.stringify(allButtons));
-
-    // Try multiple selectors
-    const buttonTexts = ['Create account list', 'New list', 'Create list', 'Crear lista de cuentas', 'Nueva lista', 'Crear lista'];
-    let clicked = false;
-
-    for (const text of buttonTexts) {
-      const btn = page.locator(`button:has-text("${text}")`).first();
-      const count = await btn.count();
-      if (count > 0) {
-        console.log(`Clicking button: "${text}"`);
-        await btn.click();
-        clicked = true;
-        break;
-      }
-    }
-
-    // Last resort: find any button with "list" in its text
-    if (!clicked) {
-      const anyListBtn = page.locator('button').filter({ hasText: /list|lista/i }).first();
-      const count = await anyListBtn.count();
-      if (count > 0) {
-        console.log('Clicking first button matching /list|lista/');
-        await anyListBtn.click();
-        clicked = true;
-      }
-    }
-
-    if (!clicked) throw new Error(`No create list button found. Buttons on page: ${JSON.stringify(allButtons)}`);
-    await page.waitForTimeout(1500);
-
-    // Fill the list name
-    const nameInput = page.locator('input[placeholder*="list" i], input[placeholder*="lista" i], input[aria-label*="list" i], input[aria-label*="name" i], input[name*="name"]').first();
-    await nameInput.fill(listName);
-    await page.waitForTimeout(500);
-
-    // Submit
-    const submitBtn = page.locator('button:has-text("Create"), button:has-text("Crear"), button[type="submit"]').last();
-    await submitBtn.click();
-    await page.waitForTimeout(4000);
-
-    // Extract listId from URL after redirect
-    const newUrl = page.url();
-    console.log('URL after create:', newUrl);
-    const match = newUrl.match(/\/lists\/(?:company|account)\/(\d+)/);
-    if (!match) throw new Error(`Could not extract list ID from URL: ${newUrl}`);
-    listId = match[1];
-    console.log('List created via UI, id:', listId);
-  }
-
-  // ── 4. Add companies ────────────────────────────────────────────────────────
-  console.log(`Adding ${companyIds.length} companies to list ${listId}...`);
-
-  // Try bulk API first
-  const BATCH_SIZE = 50;
-  let apiWorked = false;
+  // ── 2. Add companies in batches ───────────────────────────────────────────────
+  console.log(`Adding ${companyIds.length} companies in batches of ${BATCH_SIZE}...`);
+  let added = 0;
+  let failed = 0;
 
   for (let i = 0; i < companyIds.length; i += BATCH_SIZE) {
     const batch = companyIds.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
 
-    const addRes = await page.evaluate(
-      async ({ lid, ids, csrf }) => {
-        const r = await fetch(`/sales-api/salesApiLists/${lid}/listMembers`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'csrf-token': csrf,
-            'x-restli-protocol-version': '2.0.0',
-            'x-requested-with': 'XMLHttpRequest',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            elements: ids.map((id) => ({ type: 'ACCOUNT', account: { id: String(id) } })),
-          }),
-        });
-        return { status: r.status, body: await r.text() };
-      },
-      { lid: listId, ids: batch, csrf: csrfToken }
-    );
+    const addRes = await fetch(`${SALES_NAV_BASE}/sales-api/salesApiLists/${listId}/listMembers`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        elements: batch.map((id) => ({ type: 'ACCOUNT', account: { id: String(id) } })),
+      }),
+    });
 
-    console.log(`Batch ${Math.ceil((i + 1) / BATCH_SIZE)} API response:`, addRes.status);
+    const addBody = await addRes.text();
+    console.log(`Batch ${batchNum}: HTTP ${addRes.status}`, addBody.slice(0, 150));
 
-    if (addRes.status >= 200 && addRes.status < 300) {
-      apiWorked = true;
-    } else if (i === 0) {
-      // API failed on first batch — fall back to UI per-company
-      console.warn('Bulk API failed, switching to per-company UI automation');
-      break;
+    if (addRes.ok) {
+      added += batch.length;
+    } else {
+      failed += batch.length;
+      console.warn(`Batch ${batchNum} failed: ${addBody.slice(0, 200)}`);
     }
 
     if (i + BATCH_SIZE < companyIds.length) {
-      await page.waitForTimeout(1500);
+      await sleep(DELAY_MS);
     }
   }
 
-  // ── 5. Fallback: add companies one-by-one via UI ───────────────────────────
-  if (!apiWorked) {
-    console.log('Adding companies via UI (one by one)...');
-    let added = 0;
+  console.log(`Done — added: ${added}, failed: ${failed}`);
 
-    for (const companyId of companyIds) {
-      try {
-        await page.goto(`https://www.linkedin.com/sales/company/${companyId}`, {
-          waitUntil: 'domcontentloaded',
-          timeout: 20000,
-        });
-        await page.waitForTimeout(2000);
-
-        // Open "Save to list" menu
-        const saveBtn = page.locator('[data-control-name*="save"], button:has-text("Save"), [aria-label*="Save to list"]').first();
-        await saveBtn.click({ timeout: 5000 });
-        await page.waitForTimeout(1000);
-
-        // Select our list from dropdown
-        const listOption = page.locator(`[data-id="${listId}"], li:has-text("${listName}")`).first();
-        await listOption.click({ timeout: 5000 });
-        await page.waitForTimeout(1000);
-
-        added++;
-        console.log(`Added company ${companyId} (${added}/${companyIds.length})`);
-        await page.waitForTimeout(3000 + Math.random() * 2000);
-      } catch (err) {
-        console.warn(`Could not add company ${companyId}: ${err.message}`);
-      }
-    }
-
-    console.log(`Added ${added} companies via UI`);
-  }
-
-  // ── 6. Output ───────────────────────────────────────────────────────────────
-  const result = { listId, listName, companiesCount: companyIds.length };
-  console.log('Done:', result);
+  const result = { listId, listName, companiesAdded: added, companiesFailed: failed };
   await Actor.pushData(result);
 
-  await browser.close();
+  console.log('Output:', result);
 });

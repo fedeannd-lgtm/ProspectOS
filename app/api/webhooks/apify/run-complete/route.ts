@@ -91,7 +91,6 @@ async function processCompanySearch(
   const campaign = job.campaigns as { rep_name: string; industry: string } | null
   if (campaign) {
     await advanceSearchPage(campaign.rep_name, campaign.industry, accounts.length)
-    await triggerAccountListCreation(jobId, campaign, accounts)
   }
 }
 
