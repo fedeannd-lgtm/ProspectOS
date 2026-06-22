@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck, RefreshCw } from "lucide-react"
+import Link from "next/link"
+import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck, RefreshCw, Search, List, Users, CheckCircle2, Circle, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { updateAccount, deleteAccount, saveCampaignList } from "./actions"
@@ -26,6 +27,114 @@ type Campaign = {
   prospects_found: number
   list_id: string | null
   list_name: string | null
+}
+
+function CampaignFlow({ campaign }: { campaign: Campaign }) {
+  const steps = [
+    {
+      id: 1,
+      label: "Campaña creada",
+      description: "Rep, industria y semana configurados",
+      icon: CheckCircle2,
+      done: true,
+      href: null,
+    },
+    {
+      id: 2,
+      label: "Company Search",
+      description: campaign.accounts_found > 0
+        ? `${campaign.accounts_found} empresas scrapeadas`
+        : "Scrapear empresas de Sales Navigator",
+      icon: Search,
+      done: campaign.accounts_found > 0,
+      href: "/company-search",
+    },
+    {
+      id: 3,
+      label: "Lista de cuentas",
+      description: campaign.list_name
+        ? `"${campaign.list_name}" creada`
+        : "Crear lista en Sales Navigator con el script",
+      icon: List,
+      done: !!campaign.list_id,
+      href: null,
+    },
+    {
+      id: 4,
+      label: "People Search",
+      description: campaign.prospects_found > 0
+        ? `${campaign.prospects_found} personas scrapeadas`
+        : "Scrapear personas de la lista de cuentas",
+      icon: Users,
+      done: campaign.prospects_found > 0,
+      href: "/people-search",
+    },
+    {
+      id: 5,
+      label: "Base lista",
+      description: campaign.prospects_found > 0
+        ? `${campaign.prospects_found} prospectos disponibles`
+        : "Enriquecer y distribuir",
+      icon: CheckCircle2,
+      done: campaign.prospects_found > 0,
+      href: "/prospects",
+    },
+  ]
+
+  const currentStep = steps.findIndex((s) => !s.done)
+  const activeIdx = currentStep === -1 ? steps.length - 1 : currentStep
+
+  return (
+    <div className="rounded-xl border bg-card p-4 mb-6">
+      <p className="text-xs font-medium text-muted-foreground mb-3">Progreso de la campaña</p>
+      <div className="flex items-start gap-1">
+        {steps.map((step, idx) => {
+          const isActive = idx === activeIdx
+          const isDone = step.done
+          const Icon = step.icon
+          const content = (
+            <div className={`flex flex-col items-center text-center flex-1 min-w-0 ${isActive ? "" : isDone ? "opacity-80" : "opacity-40"}`}>
+              <div className={`flex items-center justify-center size-8 rounded-full border-2 mb-1.5 transition-colors ${
+                isDone
+                  ? "border-green-500 bg-green-50 text-green-600"
+                  : isActive
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-muted-foreground/30 bg-background text-muted-foreground"
+              }`}>
+                {isDone && idx !== 4
+                  ? <Check className="size-3.5" />
+                  : isDone
+                    ? <CheckCircle2 className="size-3.5" />
+                    : isActive
+                      ? <Icon className="size-3.5" />
+                      : <Circle className="size-3.5" />}
+              </div>
+              <p className={`text-xs font-medium leading-tight ${isActive ? "text-foreground" : "text-muted-foreground"}`}>
+                {step.label}
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 max-w-[90px] hidden sm:block">
+                {step.description}
+              </p>
+            </div>
+          )
+
+          return (
+            <div key={step.id} className="flex items-start flex-1 min-w-0">
+              {step.href && !isDone
+                ? <Link href={step.href} className="flex-1 min-w-0 hover:opacity-70 transition-opacity">{content}</Link>
+                : <div className="flex-1 min-w-0">{content}</div>
+              }
+              {idx < steps.length - 1 && (
+                <div className="flex items-center justify-center w-4 shrink-0 mt-3.5">
+                  <ArrowRight className={`size-3 ${idx < activeIdx ? "text-green-500" : "text-muted-foreground/30"}`} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 const STATUS_CONFIG = {
@@ -207,6 +316,9 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
 
   return (
     <div className="space-y-6">
+      {/* Flow tracker */}
+      <CampaignFlow campaign={campaign} />
+
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
