@@ -8,21 +8,17 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Extract a cookie value by name from the cookie array
 function getCookieValue(cookies, name) {
   const c = cookies.find((c) => c.name === name);
   return c?.value ?? null;
 }
 
-// Build the Cookie header string from the full array
 function buildCookieHeader(cookies) {
   return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 }
 
-// JSESSIONID value IS the CSRF token (LinkedIn uses it directly)
 function extractCsrfToken(jsessionId) {
   if (!jsessionId) return '';
-  // Strip surrounding quotes if present, then ensure it starts with "ajax:"
   const clean = jsessionId.replace(/^"|"$/g, '');
   return clean.startsWith('ajax:') ? clean : `ajax:${clean}`;
 }
@@ -40,8 +36,8 @@ Actor.main(async () => {
   const liAt = getCookieValue(cookie, 'li_at');
   const jsessionId = getCookieValue(cookie, 'JSESSIONID');
 
-  if (!liAt) throw new Error('Cookie "li_at" not found — make sure the cookie array includes li_at');
-  if (!jsessionId) throw new Error('Cookie "JSESSIONID" not found — make sure the cookie array includes JSESSIONID');
+  if (!liAt) throw new Error('Cookie "li_at" not found');
+  if (!jsessionId) throw new Error('Cookie "JSESSIONID" not found');
 
   const csrfToken = extractCsrfToken(jsessionId);
   const cookieHeader = buildCookieHeader(cookie);
@@ -50,50 +46,75 @@ Actor.main(async () => {
 
   const headers = {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
     'Cookie': cookieHeader,
     'csrf-token': csrfToken,
     'x-restli-protocol-version': '2.0.0',
     'x-requested-with': 'XMLHttpRequest',
+    'x-li-lang': 'es_AR',
+    'x-li-track': JSON.stringify({
+      clientVersion: '1.13.9787',
+      mpVersion: '1.13.9787',
+      osName: 'web',
+      timezoneOffset: -3,
+      timezone: 'America/Argentina/Buenos_Aires',
+      deviceFormFactor: 'DESKTOP',
+      mpName: 'sales-navigator-web',
+      displayDensity: 1,
+      displayWidth: 1920,
+      displayHeight: 1080,
+    }),
+    'x-li-page-instance': 'urn:li:page:sales_navigator_lists;' + Math.random().toString(36).slice(2),
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Referer': 'https://www.linkedin.com/sales/lists/company',
     'Origin': 'https://www.linkedin.com',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
   };
 
-  // ── 1. Create the list ────────────────────────────────────────────────────────
-  console.log('Creating account list via Sales Nav API...');
-  const createRes = await fetch(`${SALES_NAV_BASE}/sales-api/salesApiLists`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ name: listName, listType: 'ACCOUNT' }),
-  });
+  // ── 1. Create the list (try multiple body formats) ────────────────────────────
+  const createAttempts = [
+    { url: `${SALES_NAV_BASE}/sales-api/salesApiLists`, body: { name: listName, listType: 'ACCOUNT' } },
+    { url: `${SALES_NAV_BASE}/sales-api/salesApiLists`, body: { name: listName, type: 'ACCOUNT' } },
+    { url: `${SALES_NAV_BASE}/sales-api/salesApiAccountLists`, body: { name: listName } },
+  ];
 
-  const createBody = await createRes.text();
-  console.log('Create list response:', createRes.status, createBody.slice(0, 300));
+  let listId = null;
+  let lastStatus, lastBody;
 
-  if (createRes.status === 401 || createRes.status === 403) {
-    throw new Error(`Authentication failed (${createRes.status}) — cookie may be expired. Refresh it in ProspectOS Settings.`);
-  }
-  if (!createRes.ok) {
-    throw new Error(`Failed to create list: HTTP ${createRes.status} — ${createBody.slice(0, 200)}`);
-  }
+  for (const attempt of createAttempts) {
+    console.log(`POST ${attempt.url}`, JSON.stringify(attempt.body));
+    const res = await fetch(attempt.url, { method: 'POST', headers, body: JSON.stringify(attempt.body) });
+    const body = await res.text();
+    console.log(`→ ${res.status}`, body.slice(0, 400));
+    lastStatus = res.status;
+    lastBody = body;
 
-  let listId;
-  try {
-    const parsed = JSON.parse(createBody);
-    let rawId = parsed.id ?? parsed.listId ?? parsed.entityUrn ?? '';
-    if (typeof rawId === 'string' && rawId.includes(':')) {
-      rawId = rawId.split(':').pop();
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`Authentication failed (${res.status}) — cookie may be expired. Refresh it in ProspectOS Settings.`);
     }
-    listId = String(rawId);
-  } catch {
-    throw new Error(`Could not parse list ID from response: ${createBody.slice(0, 200)}`);
+
+    if (res.ok) {
+      try {
+        const parsed = JSON.parse(body);
+        let rawId = parsed.id ?? parsed.listId ?? parsed.entityUrn ?? '';
+        if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+        if (rawId && String(rawId) !== 'undefined') {
+          listId = String(rawId);
+          console.log('List created, ID:', listId);
+          break;
+        }
+      } catch {
+        console.warn('Could not parse list ID from successful response, trying next format');
+      }
+    }
   }
 
-  if (!listId || listId === 'undefined') {
-    throw new Error(`List ID missing from response: ${createBody.slice(0, 200)}`);
+  if (!listId) {
+    throw new Error(`Could not create list. Last response: ${lastStatus} — ${lastBody?.slice(0, 300)}`);
   }
-  console.log('List created, ID:', listId);
 
   // ── 2. Add companies in batches ───────────────────────────────────────────────
   console.log(`Adding ${companyIds.length} companies in batches of ${BATCH_SIZE}...`);
@@ -113,7 +134,7 @@ Actor.main(async () => {
     });
 
     const addBody = await addRes.text();
-    console.log(`Batch ${batchNum}: HTTP ${addRes.status}`, addBody.slice(0, 150));
+    console.log(`Batch ${batchNum}: ${addRes.status}`, addBody.slice(0, 150));
 
     if (addRes.ok) {
       added += batch.length;
@@ -131,6 +152,5 @@ Actor.main(async () => {
 
   const result = { listId, listName, companiesAdded: added, companiesFailed: failed };
   await Actor.pushData(result);
-
   console.log('Output:', result);
 });
