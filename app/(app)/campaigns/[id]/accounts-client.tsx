@@ -151,31 +151,44 @@ const STATUS_CYCLE: Record<string, string> = {
   rejected: "discovered",
 }
 
-function generateScript(listId: string, companies: { sales_nav_id: string; company_name: string }[], repName: string, industry: string) {
+function generateScript(companies: { sales_nav_id: string; company_name: string }[], listName: string, repName: string, industry: string) {
   const ids = companies.map((c) => c.sales_nav_id).filter(Boolean)
-  // Always extract just the numeric ID, whether user pasted URL or raw ID
-  const cleanId = listId.match(/\d{10,}/)?.[0] ?? listId.trim()
-  listId = cleanId
-  return `// ProspectOS — ejecutar en el Sales Navigator de ${repName} (${industry})
-// Asegurate de estar logueado como ${repName} antes de correr esto.
+  return `// ProspectOS — ejecutar en Sales Navigator de ${repName} (${industry})
+// Asegurate de estar en linkedin.com/sales/ antes de correr esto.
 (async () => {
-  const listId = ${JSON.stringify(listId)};
+  const listName = ${JSON.stringify(listName)};
   const companyIds = ${JSON.stringify(ids)};
 
   const csrf = document.cookie.split(';').map(c=>c.trim().split('=')).find(([k])=>k==='JSESSIONID')?.[1]?.replace(/"/g,'');
   const csrfToken = csrf?.startsWith('ajax:') ? csrf : \`ajax:\${csrf}\`;
+  const headers = {'Content-Type':'application/json','csrf-token':csrfToken,'x-restli-protocol-version':'2.0.0','x-requested-with':'XMLHttpRequest'};
 
+  // 1. Crear la lista
+  console.log('[ProspectOS] Creando lista:', listName);
+  const createRes = await fetch('/sales-api/salesApiLists', {
+    method: 'POST', credentials: 'include', headers,
+    body: JSON.stringify({ name: listName, listType: 'ACCOUNT' })
+  });
+  if (!createRes.ok) { alert('❌ No se pudo crear la lista: ' + createRes.status + '. Asegurate de estar en linkedin.com/sales/'); return; }
+  const created = await createRes.json();
+  let rawId = created.id ?? created.listId ?? created.entityUrn ?? '';
+  if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+  const listId = String(rawId);
+  console.log('[ProspectOS] Lista creada, ID:', listId);
+
+  // 2. Agregar empresas
   let ok = 0, fail = 0;
   for (const id of companyIds) {
     const r = await fetch('/sales-api/salesApiListEntities?action=edit', {
-      method: 'POST', credentials: 'include',
-      headers: {'Content-Type':'application/json','csrf-token':csrfToken,'x-restli-protocol-version':'2.0.0','x-requested-with':'XMLHttpRequest'},
+      method: 'POST', credentials: 'include', headers,
       body: JSON.stringify({entity:\`urn:li:fs_salesCompany:\${id}\`,addToLists:[listId],removeFromLists:[]})
     });
-    if (r.ok) ok++; else { fail++; console.warn(\`[ProspectOS] Falló \${id}:\`, r.status); }
+    if (r.ok) { ok++; } else { fail++; console.warn('[ProspectOS] Falló', id, r.status); }
+    await new Promise(r => setTimeout(r, 300));
   }
 
-  alert(\`✅ \${ok}/\${companyIds.length} empresas agregadas a la lista.\${fail > 0 ? '\\n⚠️ ' + fail + ' fallaron — revisá la consola.' : ''}\`);
+  alert(\`✅ Lista "\${listName}" creada (ID: \${listId})\\n\${ok}/\${companyIds.length} empresas agregadas.\${fail > 0 ? '\\n⚠️ ' + fail + ' fallaron — revisá la consola.' : ''}\\n\\nCopiá el ID para pegarlo en ProspectOS.\`);
+  console.log('[ProspectOS] listId:', listId);
 })();`
 }
 
@@ -284,7 +297,7 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
 
   function handleGenerateScript() {
     const companies = selectedAccounts.map((a) => ({ sales_nav_id: a.sales_nav_id!, company_name: a.company_name }))
-    const generated = generateScript(listId.trim(), companies, campaign.rep_name, campaign.industry)
+    const generated = generateScript(companies, listName, campaign.rep_name, campaign.industry)
     setScript(generated)
     setShowScript(true)
     setCopied(false)
@@ -452,39 +465,28 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                   />
                 </div>
 
-                {/* Crear lista automáticamente */}
-                <div className="rounded-md border border-dashed p-3 space-y-2">
-                  <p className="text-xs font-medium">Crear lista en Sales Navigator automáticamente</p>
-                  <Button
-                    onClick={handleCreateList}
-                    disabled={selectedWithId === 0 || listActorStatus === "loading" || listActorStatus === "sent"}
-                    size="sm"
-                  >
-                    {listActorStatus === "loading"
-                      ? <><Loader2 className="mr-2 size-3.5 animate-spin" /> Iniciando…</>
-                      : listActorStatus === "sent"
-                        ? <><CheckCheck className="mr-2 size-3.5 text-green-500" /> Iniciado — esperá el resultado</>
-                        : <><List className="mr-2 size-3.5" /> Crear Account List ({selectedWithId} empresas)</>}
+                {/* Generar script — crea la lista y agrega empresas en un paso */}
+                <div className="space-y-2">
+                  <Button onClick={handleGenerateScript} disabled={selectedWithId === 0} variant="outline" size="sm">
+                    <Code2 className="mr-2 size-3.5" />
+                    Generar script ({selectedWithId} empresas)
                   </Button>
-                  {listActorStatus === "sent" && (
-                    <p className="text-xs text-muted-foreground">El actor está corriendo. Cuando termine, el ID de la lista se va a guardar automáticamente en esta campaña.</p>
-                  )}
-                  {listActorStatus === "error" && (
-                    <p className="text-xs text-destructive">{listActorError}</p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    El script crea la lista en Sales Nav y agrega las empresas en un solo paso. Ejecutalo en la consola del browser estando en linkedin.com/sales/.
+                  </p>
                 </div>
 
-                {/* O pegá el ID manualmente */}
+                {/* Guardar ID manualmente (post-script o lista ya existente) */}
                 <details className="group">
                   <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1">
                     <span className="group-open:hidden">▶</span>
                     <span className="hidden group-open:inline">▼</span>
-                    O pegá el ID manualmente (si ya creaste la lista)
+                    Guardar ID de lista en ProspectOS (después de correr el script)
                   </summary>
                   <div className="mt-2 space-y-2">
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">
-                        ID de la lista (URL: <span className="font-mono">/sales/lists/company/<strong>7473723596...</strong></span>)
+                        ID de la lista (el script lo muestra en el alert)
                       </label>
                       <Input
                         value={listId}
@@ -497,16 +499,10 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                         placeholder="7473723596373360642 o pegá la URL completa"
                       />
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Button onClick={handleGenerateScript} disabled={selectedWithId === 0 || !listId.trim()} variant="outline" size="sm">
-                        <Code2 className="mr-2 size-3.5" />
-                        Generar script para Claude
-                      </Button>
-                      <Button onClick={handleUpdatePeopleSearch} disabled={!listId.trim() || peopleSearchStatus === "loading"} size="sm">
-                        <RefreshCw className={`mr-2 size-3.5 ${peopleSearchStatus === "loading" ? "animate-spin" : ""}`} />
-                        Guardar lista
-                      </Button>
-                    </div>
+                    <Button onClick={handleUpdatePeopleSearch} disabled={!listId.trim() || peopleSearchStatus === "loading"} size="sm">
+                      <RefreshCw className={`mr-2 size-3.5 ${peopleSearchStatus === "loading" ? "animate-spin" : ""}`} />
+                      Guardar lista
+                    </Button>
                     {peopleSearchStatus === "done" && (
                       <p className="text-xs text-green-600 flex items-center gap-1">
                         <CheckCheck className="size-3" /> {peopleSearchMsg}
