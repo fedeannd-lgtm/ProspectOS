@@ -1,12 +1,10 @@
 (async () => {
   const params = new URLSearchParams(window.location.search);
   if (!params.has('prospectOS')) return;
-
-  const action = params.get('prospectOS');
-  if (action !== 'create') return;
+  if (params.get('prospectOS') !== 'create') return;
 
   const campaignId = params.get('campaignId');
-  const listName = atob(params.get('listName') || '');
+  const listName = decodeURIComponent(escape(atob(params.get('listName') || '')));
   const companyIds = JSON.parse(atob(params.get('companyIds') || 'W10='));
   const callback = params.get('callback');
 
@@ -25,7 +23,7 @@
   title.textContent = '⚡ ProspectOS';
   const status = document.createElement('div');
   status.style.cssText = 'font-size:14px;opacity:0.8;';
-  status.textContent = 'Creando lista en Sales Navigator…';
+  status.textContent = 'Iniciando…';
   const progress = document.createElement('div');
   progress.style.cssText = 'font-size:12px;opacity:0.6;font-family:monospace;';
   overlay.append(title, status, progress);
@@ -47,35 +45,118 @@
 
     const headers = {
       'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
       'csrf-token': csrfToken,
       'x-restli-protocol-version': '2.0.0',
       'x-requested-with': 'XMLHttpRequest',
+      'x-li-lang': 'es_AR',
+      'x-li-track': JSON.stringify({
+        clientVersion: '1.13.9787',
+        mpVersion: '1.13.9787',
+        osName: 'web',
+        timezoneOffset: -3,
+        timezone: 'America/Argentina/Buenos_Aires',
+        deviceFormFactor: 'DESKTOP',
+        mpName: 'sales-navigator-web',
+        displayDensity: 1,
+        displayWidth: 1920,
+        displayHeight: 1080,
+      }),
+      'x-li-page-instance': 'urn:li:page:sales_navigator_lists;' + Math.random().toString(36).slice(2),
     };
 
-    // ── 1. Crear lista ──────────────────────────────────────────────────────────
+    // ── Obtener ownerUrn ────────────────────────────────────────────────────────
+    setStatus('Obteniendo info del usuario…');
+    let ownerUrn = null;
+    try {
+      const meRes = await fetch('/sales-api/salesApiUsers/(memberUrn:CURRENT_MEMBER)', {
+        credentials: 'include', headers,
+      });
+      if (meRes.ok) {
+        const me = await meRes.json();
+        ownerUrn = me.entityUrn ?? me.objectUrn ?? me.memberUrn ?? null;
+        console.log('[ProspectOS] ownerUrn:', ownerUrn);
+      }
+    } catch (e) {
+      console.log('[ProspectOS] Could not fetch member info:', e.message);
+    }
+
+    // ── 1. Crear lista (varios formatos) ────────────────────────────────────────
     setStatus(`Creando lista "${listName}"…`);
-    const createRes = await fetch('/sales-api/salesApiLists', {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: JSON.stringify({ name: listName, listType: 'ACCOUNT' }),
-    });
 
-    if (createRes.status === 401 || createRes.status === 403) {
-      throw new Error('Sesión expirada — volvé a loguearte en LinkedIn.');
+    const createBodies = [
+      { name: listName, listType: 'ACCOUNT', role: 'OWNER' },
+      { name: listName, listType: 'ACCOUNT' },
+    ];
+
+    let listId = null;
+    let lastStatus, lastBody;
+
+    for (const body of createBodies) {
+      console.log('[ProspectOS] Trying create with body:', JSON.stringify(body));
+      const createRes = await fetch('/sales-api/salesApiLists', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      const responseText = await createRes.text();
+      lastStatus = createRes.status;
+      lastBody = responseText;
+      console.log(`[ProspectOS] → ${createRes.status}:`, responseText.slice(0, 200));
+
+      if (createRes.status === 401 || createRes.status === 403) {
+        throw new Error('Sesión expirada — volvé a loguearte en LinkedIn.');
+      }
+
+      if (createRes.ok) {
+        try {
+          const created = JSON.parse(responseText);
+          let rawId = created.id ?? created.listId ?? created.entityUrn ?? '';
+          if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+          if (rawId && String(rawId) !== 'undefined') {
+            listId = String(rawId);
+            console.log('[ProspectOS] List created, ID:', listId);
+            break;
+          }
+        } catch {
+          console.warn('[ProspectOS] Could not parse list ID, trying next format');
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 300));
     }
-    if (!createRes.ok) {
-      const body = await createRes.text();
-      throw new Error(`No se pudo crear la lista (${createRes.status}): ${body.slice(0, 100)}`);
+
+    // Fallback: try alternative endpoint
+    if (!listId) {
+      console.log('[ProspectOS] Trying alternative endpoint salesApiAccountLists…');
+      const altRes = await fetch('/sales-api/salesApiAccountLists', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({ name: listName }),
+      });
+      const altText = await altRes.text();
+      console.log(`[ProspectOS] Alt endpoint → ${altRes.status}:`, altText.slice(0, 200));
+      lastStatus = altRes.status;
+      lastBody = altText;
+
+      if (altRes.ok) {
+        try {
+          const created = JSON.parse(altText);
+          let rawId = created.id ?? created.listId ?? created.entityUrn ?? '';
+          if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+          if (rawId && String(rawId) !== 'undefined') {
+            listId = String(rawId);
+          }
+        } catch {}
+      }
     }
 
-    const created = await createRes.json();
-    let rawId = created.id ?? created.listId ?? created.entityUrn ?? '';
-    if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
-    const listId = String(rawId);
-
-    if (!listId || listId === 'undefined') {
-      throw new Error('Lista creada pero no se pudo extraer el ID. Respuesta: ' + JSON.stringify(created).slice(0, 100));
+    if (!listId) {
+      throw new Error(`No se pudo crear la lista (${lastStatus}): ${lastBody?.slice(0, 150)}`);
     }
 
     // ── 2. Agregar empresas ─────────────────────────────────────────────────────
