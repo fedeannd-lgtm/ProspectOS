@@ -2,42 +2,6 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
-import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
-import { startAccountListActor } from "@/lib/apify"
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL
-  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-
-export async function createAccountList(
-  campaignId: string,
-  repName: string,
-  industry: string,
-  companyIds: string[],
-  listName: string
-): Promise<{ ok: true } | { error: string }> {
-  try {
-    if (!process.env.ACCOUNT_LIST_ACTOR_ID) return { error: "ACCOUNT_LIST_ACTOR_ID no configurado en Vercel" }
-    if (!companyIds.length) return { error: "No hay empresas seleccionadas con ID de Sales Nav" }
-
-    const { data: repConfig } = await supabaseAdmin
-      .from("rep_configs")
-      .select("linkedin_cookie")
-      .eq("rep_name", repName)
-      .maybeSingle()
-    if (!repConfig?.linkedin_cookie) return { error: `Cookie no configurada para ${repName}. Actualizala en Settings.` }
-
-    let cookieParsed: unknown
-    try { cookieParsed = JSON.parse(repConfig.linkedin_cookie) } catch {
-      return { error: "Cookie inválida — re-exportala desde Cookie-Editor como JSON" }
-    }
-
-    const webhookUrl = `${APP_URL}/api/webhooks/apify/list-created?campaignId=${campaignId}`
-    await startAccountListActor({ cookie: cookieParsed, companyIds, listName }, webhookUrl)
-    return { ok: true }
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Error al crear la lista" }
-  }
-}
 
 export async function getCampaignWithAccounts(campaignId: string) {
   const [campaignRes, accountsRes] = await Promise.all([
@@ -73,42 +37,6 @@ export async function updateAccount(
   revalidatePath(`/campaigns/${campaignId}`)
 }
 
-export async function saveCampaignList(
-  campaignId: string,
-  repName: string,
-  industry: string,
-  listId: string,
-  listName: string
-): Promise<{ warning?: string }> {
-  // 1. Save list to the campaign record
-  const { error: campaignError } = await supabaseAdmin
-    .from("campaigns")
-    .update({ list_id: listId, list_name: listName })
-    .eq("id", campaignId)
-  if (campaignError) throw new Error(campaignError.message)
-
-  // 2. If people_search_configs exists for this rep+industry, update the URL too
-  const { data: config } = await supabaseAdmin
-    .from("people_search_configs")
-    .select("base_url")
-    .eq("rep_name", repName)
-    .eq("industry", industry)
-    .maybeSingle()
-
-  // Only save list metadata — do NOT modify base_url (SDR owns the URL)
-  if (config?.base_url) {
-    const { error } = await supabaseAdmin
-      .from("people_search_configs")
-      .update({ list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
-      .eq("rep_name", repName)
-      .eq("industry", industry)
-    if (error) throw new Error(error.message)
-  }
-
-  revalidatePath(`/campaigns/${campaignId}`)
-  revalidatePath("/people-search")
-  return {}
-}
 
 export async function deleteAccount(accountId: string, campaignId: string) {
   const { error } = await supabaseAdmin

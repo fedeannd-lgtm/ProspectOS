@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react"
 import Link from "next/link"
-import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck, RefreshCw, Search, List, Users, CheckCircle2, Circle, ArrowRight, Loader2 } from "lucide-react"
+import { Pencil, Trash2, Check, X, ExternalLink, Building2, CheckCheck, Search, List, Users, CheckCircle2, Circle, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { updateAccount, deleteAccount, saveCampaignList, createAccountList } from "./actions"
+import { updateAccount, deleteAccount } from "./actions"
 
 type Account = {
   id: string
@@ -151,47 +151,6 @@ const STATUS_CYCLE: Record<string, string> = {
   rejected: "discovered",
 }
 
-function generateScript(companies: { sales_nav_id: string; company_name: string }[], listName: string, repName: string, industry: string) {
-  const ids = companies.map((c) => c.sales_nav_id).filter(Boolean)
-  return `// ProspectOS — ejecutar en Sales Navigator de ${repName} (${industry})
-// Asegurate de estar en linkedin.com/sales/ antes de correr esto.
-(async () => {
-  const listName = ${JSON.stringify(listName)};
-  const companyIds = ${JSON.stringify(ids)};
-
-  const csrf = document.cookie.split(';').map(c=>c.trim().split('=')).find(([k])=>k==='JSESSIONID')?.[1]?.replace(/"/g,'');
-  const csrfToken = csrf?.startsWith('ajax:') ? csrf : \`ajax:\${csrf}\`;
-  const headers = {'Content-Type':'application/json','csrf-token':csrfToken,'x-restli-protocol-version':'2.0.0','x-requested-with':'XMLHttpRequest'};
-
-  // 1. Crear la lista
-  console.log('[ProspectOS] Creando lista:', listName);
-  const createRes = await fetch('/sales-api/salesApiLists', {
-    method: 'POST', credentials: 'include', headers,
-    body: JSON.stringify({ name: listName, listType: 'ACCOUNT' })
-  });
-  if (!createRes.ok) { alert('❌ No se pudo crear la lista: ' + createRes.status + '. Asegurate de estar en linkedin.com/sales/'); return; }
-  const created = await createRes.json();
-  let rawId = created.id ?? created.listId ?? created.entityUrn ?? '';
-  if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
-  const listId = String(rawId);
-  console.log('[ProspectOS] Lista creada, ID:', listId);
-
-  // 2. Agregar empresas
-  let ok = 0, fail = 0;
-  for (const id of companyIds) {
-    const r = await fetch('/sales-api/salesApiListEntities?action=edit', {
-      method: 'POST', credentials: 'include', headers,
-      body: JSON.stringify({entity:\`urn:li:fs_salesCompany:\${id}\`,addToLists:[listId],removeFromLists:[]})
-    });
-    if (r.ok) { ok++; } else { fail++; console.warn('[ProspectOS] Falló', id, r.status); }
-    await new Promise(r => setTimeout(r, 300));
-  }
-
-  alert(\`✅ Lista "\${listName}" creada (ID: \${listId})\\n\${ok}/\${companyIds.length} empresas agregadas.\${fail > 0 ? '\\n⚠️ ' + fail + ' fallaron — revisá la consola.' : ''}\\n\\nCopiá el ID para pegarlo en ProspectOS.\`);
-  console.log('[ProspectOS] listId:', listId);
-})();`
-}
-
 function EditableCell({ value, onSave, placeholder, mono = false }: {
   value: string; onSave: (v: string) => Promise<void>; placeholder?: string; mono?: boolean
 }) {
@@ -243,21 +202,11 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
   const [accounts, setAccounts] = useState(initialAccounts)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [listId, setListId] = useState(campaign.list_id ?? "")
   const [listName, setListName] = useState(() => {
     if (campaign.list_name) return campaign.list_name
     const today = new Date().toLocaleDateString("es-AR", { day: "numeric", month: "numeric", year: "numeric" })
     return `Empresas ${campaign.rep_name} ${campaign.industry} ${today}`
   })
-  const [savedListId, setSavedListId] = useState(campaign.list_id)
-  const [savedListName, setSavedListName] = useState(campaign.list_name)
-  const [copied, setCopied] = useState(false)
-  const [showScript, setShowScript] = useState(false)
-  const [script, setScript] = useState("")
-  const [peopleSearchStatus, setPeopleSearchStatus] = useState<"idle" | "loading" | "done" | "error" | "warning">("idle")
-  const [peopleSearchMsg, setPeopleSearchMsg] = useState("")
-  const [listActorStatus, setListActorStatus] = useState<"idle" | "loading" | "sent" | "error">("idle")
-  const [listActorError, setListActorError] = useState("")
 
   const allIds = accounts.map((a) => a.id)
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id))
@@ -295,53 +244,6 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
     handleUpdate(account.id, { status: next })
   }
 
-  function handleGenerateScript() {
-    const companies = selectedAccounts.map((a) => ({ sales_nav_id: a.sales_nav_id!, company_name: a.company_name }))
-    const generated = generateScript(companies, listName, campaign.rep_name, campaign.industry)
-    setScript(generated)
-    setShowScript(true)
-    setCopied(false)
-  }
-
-  async function handleCreateList() {
-    setListActorStatus("loading")
-    setListActorError("")
-    const ids = selectedAccounts.map((a) => a.sales_nav_id!)
-    const result = await createAccountList(campaign.id, campaign.rep_name, campaign.industry, ids, listName)
-    if ("error" in result) {
-      setListActorError(result.error)
-      setListActorStatus("error")
-    } else {
-      setListActorStatus("sent")
-    }
-  }
-
-  async function handleUpdatePeopleSearch() {
-    setPeopleSearchStatus("loading")
-    try {
-      const cleanId = listId.match(/\d{10,}/)?.[0] ?? listId.trim()
-      const result = await saveCampaignList(campaign.id, campaign.rep_name, campaign.industry, cleanId, listName)
-      setSavedListId(cleanId)
-      setSavedListName(listName)
-      if (result.warning) {
-        setPeopleSearchMsg(result.warning)
-        setPeopleSearchStatus("warning")
-      } else {
-        setPeopleSearchMsg("Lista guardada en la campaña y URL de People Search actualizada")
-        setPeopleSearchStatus("done")
-      }
-    } catch (e) {
-      setPeopleSearchMsg(e instanceof Error ? e.message : "Error desconocido")
-      setPeopleSearchStatus("error")
-    }
-  }
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(script)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 3000)
-  }
-
   return (
     <div className="space-y-6">
       {/* Flow tracker */}
@@ -361,13 +263,13 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
       </div>
 
       {/* Lista de cuentas guardada */}
-      {savedListName && (
+      {campaign.list_name && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm">
           <CheckCheck className="size-4 text-green-600 shrink-0" />
           <div className="flex-1 min-w-0">
             <span className="font-medium text-green-800">Lista guardada: </span>
-            <span className="text-green-700">{savedListName}</span>
-            {savedListId && <span className="ml-2 font-mono text-xs text-green-600">{savedListId}</span>}
+            <span className="text-green-700">{campaign.list_name}</span>
+            {campaign.list_id && <span className="ml-2 font-mono text-xs text-green-600">{campaign.list_id}</span>}
           </div>
         </div>
       )}
@@ -440,17 +342,15 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
             </table>
           </div>
 
-          {/* Script generator panel */}
+          {/* Account list panel */}
           {selected.size > 0 && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
-              <div>
-                <p className="text-sm font-medium">
-                  {selected.size} seleccionada{selected.size !== 1 ? "s" : ""}
-                  {selectedWithId < selected.size && (
-                    <span className="text-muted-foreground font-normal"> · {selected.size - selectedWithId} sin ID de Sales Nav</span>
-                  )}
-                </p>
-              </div>
+              <p className="text-sm font-medium">
+                {selected.size} seleccionada{selected.size !== 1 ? "s" : ""}
+                {selectedWithId < selected.size && (
+                  <span className="text-muted-foreground font-normal"> · {selected.size - selectedWithId} sin ID de Sales Nav</span>
+                )}
+              </p>
 
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -465,7 +365,6 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                   />
                 </div>
 
-                {/* Crear lista con extensión de Chrome */}
                 <div className="space-y-2">
                   <Button
                     onClick={() => {
@@ -489,85 +388,7 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                     Requiere la extensión de Chrome instalada. Abre Sales Navigator, crea la lista y vuelve automáticamente.
                   </p>
                 </div>
-
-                {/* Generar script (fallback sin extensión) */}
-                <details className="group">
-                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1">
-                    <span className="group-open:hidden">▶</span>
-                    <span className="hidden group-open:inline">▼</span>
-                    Sin extensión — generar script para consola
-                  </summary>
-                  <div className="mt-2 space-y-2">
-                    <Button onClick={handleGenerateScript} disabled={selectedWithId === 0} variant="outline" size="sm">
-                      <Code2 className="mr-2 size-3.5" />
-                      Generar script ({selectedWithId} empresas)
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Pegalo en la consola del browser estando en linkedin.com/sales/.
-                    </p>
-                  </div>
-                </details>
-
-                {/* Guardar ID manualmente (post-script o lista ya existente) */}
-                <details className="group">
-                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1">
-                    <span className="group-open:hidden">▶</span>
-                    <span className="hidden group-open:inline">▼</span>
-                    Guardar ID de lista en ProspectOS (después de correr el script)
-                  </summary>
-                  <div className="mt-2 space-y-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">
-                        ID de la lista (el script lo muestra en el alert)
-                      </label>
-                      <Input
-                        value={listId}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          const match = val.match(/\/lists\/(?:company|account)\/(\d+)/)
-                          setListId(match ? match[1] : val)
-                        }}
-                        className="font-mono text-sm"
-                        placeholder="7473723596373360642 o pegá la URL completa"
-                      />
-                    </div>
-                    <Button onClick={handleUpdatePeopleSearch} disabled={!listId.trim() || peopleSearchStatus === "loading"} size="sm">
-                      <RefreshCw className={`mr-2 size-3.5 ${peopleSearchStatus === "loading" ? "animate-spin" : ""}`} />
-                      Guardar lista
-                    </Button>
-                    {peopleSearchStatus === "done" && (
-                      <p className="text-xs text-green-600 flex items-center gap-1">
-                        <CheckCheck className="size-3" /> {peopleSearchMsg}
-                      </p>
-                    )}
-                    {peopleSearchStatus === "warning" && (
-                      <p className="text-xs text-amber-600">{peopleSearchMsg}</p>
-                    )}
-                    {peopleSearchStatus === "error" && (
-                      <p className="text-xs text-destructive">{peopleSearchMsg}</p>
-                    )}
-                  </div>
-                </details>
               </div>
-
-              {showScript && (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <pre className="rounded-md bg-zinc-950 text-zinc-100 text-xs p-4 overflow-auto max-h-48 font-mono">
-                      {script}
-                    </pre>
-                    <Button variant="secondary" size="sm" className="absolute top-2 right-2 h-7 text-xs" onClick={handleCopy}>
-                      {copied ? <><CheckCheck className="mr-1 size-3 text-green-500" /> Copiado</> : <><Copy className="mr-1 size-3" /> Copiar</>}
-                    </Button>
-                  </div>
-                  <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-800 space-y-1">
-                    <p className="font-medium">Decile esto a Claude (con el script pegado):</p>
-                    <p className="italic font-mono bg-blue-100 rounded px-2 py-1 select-all">
-                      ejecutá este script en la pestaña de Sales Navigator
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </>

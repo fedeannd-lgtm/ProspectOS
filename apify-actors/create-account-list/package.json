@@ -1,8 +1,0 @@
-{
-  "name": "create-sales-nav-account-list",
-  "version": "2.0.0",
-  "main": "main.js",
-  "dependencies": {
-    "apify": "^3.0.0"
-  }
-}
