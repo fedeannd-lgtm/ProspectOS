@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
-import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer, List } from "lucide-react"
+import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, triggerAccountList, getJobStatus } from "./actions"
+import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus } from "./actions"
 
 type Campaign = {
   id: string
@@ -82,23 +82,6 @@ function JobCard({ job }: { job: SearchJob }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
-  const [listState, setListState] = useState<"idle" | "loading" | "done" | "error">("idle")
-  const [listError, setListError] = useState("")
-  const [listName, setListName] = useState("")
-
-  async function handleCreateList() {
-    setListState("loading")
-    setListError("")
-    const result = await triggerAccountList(job.id)
-    if ("error" in result) {
-      setListError(result.error)
-      setListState("error")
-    } else {
-      setListName(result.listName)
-      setListState("done")
-    }
-  }
-
   return (
     <div className="rounded-lg border px-3 py-2.5 space-y-1.5">
       <div className="flex items-center justify-between">
@@ -129,30 +112,11 @@ function JobCard({ job }: { job: SearchJob }) {
         </span>
       </div>
       {job.status === "completed" && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <Link href={`/campaigns/${job.campaign_id}`} className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium hover:bg-muted transition-colors">
             <Building2 className="size-3" />
             Ver empresas
           </Link>
-          {listState === "done" ? (
-            <span className="inline-flex items-center gap-1 text-xs text-green-700">
-              <CheckCircle2 className="size-3" />
-              Lista iniciada: {listName}
-            </span>
-          ) : (
-            <button
-              onClick={handleCreateList}
-              disabled={listState === "loading"}
-              className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
-            >
-              {listState === "loading"
-                ? <><Loader2 className="size-3 animate-spin" /> Creando lista…</>
-                : <><List className="size-3" /> Crear Account List</>}
-            </button>
-          )}
-          {listState === "error" && (
-            <span className="text-xs text-destructive">{listError}</span>
-          )}
         </div>
       )}
     </div>

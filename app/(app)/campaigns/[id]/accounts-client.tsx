@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from "react"
 import Link from "next/link"
-import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck, RefreshCw, Search, List, Users, CheckCircle2, Circle, ArrowRight } from "lucide-react"
+import { Pencil, Trash2, Check, X, ExternalLink, Building2, Code2, Copy, CheckCheck, RefreshCw, Search, List, Users, CheckCircle2, Circle, ArrowRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { updateAccount, deleteAccount, saveCampaignList } from "./actions"
+import { updateAccount, deleteAccount, saveCampaignList, createAccountList } from "./actions"
 
 type Account = {
   id: string
@@ -243,6 +243,8 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
   const [script, setScript] = useState("")
   const [peopleSearchStatus, setPeopleSearchStatus] = useState<"idle" | "loading" | "done" | "error" | "warning">("idle")
   const [peopleSearchMsg, setPeopleSearchMsg] = useState("")
+  const [listActorStatus, setListActorStatus] = useState<"idle" | "loading" | "sent" | "error">("idle")
+  const [listActorError, setListActorError] = useState("")
 
   const allIds = accounts.map((a) => a.id)
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id))
@@ -286,6 +288,19 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
     setScript(generated)
     setShowScript(true)
     setCopied(false)
+  }
+
+  async function handleCreateList() {
+    setListActorStatus("loading")
+    setListActorError("")
+    const ids = selectedAccounts.map((a) => a.sales_nav_id!)
+    const result = await createAccountList(campaign.id, campaign.rep_name, campaign.industry, ids, listName)
+    if ("error" in result) {
+      setListActorError(result.error)
+      setListActorStatus("error")
+    } else {
+      setListActorStatus("sent")
+    }
   }
 
   async function handleUpdatePeopleSearch() {
@@ -422,9 +437,6 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                     <span className="text-muted-foreground font-normal"> · {selected.size - selectedWithId} sin ID de Sales Nav</span>
                   )}
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Primero creá la lista en Sales Nav manualmente, luego pegá el ID acá.
-                </p>
               </div>
 
               <div className="space-y-3">
@@ -439,42 +451,75 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                     placeholder="Empresas Fede Manufactura 19-6-2026"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    ID de la lista (URL: <span className="font-mono">/sales/lists/company/<strong>7473723596...</strong></span>)
-                  </label>
-                  <Input
-                    value={listId}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      const match = val.match(/\/lists\/(?:company|account)\/(\d+)/)
-                      setListId(match ? match[1] : val)
-                    }}
-                    className="font-mono text-sm"
-                    placeholder="7473723596373360642 o pegá la URL completa"
-                  />
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Button onClick={handleGenerateScript} disabled={selectedWithId === 0 || !listId.trim()} variant="outline">
-                    <Code2 className="mr-2 size-4" />
-                    Generar script para Claude
+
+                {/* Crear lista automáticamente */}
+                <div className="rounded-md border border-dashed p-3 space-y-2">
+                  <p className="text-xs font-medium">Crear lista en Sales Navigator automáticamente</p>
+                  <Button
+                    onClick={handleCreateList}
+                    disabled={selectedWithId === 0 || listActorStatus === "loading" || listActorStatus === "sent"}
+                    size="sm"
+                  >
+                    {listActorStatus === "loading"
+                      ? <><Loader2 className="mr-2 size-3.5 animate-spin" /> Iniciando…</>
+                      : listActorStatus === "sent"
+                        ? <><CheckCheck className="mr-2 size-3.5 text-green-500" /> Iniciado — esperá el resultado</>
+                        : <><List className="mr-2 size-3.5" /> Crear Account List ({selectedWithId} empresas)</>}
                   </Button>
-                  <Button onClick={handleUpdatePeopleSearch} disabled={!listId.trim() || peopleSearchStatus === "loading"}>
-                    <RefreshCw className={`mr-2 size-4 ${peopleSearchStatus === "loading" ? "animate-spin" : ""}`} />
-                    Actualizar People Search
-                  </Button>
+                  {listActorStatus === "sent" && (
+                    <p className="text-xs text-muted-foreground">El actor está corriendo. Cuando termine, el ID de la lista se va a guardar automáticamente en esta campaña.</p>
+                  )}
+                  {listActorStatus === "error" && (
+                    <p className="text-xs text-destructive">{listActorError}</p>
+                  )}
                 </div>
-                {peopleSearchStatus === "done" && (
-                  <p className="text-xs text-green-600 flex items-center gap-1">
-                    <CheckCheck className="size-3" /> {peopleSearchMsg}
-                  </p>
-                )}
-                {peopleSearchStatus === "warning" && (
-                  <p className="text-xs text-amber-600">{peopleSearchMsg}</p>
-                )}
-                {peopleSearchStatus === "error" && (
-                  <p className="text-xs text-destructive">{peopleSearchMsg}</p>
-                )}
+
+                {/* O pegá el ID manualmente */}
+                <details className="group">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1">
+                    <span className="group-open:hidden">▶</span>
+                    <span className="hidden group-open:inline">▼</span>
+                    O pegá el ID manualmente (si ya creaste la lista)
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        ID de la lista (URL: <span className="font-mono">/sales/lists/company/<strong>7473723596...</strong></span>)
+                      </label>
+                      <Input
+                        value={listId}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          const match = val.match(/\/lists\/(?:company|account)\/(\d+)/)
+                          setListId(match ? match[1] : val)
+                        }}
+                        className="font-mono text-sm"
+                        placeholder="7473723596373360642 o pegá la URL completa"
+                      />
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button onClick={handleGenerateScript} disabled={selectedWithId === 0 || !listId.trim()} variant="outline" size="sm">
+                        <Code2 className="mr-2 size-3.5" />
+                        Generar script para Claude
+                      </Button>
+                      <Button onClick={handleUpdatePeopleSearch} disabled={!listId.trim() || peopleSearchStatus === "loading"} size="sm">
+                        <RefreshCw className={`mr-2 size-3.5 ${peopleSearchStatus === "loading" ? "animate-spin" : ""}`} />
+                        Guardar lista
+                      </Button>
+                    </div>
+                    {peopleSearchStatus === "done" && (
+                      <p className="text-xs text-green-600 flex items-center gap-1">
+                        <CheckCheck className="size-3" /> {peopleSearchMsg}
+                      </p>
+                    )}
+                    {peopleSearchStatus === "warning" && (
+                      <p className="text-xs text-amber-600">{peopleSearchMsg}</p>
+                    )}
+                    {peopleSearchStatus === "error" && (
+                      <p className="text-xs text-destructive">{peopleSearchMsg}</p>
+                    )}
+                  </div>
+                </details>
               </div>
 
               {showScript && (

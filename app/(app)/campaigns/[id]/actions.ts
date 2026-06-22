@@ -3,6 +3,41 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
+import { startAccountListActor } from "@/lib/apify"
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+
+export async function createAccountList(
+  campaignId: string,
+  repName: string,
+  industry: string,
+  companyIds: string[],
+  listName: string
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    if (!process.env.ACCOUNT_LIST_ACTOR_ID) return { error: "ACCOUNT_LIST_ACTOR_ID no configurado en Vercel" }
+    if (!companyIds.length) return { error: "No hay empresas seleccionadas con ID de Sales Nav" }
+
+    const { data: repConfig } = await supabaseAdmin
+      .from("rep_configs")
+      .select("linkedin_cookie")
+      .eq("rep_name", repName)
+      .maybeSingle()
+    if (!repConfig?.linkedin_cookie) return { error: `Cookie no configurada para ${repName}. Actualizala en Settings.` }
+
+    let cookieParsed: unknown
+    try { cookieParsed = JSON.parse(repConfig.linkedin_cookie) } catch {
+      return { error: "Cookie inválida — re-exportala desde Cookie-Editor como JSON" }
+    }
+
+    const webhookUrl = `${APP_URL}/api/webhooks/apify/list-created?campaignId=${campaignId}`
+    await startAccountListActor({ cookie: cookieParsed, companyIds, listName }, webhookUrl)
+    return { ok: true }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Error al crear la lista" }
+  }
+}
 
 export async function getCampaignWithAccounts(campaignId: string) {
   const [campaignRes, accountsRes] = await Promise.all([
