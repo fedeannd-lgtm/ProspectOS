@@ -18,6 +18,7 @@ import {
   ChevronUp,
   ChevronsUpDown,
   Check,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -32,6 +33,7 @@ import {
   triggerPeopleSearch,
   getJobStatus,
   getProspectsForCampaign,
+  deleteSearchJobs,
 } from "./actions"
 import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
@@ -97,7 +99,7 @@ function formatCountdown(ms: number) {
 
 type Prospect = { id: string; full_name: string; job_title: string; company_name: string; linkedin_url: string; connection_degree: string }
 
-function JobCard({ job }: { job: SearchJob }) {
+function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
@@ -161,6 +163,9 @@ function JobCard({ job }: { job: SearchJob }) {
                   : <ChevronDown className="size-3.5" />}
             </button>
           )}
+          <Button variant="ghost" size="icon" className="size-6 text-muted-foreground hover:text-destructive" onClick={onDelete}>
+            <Trash2 className="size-3.5" />
+          </Button>
         </div>
       </div>
 
@@ -219,6 +224,7 @@ export function PeopleSearchClient({
   const [maxResults, setMaxResults] = useState(100)
   const [isPending, startTransition] = useTransition()
   const [isSavingConfig, startSavingConfig] = useTransition()
+  const [isDeleting, startDeleting] = useTransition()
   const [error, setError] = useState("")
   const [pickedListId, setPickedListId] = useState("")
   const [pickedListName, setPickedListName] = useState("")
@@ -323,6 +329,17 @@ export function PeopleSearchClient({
   }
 
   const activeGeneratedUrl = selectedUrlIndex === 1 ? generatedUrl : generatedUrl2
+
+  function handleDeleteJob(id: string) {
+    setJobs((prev) => prev.filter((j) => j.id !== id))
+    startDeleting(() => deleteSearchJobs([id]))
+  }
+
+  function handleClearAll() {
+    const ids = jobs.map((j) => j.id)
+    setJobs([])
+    startDeleting(() => deleteSearchJobs(ids))
+  }
 
   function handleTrigger() {
     setError("")
@@ -717,8 +734,19 @@ export function PeopleSearchClient({
         {/* Jobs history */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Historial de búsquedas</CardTitle>
-            <CardDescription>Últimas 20 búsquedas</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Historial de búsquedas</CardTitle>
+                <CardDescription>Últimas 20 búsquedas</CardDescription>
+              </div>
+              {jobs.length > 0 && (
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive"
+                  onClick={handleClearAll} disabled={isDeleting}>
+                  <Trash2 className="mr-1.5 size-3.5" />
+                  Limpiar todo
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {jobs.length === 0 ? (
@@ -729,7 +757,7 @@ export function PeopleSearchClient({
             ) : (
               <div className="space-y-2">
                 {jobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard key={job.id} job={job} onDelete={() => handleDeleteJob(job.id)} />
                 ))}
               </div>
             )}
