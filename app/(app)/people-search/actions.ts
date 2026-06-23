@@ -114,14 +114,11 @@ export async function triggerPeopleSearch(
   repName: string,
   industry: string,
   maxResults: number,
-  urlIndex: 1 | 2 = 1
+  salesNavUrl: string
 ): Promise<{ jobId: string; estimatedReadyAt: string } | { error: string }> {
   try {
-    const config = await getPeopleSearchConfig(repName, industry)
-    if (!config) return { error: "No hay URL configurada para este rep+industria" }
-
-    const searchUrl = urlIndex === 2 ? config.base_url_2 : config.base_url
-    if (!searchUrl) return { error: `No hay URL${urlIndex === 2 ? " 2" : ""} configurada para este rep+industria` }
+    if (!salesNavUrl) return { error: "No hay URL configurada para esta búsqueda" }
+    const searchUrl = salesNavUrl
 
     const { data: repConfig } = await supabase
       .from("rep_configs")

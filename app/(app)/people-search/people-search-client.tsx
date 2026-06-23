@@ -336,7 +336,7 @@ export function PeopleSearchClient({
         selectedCampaign.rep_name,
         selectedCampaign.industry,
         maxResults,
-        selectedUrlIndex
+        activeGeneratedUrl
       )
       if ("error" in result) {
         setError(result.error)
