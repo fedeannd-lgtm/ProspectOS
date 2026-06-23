@@ -16,17 +16,14 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  ChevronsUpDown,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import {
   getPeopleSearchConfig,
   upsertPeopleSearchConfig,
@@ -213,6 +210,7 @@ export function PeopleSearchClient({
 }) {
   const [jobs, setJobs] = useState<SearchJob[]>(initialJobs)
   const [campaignId, setCampaignId] = useState("")
+  const [comboOpen, setComboOpen] = useState(false)
   const [config, setConfig] = useState<PeopleSearchConfig>(null)
   const [configLoading, setConfigLoading] = useState(false)
   const [showUrlEdit, setShowUrlEdit] = useState(false)
@@ -376,20 +374,42 @@ export function PeopleSearchClient({
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Campaña</label>
-              <Select value={campaignId} onValueChange={(v) => setCampaignId(v ?? "")}>
-                <SelectTrigger>
+              <Popover open={comboOpen} onOpenChange={setComboOpen}>
+                <PopoverTrigger
+                  className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs ring-offset-background hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   {selectedCampaign
-                    ? <span>{selectedCampaign.week_label} · {selectedCampaign.rep_name} · {selectedCampaign.industry}</span>
-                    : <span className="text-muted-foreground">Seleccionar campaña</span>}
-                </SelectTrigger>
-                <SelectContent>
-                  {campaigns.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.week_label} · {c.rep_name} · {c.industry}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    ? <span>{selectedCampaign.week_label} — <span className="text-muted-foreground">{selectedCampaign.rep_name} / {selectedCampaign.industry}</span></span>
+                    : <span className="text-muted-foreground">Seleccionar campaña…</span>}
+                  <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--available-width)] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar por rep, industria, semana…" />
+                    <CommandList>
+                      <CommandEmpty>Sin resultados.</CommandEmpty>
+                      {Object.entries(
+                        campaigns.reduce((groups, c) => {
+                          if (!groups[c.rep_name]) groups[c.rep_name] = []
+                          groups[c.rep_name].push(c)
+                          return groups
+                        }, {} as Record<string, typeof campaigns>)
+                      ).map(([rep, items]) => (
+                        <CommandGroup key={rep} heading={rep}>
+                          {items.map((c) => (
+                            <CommandItem key={c.id} value={`${c.week_label} ${c.rep_name} ${c.industry}`}
+                              onSelect={() => { setCampaignId(c.id); setComboOpen(false) }}>
+                              <Check className={`mr-2 size-4 ${campaignId === c.id ? "opacity-100" : "opacity-0"}`} />
+                              <span>{c.week_label}</span>
+                              <span className="ml-2 text-muted-foreground text-xs">{c.industry}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Link a empresas de la campaña */}
