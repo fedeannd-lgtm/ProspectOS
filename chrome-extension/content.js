@@ -1,46 +1,71 @@
 (async () => {
   const params = new URLSearchParams(window.location.search);
 
-  // ── Mode: count results (auto, triggered via postMessage when opened from ProspectOS) ──
-  if (window.location.pathname.startsWith('/sales/search/people') && window.opener) {
-    function findResultCount() {
-      const patterns = [/^([\d,.]+)\s+resultados?$/i, /^([\d,.]+)\s+results?$/i];
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      let node;
-      while ((node = walker.nextNode())) {
-        const text = node.textContent.trim();
-        for (const re of patterns) {
-          const m = text.match(re);
-          if (m) return parseInt(m[1].replace(/[,.\s]/g, ''), 10);
+  // ── Mode: count results (triggered via _pos/_cb params in the URL hash) ────────
+  if (window.location.pathname.startsWith('/sales/search/people')) {
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const pos = hashParams.get('_pos');
+    const cb = hashParams.get('_cb');
+
+    if (pos && cb) {
+      const [repName, industry] = pos.split('|').map(decodeURIComponent);
+
+      function findResultCount() {
+        const patterns = [/^([\d,.]+)\s+resultados?$/i, /^([\d,.]+)\s+results?$/i];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          const text = node.textContent.trim();
+          for (const re of patterns) {
+            const m = text.match(re);
+            if (m) return parseInt(m[1].replace(/[,.\s]/g, ''), 10);
+          }
         }
+        return null;
       }
-      return null;
-    }
-
-    let count = null;
-    const deadline = Date.now() + 15000;
-    while (Date.now() < deadline) {
-      count = findResultCount();
-      if (count !== null) break;
-      await new Promise(r => setTimeout(r, 600));
-    }
-
-    if (count !== null) {
-      window.opener.postMessage({ type: 'prospectOS_count', count }, '*');
 
       const badge = document.createElement('div');
       badge.style.cssText = `
         position:fixed;bottom:20px;right:20px;
-        background:rgba(22,163,74,0.92);color:#fff;border-radius:8px;
+        background:rgba(0,0,0,0.80);color:#fff;border-radius:8px;
         padding:10px 16px;font-size:13px;font-weight:500;
         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
         z-index:999999;pointer-events:none;
       `;
-      badge.textContent = `✅ ProspectOS: ${count.toLocaleString()} resultados`;
+      badge.textContent = '⏳ ProspectOS: leyendo resultados…';
       document.body.appendChild(badge);
+
+      let count = null;
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline) {
+        count = findResultCount();
+        if (count !== null) break;
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      if (count === null) {
+        badge.textContent = '⚠️ ProspectOS: no se encontró el conteo';
+        setTimeout(() => badge.remove(), 3000);
+        return;
+      }
+
+      badge.textContent = `⚡ ProspectOS: enviando ${count.toLocaleString()} resultados…`;
+
+      try {
+        await fetch(decodeURIComponent(cb), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ repName, industry, count }),
+        });
+        badge.style.background = 'rgba(22,163,74,0.92)';
+        badge.textContent = `✅ ProspectOS: ${count.toLocaleString()} resultados guardados`;
+      } catch {
+        badge.textContent = '⚠️ ProspectOS: error enviando conteo';
+      }
+
       setTimeout(() => badge.remove(), 3000);
+      return;
     }
-    return;
   }
 
   // ── Mode: create account list ────────────────────────────────────────────────

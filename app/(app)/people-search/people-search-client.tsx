@@ -33,7 +33,6 @@ import {
   getJobStatus,
   getProspectsForCampaign,
   deleteSearchJobs,
-  saveResultCount,
 } from "./actions"
 import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
@@ -69,6 +68,12 @@ type PeopleSearchConfig = {
 } | null
 
 const MAX_OPTIONS = [25, 100, 250, 500]
+
+function addCountParams(salesNavUrl: string, repName: string, industry: string) {
+  const cb = encodeURIComponent(`${window.location.origin}/api/webhooks/extension/people-count`)
+  const pos = `${encodeURIComponent(repName)}|${encodeURIComponent(industry)}`
+  return `${salesNavUrl}&_pos=${pos}&_cb=${cb}`
+}
 
 const JOB_STATUS_CONFIG = {
   pending:   { label: "Pendiente",  icon: Clock,        class: "bg-zinc-100 text-zinc-600" },
@@ -299,19 +304,6 @@ export function PeopleSearchClient({
       .catch(() => setError("Error cargando configuración"))
       .finally(() => setConfigLoading(false))
   }, [selectedCampaign?.id, selectedCampaign?.rep_name, selectedCampaign?.industry])
-
-  // Receive result count from Chrome extension via postMessage
-  useEffect(() => {
-    function handleMessage(e: MessageEvent) {
-      if (e.data?.type !== "prospectOS_count") return
-      const count = e.data.count as number
-      if (!selectedCampaign || typeof count !== "number") return
-      setConfig((prev) => prev ? { ...prev, last_result_count: count, last_count_checked_at: new Date().toISOString() } : prev)
-      saveResultCount(selectedCampaign.rep_name, selectedCampaign.industry, count).catch(() => {})
-    }
-    window.addEventListener("message", handleMessage)
-    return () => window.removeEventListener("message", handleMessage)
-  }, [selectedCampaign?.rep_name, selectedCampaign?.industry])
 
   // Poll running jobs every 10s
   useEffect(() => {
@@ -617,7 +609,8 @@ export function PeopleSearchClient({
                             )}
                           </div>
                           {generatedUrlList && <p className="text-xs font-medium text-green-800 truncate">{generatedUrlList}</p>}
-                          <a href={generatedUrl} target="_blank" rel="noreferrer"
+                          <a href={selectedCampaign ? addCountParams(generatedUrl, selectedCampaign.rep_name, selectedCampaign.industry) : generatedUrl}
+                            target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                             <ExternalLink className="size-3" /> Abrir en Sales Navigator
                           </a>
@@ -694,7 +687,8 @@ export function PeopleSearchClient({
                                 )}
                               </div>
                               {generatedUrl2List && <p className="text-xs font-medium text-green-800 truncate">{generatedUrl2List}</p>}
-                              <a href={generatedUrl2} target="_blank" rel="noreferrer"
+                              <a href={selectedCampaign ? addCountParams(generatedUrl2, selectedCampaign.rep_name, selectedCampaign.industry) : generatedUrl2}
+                                target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                                 <ExternalLink className="size-3" /> Abrir en Sales Navigator
                               </a>
