@@ -10,7 +10,6 @@ import {
   Clock,
   AlertTriangle,
   Link2,
-  RefreshCw,
   Timer,
   Building2,
   ExternalLink,
@@ -586,22 +585,6 @@ export function PeopleSearchClient({
                         </div>
                       )}
 
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" className="w-full"
-                          variant={generatedUrl ? "outline" : "default"}
-                          disabled={!pickedListId}
-                          onClick={() => {
-                            const url = updateAccountListInUrl(config.base_url, pickedListId, pickedListName, config.list_id)
-                            setGeneratedUrl(url)
-                            setGeneratedUrlList(pickedListName)
-                            if (config.base_url_2) setSelectedUrlIndex(1)
-                          }}
-                        >
-                          <RefreshCw className="mr-1.5 size-3.5" />
-                          {generatedUrl ? "Re-generar" : "Generar URL"}
-                        </Button>
-                      </div>
-
                       {generatedUrl && (
                         <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1" onClick={(e) => e.stopPropagation()}>
                           <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
@@ -669,22 +652,6 @@ export function PeopleSearchClient({
                             <Button variant="ghost" size="sm" className="h-5 px-1 text-[11px] ml-auto shrink-0"
                               onClick={() => { setShowUrlEdit2(true); setUrlInput2(config.base_url_2!) }}>
                               editar
-                            </Button>
-                          </div>
-
-                          <div onClick={(e) => e.stopPropagation()}>
-                            <Button size="sm" className="w-full"
-                              variant={generatedUrl2 ? "outline" : "default"}
-                              disabled={!pickedListId}
-                              onClick={() => {
-                                const url = updateAccountListInUrl(config.base_url_2!, pickedListId, pickedListName, config.list_id)
-                                setGeneratedUrl2(url)
-                                setGeneratedUrl2List(pickedListName)
-                                setSelectedUrlIndex(2)
-                              }}
-                            >
-                              <RefreshCw className="mr-1.5 size-3.5" />
-                              {generatedUrl2 ? "Re-generar" : "Generar URL 2"}
                             </Button>
                           </div>
 
