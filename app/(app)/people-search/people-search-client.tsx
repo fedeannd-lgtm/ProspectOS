@@ -703,7 +703,7 @@ export function PeopleSearchClient({
               {isPending ? (
                 <><Loader2 className="mr-2 size-4 animate-spin" /> Iniciando…</>
               ) : (
-                <><Users className="mr-2 size-4" /> Buscar personas</>
+                <><Users className="mr-2 size-4" /> Buscar personas{config?.base_url_2 ? ` URL ${selectedUrlIndex}` : ""}</>
               )}
             </Button>
           </CardContent>
