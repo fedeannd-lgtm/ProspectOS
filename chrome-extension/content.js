@@ -11,14 +11,17 @@
       const [repName, industry] = pos.split('|').map(decodeURIComponent);
 
       function findResultCount() {
-        const patterns = [/^([\d,.]+)\s+resultados?$/i, /^([\d,.]+)\s+results?$/i];
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          const text = node.textContent.trim();
-          for (const re of patterns) {
-            const m = text.match(re);
-            if (m) return parseInt(m[1].replace(/[,.\s]/g, ''), 10);
+        // innerText handles split DOM nodes (number and "resultados" in separate spans)
+        const text = document.body.innerText;
+        const patterns = [
+          /\b([\d,.]+)\s+resultados?\b/i,
+          /\b([\d,.]+)\s+results?\b/i,
+        ];
+        for (const re of patterns) {
+          const m = text.match(re);
+          if (m) {
+            const num = parseInt(m[1].replace(/[,.\s]/g, ''), 10);
+            if (num > 0) return num;
           }
         }
         return null;
