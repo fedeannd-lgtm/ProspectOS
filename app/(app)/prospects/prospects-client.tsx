@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useTransition } from "react"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Users, ExternalLink, Search, Download } from "lucide-react"
+import { Users, ExternalLink, Search, Download, Trash2 } from "lucide-react"
+import { deleteProspects } from "./actions"
 
 type Prospect = {
   id: string
@@ -68,11 +69,14 @@ function exportCsv(rows: Prospect[]) {
   URL.revokeObjectURL(url)
 }
 
-export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
+export function ProspectsClient({ prospects: initialProspects }: { prospects: Prospect[] }) {
+  const [prospects, setProspects] = useState(initialProspects)
   const [search, setSearch] = useState("")
   const [repFilter, setRepFilter] = useState("all")
   const [industryFilter, setIndustryFilter] = useState("all")
   const [campaignFilter, setCampaignFilter] = useState("all")
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [isPending, startTransition] = useTransition()
 
   const reps = useMemo(() => {
     const set = new Set(prospects.map((p) => p.campaigns?.rep_name).filter(Boolean) as string[])
@@ -84,7 +88,6 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
     return Array.from(set).sort()
   }, [prospects])
 
-  // Campaigns available after rep+industry filter
   const campaigns = useMemo(() => {
     const seen = new Map<string, string>()
     prospects.forEach((p) => {
@@ -96,7 +99,6 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
     return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]))
   }, [prospects, repFilter, industryFilter])
 
-  // Reset campaign filter when rep/industry changes and campaign is no longer available
   const campaignIds = useMemo(() => new Set(campaigns.map(([id]) => id)), [campaigns])
 
   const filtered = useMemo(() => {
@@ -114,6 +116,29 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
     })
   }, [prospects, search, repFilter, industryFilter, campaignFilter, campaignIds])
 
+  const filteredIds = useMemo(() => new Set(filtered.map((p) => p.id)), [filtered])
+  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selected.has(p.id))
+  const selectedInView = filtered.filter((p) => selected.has(p.id))
+
+  function toggleAll() {
+    if (allFilteredSelected) {
+      setSelected((prev) => { const next = new Set(prev); filtered.forEach((p) => next.delete(p.id)); return next })
+    } else {
+      setSelected((prev) => { const next = new Set(prev); filtered.forEach((p) => next.add(p.id)); return next })
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+
+  function handleDelete(ids: string[]) {
+    if (!ids.length) return
+    setProspects((prev) => prev.filter((p) => !ids.includes(p.id)))
+    setSelected((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next })
+    startTransition(() => deleteProspects(ids))
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -123,15 +148,28 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
             Todas las personas scrapeadas — {prospects.length} en total
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => exportCsv(filtered)}
-          disabled={filtered.length === 0}
-        >
-          <Download className="mr-2 size-4" />
-          Exportar CSV ({filtered.length})
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectedInView.length > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => handleDelete(selectedInView.map((p) => p.id))}
+              disabled={isPending}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Eliminar {selectedInView.length} seleccionados
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportCsv(filtered)}
+            disabled={filtered.length === 0}
+          >
+            <Download className="mr-2 size-4" />
+            Exportar CSV ({filtered.length})
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -188,6 +226,9 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
+                    <th className="px-3 py-2.5 w-8">
+                      <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} className="rounded" />
+                    </th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Nombre</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Cargo</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Empresa</th>
@@ -199,22 +240,22 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">ICP</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Estado</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Campaña</th>
+                    <th className="px-3 py-2.5 w-8" />
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((p) => {
                     const statusCfg = STATUS_LABELS[p.status] ?? STATUS_LABELS.scraped
                     return (
-                      <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <tr key={p.id} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${selected.has(p.id) ? "bg-blue-50/50" : ""}`}>
+                        <td className="px-3 py-2.5">
+                          <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} className="rounded" />
+                        </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
                             {p.linkedin_url ? (
-                              <a
-                                href={p.linkedin_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
-                              >
+                              <a href={p.linkedin_url} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium">
                                 {p.full_name || "—"}
                                 <ExternalLink className="size-3 opacity-60" />
                               </a>
@@ -245,8 +286,12 @@ export function ProspectsClient({ prospects }: { prospects: Prospect[] }) {
                             {statusCfg.label}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                          {campaignLabel(p) || "—"}
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground">{campaignLabel(p) || "—"}</td>
+                        <td className="px-3 py-2.5">
+                          <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDelete([p.id])} disabled={isPending}>
+                            <Trash2 className="size-3.5" />
+                          </Button>
                         </td>
                       </tr>
                     )

@@ -1,6 +1,7 @@
 "use server"
 
-import { supabase } from "@/lib/supabase"
+import { revalidatePath } from "next/cache"
+import { supabase, supabaseAdmin } from "@/lib/supabase"
 
 export async function getAllProspects() {
   const { data, error } = await supabase
@@ -17,4 +18,11 @@ export async function getAllProspects() {
     created_at: string; campaign_id: string
     campaigns: { week_label: string; rep_name: string; industry: string } | null
   }[]
+}
+
+export async function deleteProspects(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const { error } = await supabaseAdmin.from("prospects").delete().in("id", ids)
+  if (error) throw new Error(error.message)
+  revalidatePath("/prospects")
 }
