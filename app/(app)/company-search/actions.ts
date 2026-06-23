@@ -140,6 +140,13 @@ export async function advanceSearchPage(
 }
 
 
+export async function deleteSearchJobs(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const { error } = await supabaseAdmin.from("search_jobs").delete().in("id", ids)
+  if (error) throw new Error(error.message)
+  revalidatePath("/company-search")
+}
+
 export async function getJobStatus(jobId: string) {
   const { data, error } = await supabase
     .from("search_jobs")

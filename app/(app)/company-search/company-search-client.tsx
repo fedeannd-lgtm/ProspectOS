@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
-import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer, ChevronsUpDown, Check } from "lucide-react"
+import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer, ChevronsUpDown, Check, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus } from "./actions"
+import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus, deleteSearchJobs } from "./actions"
 
 type Campaign = {
   id: string
@@ -73,7 +73,7 @@ function formatCountdown(ms: number) {
   return min > 0 ? `~${min} min` : `${sec}s`
 }
 
-function JobCard({ job }: { job: SearchJob }) {
+function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
@@ -102,9 +102,14 @@ function JobCard({ job }: { job: SearchJob }) {
             </p>
           )}
         </div>
-        <span className="ml-3 shrink-0 text-xs text-muted-foreground">
-          {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
-        </span>
+        <div className="ml-3 flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground">
+            {new Date(job.created_at).toLocaleDateString("es", { day: "numeric", month: "short" })}
+          </span>
+          <Button variant="ghost" size="icon" className="size-6 text-muted-foreground hover:text-destructive" onClick={onDelete}>
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
       </div>
       {job.status === "completed" && (
         <div className="flex items-center gap-2">
@@ -136,9 +141,21 @@ export function CompanySearchClient({
   const [comboOpen, setComboOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [isSavingConfig, startSavingConfig] = useTransition()
+  const [isDeleting, startDeleting] = useTransition()
   const [error, setError] = useState("")
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
+
+  function handleDeleteJob(id: string) {
+    setJobs((prev) => prev.filter((j) => j.id !== id))
+    startDeleting(() => deleteSearchJobs([id]))
+  }
+
+  function handleClearAll() {
+    const ids = jobs.map((j) => j.id)
+    setJobs([])
+    startDeleting(() => deleteSearchJobs(ids))
+  }
 
   useEffect(() => {
     if (!selectedCampaign) {
@@ -416,8 +433,19 @@ export function CompanySearchClient({
         {/* Jobs history */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Historial de búsquedas</CardTitle>
-            <CardDescription>Últimas 20 búsquedas</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Historial de búsquedas</CardTitle>
+                <CardDescription>Últimas 20 búsquedas</CardDescription>
+              </div>
+              {jobs.length > 0 && (
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-destructive"
+                  onClick={handleClearAll} disabled={isDeleting}>
+                  <Trash2 className="mr-1.5 size-3.5" />
+                  Limpiar todo
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {jobs.length === 0 ? (
@@ -428,7 +456,7 @@ export function CompanySearchClient({
             ) : (
               <div className="space-y-2">
                 {jobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard key={job.id} job={job} onDelete={() => handleDeleteJob(job.id)} />
                 ))}
               </div>
             )}
