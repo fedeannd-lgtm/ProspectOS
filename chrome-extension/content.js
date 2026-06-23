@@ -1,21 +1,10 @@
 (async () => {
   const params = new URLSearchParams(window.location.search);
-  if (!params.has('prospectOS')) return;
 
-  // ── Mode: count results ──────────────────────────────────────────────────────
-  if (params.get('prospectOS') === 'count') {
-    const repName = decodeURIComponent(params.get('repName') || '');
-    const industry = decodeURIComponent(params.get('industry') || '');
-    const callback = params.get('callback');
-
-    if (!repName || !industry || !callback) return;
-
-    // Sales Navigator renders the count asynchronously — poll the DOM for up to 15s
+  // ── Mode: count results (auto, triggered via postMessage when opened from ProspectOS) ──
+  if (window.location.pathname.startsWith('/sales/search/people') && window.opener) {
     function findResultCount() {
-      const patterns = [
-        /^([\d,.]+)\s+resultados?$/i,
-        /^([\d,.]+)\s+results?$/i,
-      ];
+      const patterns = [/^([\d,.]+)\s+resultados?$/i, /^([\d,.]+)\s+results?$/i];
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       let node;
       while ((node = walker.nextNode())) {
@@ -28,49 +17,34 @@
       return null;
     }
 
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position:fixed;bottom:24px;right:24px;
-      background:rgba(0,0,0,0.82);color:#fff;border-radius:10px;
-      padding:12px 18px;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-      z-index:999999;display:flex;align-items:center;gap:10px;
-    `;
-    overlay.innerHTML = '<span style="opacity:.7">⏳ ProspectOS: leyendo resultados…</span>';
-    document.body.appendChild(overlay);
-
     let count = null;
     const deadline = Date.now() + 15000;
-
     while (Date.now() < deadline) {
       count = findResultCount();
       if (count !== null) break;
       await new Promise(r => setTimeout(r, 600));
     }
 
-    if (count === null) {
-      overlay.innerHTML = '<span style="opacity:.7">⚠️ ProspectOS: no se encontró el conteo</span>';
-      setTimeout(() => overlay.remove(), 3000);
-      return;
+    if (count !== null) {
+      window.opener.postMessage({ type: 'prospectOS_count', count }, '*');
+
+      const badge = document.createElement('div');
+      badge.style.cssText = `
+        position:fixed;bottom:20px;right:20px;
+        background:rgba(22,163,74,0.92);color:#fff;border-radius:8px;
+        padding:10px 16px;font-size:13px;font-weight:500;
+        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        z-index:999999;pointer-events:none;
+      `;
+      badge.textContent = `✅ ProspectOS: ${count.toLocaleString()} resultados`;
+      document.body.appendChild(badge);
+      setTimeout(() => badge.remove(), 3000);
     }
-
-    overlay.innerHTML = `<span>⚡ ProspectOS: enviando <strong>${count.toLocaleString()}</strong> resultados…</span>`;
-
-    try {
-      await fetch(callback, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repName, industry, count }),
-      });
-      overlay.innerHTML = `<span>✅ <strong>${count.toLocaleString()} resultados</strong> guardados en ProspectOS</span>`;
-    } catch {
-      overlay.innerHTML = '<span style="opacity:.7">⚠️ ProspectOS: error enviando conteo</span>';
-    }
-
-    setTimeout(() => overlay.remove(), 3000);
     return;
   }
 
   // ── Mode: create account list ────────────────────────────────────────────────
+  if (!params.has('prospectOS')) return;
   if (params.get('prospectOS') !== 'create') return;
 
   const campaignId = params.get('campaignId');

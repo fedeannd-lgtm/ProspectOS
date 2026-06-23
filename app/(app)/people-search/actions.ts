@@ -192,6 +192,19 @@ export async function getProspectsForCampaign(campaignId: string) {
   return data ?? []
 }
 
+export async function saveResultCount(repName: string, industry: string, count: number): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("people_search_configs")
+    .update({
+      last_result_count: count,
+      last_count_checked_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+  if (error) throw new Error(error.message)
+}
+
 export async function deleteSearchJobs(ids: string[]): Promise<void> {
   if (!ids.length) return
   const { error } = await supabaseAdmin.from("search_jobs").delete().in("id", ids)
