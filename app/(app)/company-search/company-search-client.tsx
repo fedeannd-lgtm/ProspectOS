@@ -2,18 +2,13 @@
 
 import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
-import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer } from "lucide-react"
+import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer, ChevronsUpDown, Check } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus } from "./actions"
 
 type Campaign = {
@@ -138,6 +133,7 @@ export function CompanySearchClient({
   const [urlInput, setUrlInput] = useState("")
   const [pageInput, setPageInput] = useState(1)
   const [maxResults, setMaxResults] = useState(50)
+  const [comboOpen, setComboOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [isSavingConfig, startSavingConfig] = useTransition()
   const [error, setError] = useState("")
@@ -269,18 +265,43 @@ export function CompanySearchClient({
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Campaña</label>
-              <Select value={campaignId} onValueChange={(v) => setCampaignId(v ?? "")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar campaña" />
-                </SelectTrigger>
-                <SelectContent>
-                  {campaigns.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.week_label} — {c.rep_name} / {c.industry}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={comboOpen} onOpenChange={setComboOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" aria-expanded={comboOpen}
+                    className="w-full justify-between font-normal">
+                    {selectedCampaign
+                      ? <span>{selectedCampaign.week_label} — <span className="text-muted-foreground">{selectedCampaign.rep_name} / {selectedCampaign.industry}</span></span>
+                      : <span className="text-muted-foreground">Seleccionar campaña…</span>}
+                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar por rep, industria, semana…" />
+                    <CommandList>
+                      <CommandEmpty>Sin resultados.</CommandEmpty>
+                      {Object.entries(
+                        campaigns.reduce((groups, c) => {
+                          if (!groups[c.rep_name]) groups[c.rep_name] = []
+                          groups[c.rep_name].push(c)
+                          return groups
+                        }, {} as Record<string, typeof campaigns>)
+                      ).map(([rep, items]) => (
+                        <CommandGroup key={rep} heading={rep}>
+                          {items.map((c) => (
+                            <CommandItem key={c.id} value={`${c.week_label} ${c.rep_name} ${c.industry}`}
+                              onSelect={() => { setCampaignId(c.id); setComboOpen(false) }}>
+                              <Check className={`mr-2 size-4 ${campaignId === c.id ? "opacity-100" : "opacity-0"}`} />
+                              <span>{c.week_label}</span>
+                              <span className="ml-2 text-muted-foreground text-xs">{c.industry}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {selectedCampaign && (
