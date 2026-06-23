@@ -112,35 +112,72 @@ function normalizeCompanyName(name: string): string {
     .trim()
 }
 
+const STOPWORDS = new Set(["del", "los", "las", "una", "uno", "con", "por", "que", "son", "sus", "and", "the", "for"])
+
+function sigWords(s: string): string[] {
+  return s.split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+}
+
 async function processPeopleSearch(
   jobId: string,
   job: { campaign_id: string },
   people: ApifyPerson[]
 ) {
-  // Load all accounts globally to match company name → domain + account_id
   const { data: accounts } = await supabaseAdmin
     .from("accounts")
     .select("id, company_name, domain, campaign_id")
 
-  const nameToAccount = new Map<string, { id: string; domain: string }>()
-  // Insert campaign accounts last so they take priority over other campaigns
+  type AccountVal = { id: string; domain: string; norm: string }
+  const nameToAccount = new Map<string, AccountVal>()
+  // Current campaign accounts inserted last → override others on exact match
   const sorted = [...(accounts ?? [])].sort((a, b) =>
     a.campaign_id === job.campaign_id ? 1 : b.campaign_id === job.campaign_id ? -1 : 0
   )
   sorted.forEach((a) => {
     if (a.company_name) {
-      nameToAccount.set(normalizeCompanyName(a.company_name), {
-        id: a.id,
-        domain: extractDomain(a.domain ?? ""),
-      })
+      const norm = normalizeCompanyName(a.company_name)
+      nameToAccount.set(norm, { id: a.id, domain: extractDomain(a.domain ?? ""), norm })
     }
   })
+
+  function findBestMatch(companyName: string): AccountVal | null {
+    if (!companyName) return null
+    const norm = normalizeCompanyName(companyName)
+    if (!norm) return null
+
+    // 1. Exact normalized match
+    const exact = nameToAccount.get(norm)
+    if (exact) return exact
+
+    // 2. Substring — account name contained in prospect name (or vice versa), min 6 chars
+    let subMatch: AccountVal | null = null
+    let bestSubLen = 0
+    for (const [accountNorm, val] of nameToAccount.entries()) {
+      if (accountNorm.length >= 6 && norm.includes(accountNorm) && accountNorm.length > bestSubLen) {
+        subMatch = val; bestSubLen = accountNorm.length
+      } else if (norm.length >= 6 && accountNorm.includes(norm) && norm.length > bestSubLen) {
+        subMatch = val; bestSubLen = norm.length
+      }
+    }
+    if (subMatch) return subMatch
+
+    // 3. Word overlap — share ≥2 significant words
+    const pWords = sigWords(norm)
+    if (pWords.length < 2) return null
+    let best: AccountVal | null = null
+    let bestCount = 0
+    for (const [accountNorm, val] of nameToAccount.entries()) {
+      const aWords = sigWords(accountNorm)
+      const shared = pWords.filter((w) => aWords.includes(w)).length
+      if (shared >= 2 && shared > bestCount) { bestCount = shared; best = val }
+    }
+    return best
+  }
 
   const degreeLabel: Record<number, string> = { 1: "FIRST", 2: "SECOND", 3: "THIRD" }
 
   const prospects = people.map((p) => {
-    const normalizedName = p.companyName ? normalizeCompanyName(p.companyName) : ""
-    const matched = normalizedName ? nameToAccount.get(normalizedName) : null
+    const matched = findBestMatch(p.companyName ?? "")
     const startedOnMonth = p.currentPositions?.[0]?.startedOn?.month ?? null
     const highlights = p.highlights
       ?.map((h) => h.name || h.description || "")
