@@ -266,16 +266,15 @@ export function CompanySearchClient({
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Campaña</label>
               <Popover open={comboOpen} onOpenChange={setComboOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" aria-expanded={comboOpen}
-                    className="w-full justify-between font-normal">
-                    {selectedCampaign
-                      ? <span>{selectedCampaign.week_label} — <span className="text-muted-foreground">{selectedCampaign.rep_name} / {selectedCampaign.industry}</span></span>
-                      : <span className="text-muted-foreground">Seleccionar campaña…</span>}
-                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-                  </Button>
+                <PopoverTrigger
+                  className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs ring-offset-background hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {selectedCampaign
+                    ? <span>{selectedCampaign.week_label} — <span className="text-muted-foreground">{selectedCampaign.rep_name} / {selectedCampaign.industry}</span></span>
+                    : <span className="text-muted-foreground">Seleccionar campaña…</span>}
+                  <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
                 </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <PopoverContent className="w-[var(--available-width)] p-0" align="start">
                   <Command>
                     <CommandInput placeholder="Buscar por rep, industria, semana…" />
                     <CommandList>
