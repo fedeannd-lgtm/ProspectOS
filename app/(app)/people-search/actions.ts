@@ -185,7 +185,7 @@ export async function triggerPeopleSearch(
 export async function getProspectsForCampaign(campaignId: string) {
   const { data, error } = await supabase
     .from("prospects")
-    .select("id, full_name, job_title, company_name, linkedin_url, connection_degree")
+    .select("id, first_name, last_name, full_name, job_title, company_name, linkedin_url, connection_degree, location")
     .eq("campaign_id", campaignId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)

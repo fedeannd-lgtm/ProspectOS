@@ -22,6 +22,7 @@ type ApifyPerson = {
   headline?: string
   profileUrl?: string
   companyName?: string
+  location?: string
   premium?: boolean
   connectionType?: number           // 1=FIRST, 2=SECOND, 3=THIRD
   currentPositions?: Array<{
@@ -196,6 +197,7 @@ async function processPeopleSearch(
       company_domain: matched?.domain ?? "",
       is_premium: p.premium ?? false,
       connection_degree: p.connectionType ? (degreeLabel[p.connectionType] ?? String(p.connectionType)) : "",
+      location: p.location ?? "",
       started_role_months: startedOnMonth,
       highlights,
     }

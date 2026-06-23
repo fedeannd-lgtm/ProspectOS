@@ -109,7 +109,7 @@ function formatCountdown(ms: number) {
   return min > 0 ? `~${min} min` : `${sec}s`
 }
 
-type Prospect = { id: string; full_name: string; job_title: string; company_name: string; linkedin_url: string; connection_degree: string }
+type Prospect = { id: string; first_name: string; last_name: string; full_name: string; job_title: string; company_name: string; linkedin_url: string; connection_degree: string; location: string }
 
 function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
@@ -190,14 +190,19 @@ function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Nombre</th>
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Apellido</th>
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Nombre completo</th>
                   <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Cargo</th>
                   <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Empresa</th>
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Ubicación</th>
                   <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Grado</th>
                 </tr>
               </thead>
               <tbody>
                 {prospects.map((p) => (
                   <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
+                    <td className="px-3 py-1.5">{p.first_name || "—"}</td>
+                    <td className="px-3 py-1.5">{p.last_name || "—"}</td>
                     <td className="px-3 py-1.5">
                       {p.linkedin_url ? (
                         <a href={p.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
@@ -207,6 +212,7 @@ function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
                     </td>
                     <td className="px-3 py-1.5 text-muted-foreground">{p.job_title || "—"}</td>
                     <td className="px-3 py-1.5 text-muted-foreground">{p.company_name || "—"}</td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{p.location || "—"}</td>
                     <td className="px-3 py-1.5 text-muted-foreground">{p.connection_degree || "—"}</td>
                   </tr>
                 ))}
