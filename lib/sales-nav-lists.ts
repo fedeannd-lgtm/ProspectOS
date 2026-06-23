@@ -33,10 +33,8 @@ export function updateAccountListInUrl(
     .replace(/%2C/g, '%252C')
     .replace(/%3A/g, '%253A')
 
-  const newEntry = `%2C(id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist)`
+  // Replace the entire ACCOUNT_LIST block with a clean one containing only the selected list
+  const newGroup = `(type%3AACCOUNT_LIST%2Cvalues%3AList((id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist)))`
 
-  // Insert before the )) that close values:List and the outer group
-  const insertAt = closeIdx - 1
-
-  return currentUrl.slice(0, insertAt) + newEntry + currentUrl.slice(insertAt)
+  return currentUrl.slice(0, openIdx) + newGroup + currentUrl.slice(closeIdx + 1)
 }
