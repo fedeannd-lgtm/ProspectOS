@@ -420,7 +420,7 @@ export function PeopleSearchClient({
                 className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors"
               >
                 <Building2 className="size-4 text-muted-foreground shrink-0" />
-                <span>Ver empresas y generar script para Sales Nav</span>
+                <span>Ver empresas de la campaña</span>
               </Link>
             )}
 
@@ -432,11 +432,11 @@ export function PeopleSearchClient({
 
                   {availableLists.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Sin listas configuradas.{" "}
+                      Sin lista creada para esta campaña.{" "}
                       <Link href={`/campaigns/${campaignId}`} className="underline underline-offset-2">
-                        Ver empresas
+                        Ir a la campaña
                       </Link>
-                      {" "}→ seleccioná empresas → ingresá nombre + ID → "Actualizar People Search"
+                      {" "}→ seleccioná empresas → "Crear Account List" con la extensión de Chrome.
                     </p>
                   ) : (
                     <>
