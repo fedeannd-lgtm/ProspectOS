@@ -673,15 +673,25 @@ export function PeopleSearchClient({
                     onClick={() => setSelectedUrlIndex(1)}
                     className={`flex-1 rounded-md border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 1 ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted/50"}`}
                   >
-                    <span className="font-medium">URL 1</span>
-                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 1 ? "opacity-70" : "text-muted-foreground"}`}>{config.base_url.slice(0, 38)}…</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">URL 1</span>
+                      {generatedUrl && <span className="text-[10px] text-green-500 font-medium">✓ generada</span>}
+                    </div>
+                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 1 ? "opacity-70" : "text-muted-foreground"}`}>
+                      {(generatedUrl ?? config.base_url).slice(0, 38)}…
+                    </span>
                   </button>
                   <button
                     onClick={() => setSelectedUrlIndex(2)}
                     className={`flex-1 rounded-md border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 2 ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted/50"}`}
                   >
-                    <span className="font-medium">URL 2</span>
-                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 2 ? "opacity-70" : "text-muted-foreground"}`}>{config.base_url_2.slice(0, 38)}…</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">URL 2</span>
+                      {generatedUrl2 && <span className="text-[10px] text-green-500 font-medium">✓ generada</span>}
+                    </div>
+                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 2 ? "opacity-70" : "text-muted-foreground"}`}>
+                      {(generatedUrl2 ?? config.base_url_2).slice(0, 38)}…
+                    </span>
                   </button>
                 </div>
               </div>
