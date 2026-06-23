@@ -41,7 +41,7 @@ type SearchConfig = {
   next_page: number
 } | null
 
-const MAX_OPTIONS = [25, 50, 100, 200]
+const MAX_OPTIONS = [1, 25, 50, 100, 200]
 
 const JOB_STATUS_CONFIG = {
   pending:    { label: "Pendiente",   icon: Clock,        class: "bg-zinc-100 text-zinc-600" },
