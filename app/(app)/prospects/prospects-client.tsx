@@ -9,12 +9,15 @@ import { deleteProspects } from "./actions"
 
 type Prospect = {
   id: string
+  first_name: string
+  last_name: string
   full_name: string
   job_title: string
   company_name: string
   company_domain: string | null
   linkedin_url: string
   connection_degree: string
+  location: string | null
   email: string | null
   icp_score: number
   is_premium: boolean
@@ -40,15 +43,18 @@ function campaignLabel(p: Prospect) {
 }
 
 function exportCsv(rows: Prospect[]) {
-  const headers = ["Nombre", "Cargo", "Empresa", "Dominio", "Email", "LinkedIn", "Grado", "Antigüedad (mes)", "Premium", "Highlights", "ICP", "Estado", "Campaña"]
+  const headers = ["Nombre", "Apellido", "Nombre completo", "Cargo", "Empresa", "Dominio", "Ubicación", "Email", "LinkedIn", "Grado", "Antigüedad (mes)", "Premium", "Highlights", "ICP", "Estado", "Campaña"]
   const escape = (v: string | null | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`
   const lines = [
     headers.join(","),
     ...rows.map((p) => [
+      escape(p.first_name),
+      escape(p.last_name),
       escape(p.full_name),
       escape(p.job_title),
       escape(p.company_name),
       escape(p.company_domain),
+      escape(p.location),
       escape(p.email),
       escape(p.linkedin_url),
       escape(p.connection_degree),
@@ -230,9 +236,12 @@ export function ProspectsClient({ prospects: initialProspects }: { prospects: Pr
                       <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} className="rounded" />
                     </th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Nombre</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Apellido</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Nombre completo</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Cargo</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Empresa</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Dominio</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Ubicación</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Grado</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Mes inicio</th>
@@ -251,6 +260,8 @@ export function ProspectsClient({ prospects: initialProspects }: { prospects: Pr
                         <td className="px-3 py-2.5">
                           <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} className="rounded" />
                         </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{p.first_name || "—"}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{p.last_name || "—"}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
                             {p.linkedin_url ? (
@@ -270,6 +281,7 @@ export function ProspectsClient({ prospects: initialProspects }: { prospects: Pr
                         <td className="px-4 py-2.5 text-muted-foreground">{p.job_title || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.company_name || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground font-mono text-xs">{p.company_domain || "—"}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{p.location || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground font-mono text-xs">{p.email || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.connection_degree || "—"}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{p.started_role_months ?? "—"}</td>
