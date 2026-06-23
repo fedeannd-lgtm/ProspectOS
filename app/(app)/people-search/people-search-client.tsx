@@ -58,9 +58,24 @@ type SearchJob = {
   campaigns: { week_label: string; rep_name: string; industry: string } | null
 }
 
-type PeopleSearchConfig = { base_url: string; base_url_2: string | null; list_id: string | null; list_name: string | null } | null
+type PeopleSearchConfig = {
+  base_url: string
+  base_url_2: string | null
+  list_id: string | null
+  list_name: string | null
+  last_result_count: number | null
+  last_count_checked_at: string | null
+} | null
 
 const MAX_OPTIONS = [25, 100, 250, 500]
+
+function buildCountUrl(salesNavUrl: string, repName: string, industry: string) {
+  const hashIdx = salesNavUrl.indexOf("#")
+  const base = hashIdx !== -1 ? salesNavUrl.slice(0, hashIdx) : salesNavUrl
+  const fragment = hashIdx !== -1 ? salesNavUrl.slice(hashIdx) : ""
+  const callback = encodeURIComponent(`${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/extension/people-count`)
+  return `${base}?prospectOS=count&repName=${encodeURIComponent(repName)}&industry=${encodeURIComponent(industry)}&callback=${callback}${fragment}`
+}
 
 const JOB_STATUS_CONFIG = {
   pending:   { label: "Pendiente",  icon: Clock,        class: "bg-zinc-100 text-zinc-600" },
@@ -323,7 +338,7 @@ export function PeopleSearchClient({
     startSavingConfig(async () => {
       try {
         await upsertPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry, urlInput)
-        setConfig((prev) => ({ base_url: urlInput, base_url_2: prev?.base_url_2 ?? null, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null }))
+        setConfig((prev) => ({ base_url: urlInput, base_url_2: prev?.base_url_2 ?? null, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null, last_result_count: prev?.last_result_count ?? null, last_count_checked_at: prev?.last_count_checked_at ?? null }))
         setShowUrlEdit(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error guardando configuración")
@@ -586,10 +601,18 @@ export function PeopleSearchClient({
                       )}
 
                       {generatedUrl && (
-                        <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1" onClick={(e) => e.stopPropagation()}>
-                          <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
+                        <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
+                            {config.last_result_count !== null && (
+                              <span className="text-[10px] font-semibold text-green-700">
+                                {config.last_result_count.toLocaleString()} resultados
+                              </span>
+                            )}
+                          </div>
                           {generatedUrlList && <p className="text-xs font-medium text-green-800 truncate">{generatedUrlList}</p>}
-                          <a href={generatedUrl} target="_blank" rel="noreferrer"
+                          <a href={selectedCampaign ? buildCountUrl(generatedUrl, selectedCampaign.rep_name, selectedCampaign.industry) : generatedUrl}
+                            target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                             <ExternalLink className="size-3" /> Abrir en Sales Navigator
                           </a>
@@ -656,10 +679,18 @@ export function PeopleSearchClient({
                           </div>
 
                           {generatedUrl2 && (
-                            <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1" onClick={(e) => e.stopPropagation()}>
-                              <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
+                            <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
+                                {config.last_result_count !== null && (
+                                  <span className="text-[10px] font-semibold text-green-700">
+                                    {config.last_result_count.toLocaleString()} resultados
+                                  </span>
+                                )}
+                              </div>
                               {generatedUrl2List && <p className="text-xs font-medium text-green-800 truncate">{generatedUrl2List}</p>}
-                              <a href={generatedUrl2} target="_blank" rel="noreferrer"
+                              <a href={selectedCampaign ? buildCountUrl(generatedUrl2, selectedCampaign.rep_name, selectedCampaign.industry) : generatedUrl2}
+                                target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                                 <ExternalLink className="size-3" /> Abrir en Sales Navigator
                               </a>
@@ -687,6 +718,18 @@ export function PeopleSearchClient({
                     {n}
                   </Button>
                 ))}
+                <Input
+                  type="number"
+                  min={1}
+                  max={2500}
+                  placeholder="otro"
+                  className="w-20 text-sm text-center"
+                  value={MAX_OPTIONS.includes(maxResults) ? "" : maxResults}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10)
+                    if (!isNaN(v) && v > 0) setMaxResults(v)
+                  }}
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 Listo en ~{estimatedMin} min
