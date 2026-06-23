@@ -315,10 +315,13 @@ export function PeopleSearchClient({
     })
   }
 
+  const activeGeneratedUrl = selectedUrlIndex === 1 ? generatedUrl : generatedUrl2
+
   function handleTrigger() {
     setError("")
     if (!campaignId || !selectedCampaign) { setError("Seleccioná una campaña"); return }
     if (!config) { setError("Configurá la URL de búsqueda primero"); return }
+    if (!activeGeneratedUrl) { setError("Generá la URL primero — asegurate de usar la lista de esta campaña"); return }
 
     startTransition(async () => {
       const result = await triggerPeopleSearch(
@@ -689,7 +692,7 @@ export function PeopleSearchClient({
             <Button
               className="w-full"
               onClick={handleTrigger}
-              disabled={isPending || !config || !campaignId}
+              disabled={isPending || !config || !campaignId || !activeGeneratedUrl}
             >
               {isPending ? (
                 <><Loader2 className="mr-2 size-4 animate-spin" /> Iniciando…</>
