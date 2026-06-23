@@ -29,11 +29,11 @@ import {
   getPeopleSearchConfig,
   upsertPeopleSearchConfig,
   upsertPeopleSearchConfig2,
-  generatePeopleSearchUrl,
   triggerPeopleSearch,
   getJobStatus,
   getProspectsForCampaign,
 } from "./actions"
+import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
 type Campaign = {
   id: string
@@ -228,7 +228,6 @@ export function PeopleSearchClient({
   const [urlInput2, setUrlInput2] = useState("")
   const [showUrlEdit2, setShowUrlEdit2] = useState(false)
   const [isSavingConfig2, startSavingConfig2] = useTransition()
-  const [isGenerating, setIsGenerating] = useState(false)
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
@@ -266,6 +265,14 @@ export function PeopleSearchClient({
           setUrlInput2(cfg.base_url_2 ?? "")
           setShowUrlEdit(false)
           setShowUrlEdit2(false)
+          const listId = selectedCampaign!.list_id
+          const listName = selectedCampaign!.list_name
+          if (listId && listName) {
+            setGeneratedUrl(updateAccountListInUrl(cfg.base_url, listId, listName))
+            if (cfg.base_url_2) {
+              setGeneratedUrl2(updateAccountListInUrl(cfg.base_url_2, listId, listName))
+            }
+          }
         } else {
           setUrlInput("")
           setUrlInput2("")
@@ -448,10 +455,20 @@ export function PeopleSearchClient({
                         onValueChange={(v: string | null) => {
                           if (!v) return
                           const list = availableLists.find((l) => l.list_id === v)
+                          const name = list?.list_name || ""
                           setPickedListId(v)
-                          setPickedListName(list?.list_name || "")
-                          setGeneratedUrl(null)
-                      
+                          setPickedListName(name)
+                          if (config) {
+                            setGeneratedUrl(updateAccountListInUrl(config.base_url, v, name))
+                            if (config.base_url_2) {
+                              setGeneratedUrl2(updateAccountListInUrl(config.base_url_2, v, name))
+                            } else {
+                              setGeneratedUrl2(null)
+                            }
+                          } else {
+                            setGeneratedUrl(null)
+                            setGeneratedUrl2(null)
+                          }
                         }}
                       >
                         <SelectTrigger>
@@ -468,58 +485,14 @@ export function PeopleSearchClient({
                         </SelectContent>
                       </Select>
 
-                      <Button
-                        size="sm"
-                        disabled={!pickedListId || !config || isGenerating || configLoading}
-                        onClick={async () => {
-                          setIsGenerating(true)
-                          setError("")
-                          try {
-                            const url = await generatePeopleSearchUrl(
-                              config!.base_url,
-                              pickedListId,
-                              pickedListName
-                            )
-                            setGeneratedUrl(url)
-                          } catch (e) {
-                            setError(e instanceof Error ? e.message : "Error generando URL")
-                          } finally {
-                            setIsGenerating(false)
-                          }
-                        }}
-                      >
-                        {isGenerating
-                          ? <><Loader2 className="mr-2 size-3.5 animate-spin" /> Generando…</>
-                          : <><RefreshCw className="mr-2 size-3.5" /> Generar URL</>}
-                      </Button>
-
-                      {!config && !configLoading && (
-                        <p className="text-xs text-amber-600 flex items-center gap-1">
-                          <AlertTriangle className="size-3.5" /> Configurá la URL base primero (abajo)
-                        </p>
-                      )}
-
-                      {generatedUrl && (
-                        <div className="rounded-md border px-3 py-2 space-y-1.5">
-                          <p className="text-xs font-mono text-muted-foreground truncate">{generatedUrl.slice(0, 60)}…</p>
-                          <a
-                            href={generatedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800"
-                          >
-                            <ExternalLink className="size-3.5" /> Abrir en Sales Navigator
-                          </a>
-                        </div>
-                      )}
                     </>
                   )}
                 </div>
 
-                {/* URL base */}
+                {/* URL panels */}
                 {configLoading ? (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
-                    <Loader2 className="size-3 animate-spin" /> Cargando…
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" /> Cargando configuración…
                   </div>
                 ) : !config ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
@@ -527,10 +500,8 @@ export function PeopleSearchClient({
                       <AlertTriangle className="size-4 shrink-0" />
                       <span className="font-medium">Configurá la URL base de People Search</span>
                     </div>
-                    <p className="text-xs text-amber-600">URL de búsqueda de personas en Sales Navigator (con los filtros base, sin lista de cuentas). Se guarda una vez por rep + industria.</p>
-                    {!showUrlEdit ? (
-                      <Button size="sm" variant="outline" onClick={() => setShowUrlEdit(true)}>Configurar URL base</Button>
-                    ) : (
+                    <p className="text-xs text-amber-600">URL de búsqueda en Sales Navigator con filtros base. Se guarda una vez por rep + industria.</p>
+                    {showUrlEdit ? (
                       <div className="space-y-2">
                         <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
                           placeholder="https://www.linkedin.com/sales/search/people#query=..."
@@ -542,105 +513,167 @@ export function PeopleSearchClient({
                           <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
                         </div>
                       </div>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => setShowUrlEdit(true)}>Configurar URL base</Button>
                     )}
-                  </div>
-                ) : showUrlEdit ? (
-                  <div className="rounded-lg border p-3 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">URL base de People Search</p>
-                    <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
-                      placeholder="https://www.linkedin.com/sales/search/people#query=..."
-                      className="font-mono text-xs" />
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
-                        {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
-                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
-                    <Link2 className="size-3 shrink-0" />
-                    <span className="truncate font-mono">{config.base_url.slice(0, 45)}…</span>
-                    <Button variant="ghost" size="sm" className="h-5 px-1 text-xs ml-auto shrink-0"
-                      onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}>
-                      editar URL base
-                    </Button>
-                  </div>
-                )}
-
-                {/* URL base 2 */}
-                {config && (
-                  <>
-                    {config.base_url_2 && !showUrlEdit2 ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
-                          <Link2 className="size-3 shrink-0" />
-                          <span className="truncate font-mono">{config.base_url_2.slice(0, 45)}…</span>
-                          <Button variant="ghost" size="sm" className="h-5 px-1 text-xs ml-auto shrink-0"
-                            onClick={() => { setShowUrlEdit2(true); setUrlInput2(config.base_url_2 ?? "") }}>
-                            editar URL base 2
-                          </Button>
-                        </div>
-                        <Button
-                          size="sm" variant="outline"
-                          disabled={!pickedListId || isGenerating}
-                          onClick={async () => {
-                            setIsGenerating(true)
-                            setError("")
-                            try {
-                              const url = await generatePeopleSearchUrl(config.base_url_2!, pickedListId, pickedListName)
-                              setGeneratedUrl2(url)
-                            } catch (e) {
-                              setError(e instanceof Error ? e.message : "Error generando URL 2")
-                            } finally {
-                              setIsGenerating(false)
-                            }
-                          }}
-                        >
-                          {isGenerating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <RefreshCw className="mr-2 size-3.5" />}
-                          Generar URL 2
-                        </Button>
-                        {generatedUrl2 && (
-                          <div className="rounded-md border px-3 py-2 space-y-1.5">
-                            <p className="text-xs font-mono text-muted-foreground truncate">{generatedUrl2.slice(0, 60)}…</p>
-                            <a href={generatedUrl2} target="_blank" rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800">
-                              <ExternalLink className="size-3.5" /> Abrir en Sales Navigator (2)
-                            </a>
-                          </div>
+                  <div className={`grid gap-3 ${config.base_url_2 ? "grid-cols-2" : "grid-cols-1"}`}>
+                    {/* URL 1 panel */}
+                    <div
+                      className={`rounded-lg border-2 p-3 space-y-2.5 transition-colors ${
+                        config.base_url_2
+                          ? selectedUrlIndex === 1
+                            ? "border-foreground bg-muted/20"
+                            : "border-border cursor-pointer hover:border-muted-foreground/40"
+                          : "border-border"
+                      }`}
+                      onClick={() => config.base_url_2 && setSelectedUrlIndex(1)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">URL 1</p>
+                        {config.base_url_2 && (
+                          <span className={`size-3 rounded-full border-2 transition-colors ${selectedUrlIndex === 1 ? "bg-foreground border-foreground" : "border-muted-foreground/30"}`} />
                         )}
                       </div>
-                    ) : showUrlEdit2 ? (
-                      <div className="rounded-lg border p-3 space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">URL base 2 de People Search</p>
-                        <Input value={urlInput2} onChange={(e) => setUrlInput2(e.target.value)}
-                          placeholder="https://www.linkedin.com/sales/search/people#query=..."
-                          className="font-mono text-xs" />
-                        <div className="flex gap-2">
-                          <Button size="sm" disabled={isSavingConfig2}
-                            onClick={() => {
-                              if (!selectedCampaign) return
-                              startSavingConfig2(async () => {
-                                try {
-                                  await upsertPeopleSearchConfig2(selectedCampaign.rep_name, selectedCampaign.industry, urlInput2)
-                                  setConfig((prev) => prev ? { ...prev, base_url_2: urlInput2 } : prev)
-                                  setShowUrlEdit2(false)
-                                } catch (e) {
-                                  setError(e instanceof Error ? e.message : "Error guardando URL 2")
-                                }
-                              })
-                            }}>
-                            {isSavingConfig2 ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit2(false)}>Cancelar</Button>
+
+                      {showUrlEdit ? (
+                        <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                          <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
+                            placeholder="https://www.linkedin.com/sales/search/people#query=..."
+                            className="font-mono text-xs" />
+                          <div className="flex gap-1.5">
+                            <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
+                              {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
+                          </div>
                         </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                          <Link2 className="size-3 shrink-0 opacity-60" />
+                          <span className="truncate font-mono text-[11px]">{config.base_url.slice(0, 34)}…</span>
+                          <Button variant="ghost" size="sm" className="h-5 px-1 text-[11px] ml-auto shrink-0"
+                            onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}>
+                            editar
+                          </Button>
+                        </div>
+                      )}
+
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Button size="sm" className="w-full"
+                          variant={generatedUrl ? "outline" : "default"}
+                          disabled={!pickedListId}
+                          onClick={() => {
+                            const url = updateAccountListInUrl(config.base_url, pickedListId, pickedListName)
+                            setGeneratedUrl(url)
+                            if (config.base_url_2) setSelectedUrlIndex(1)
+                          }}
+                        >
+                          <RefreshCw className="mr-1.5 size-3.5" />
+                          {generatedUrl ? "Re-generar" : "Generar URL"}
+                        </Button>
                       </div>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => setShowUrlEdit2(true)}>
-                        + Agregar URL base 2
-                      </Button>
-                    )}
-                  </>
+
+                      {generatedUrl && (
+                        <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                          <p className="text-[10px] font-semibold text-green-700">✓ URL generada</p>
+                          <p className="text-[10px] font-mono text-muted-foreground truncate">{generatedUrl.slice(0, 55)}…</p>
+                          <a href={generatedUrl} target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
+                            <ExternalLink className="size-3" /> Abrir en Sales Navigator
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* URL 2 panel */}
+                    <div
+                      className={`rounded-lg border-2 p-3 space-y-2.5 transition-colors ${
+                        config.base_url_2
+                          ? selectedUrlIndex === 2
+                            ? "border-foreground bg-muted/20"
+                            : "border-border cursor-pointer hover:border-muted-foreground/40"
+                          : "border-dashed border-muted-foreground/20"
+                      }`}
+                      onClick={() => config.base_url_2 && setSelectedUrlIndex(2)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className={`text-sm font-semibold ${config.base_url_2 ? "" : "text-muted-foreground"}`}>URL 2</p>
+                        {config.base_url_2 && (
+                          <span className={`size-3 rounded-full border-2 transition-colors ${selectedUrlIndex === 2 ? "bg-foreground border-foreground" : "border-muted-foreground/30"}`} />
+                        )}
+                      </div>
+
+                      {!config.base_url_2 && !showUrlEdit2 ? (
+                        <Button size="sm" variant="ghost" className="text-xs text-muted-foreground px-0"
+                          onClick={(e) => { e.stopPropagation(); setShowUrlEdit2(true) }}>
+                          + Agregar URL base 2
+                        </Button>
+                      ) : showUrlEdit2 ? (
+                        <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                          <Input value={urlInput2} onChange={(e) => setUrlInput2(e.target.value)}
+                            placeholder="https://www.linkedin.com/sales/search/people#query=..."
+                            className="font-mono text-xs" />
+                          <div className="flex gap-1.5">
+                            <Button size="sm" disabled={isSavingConfig2}
+                              onClick={() => {
+                                if (!selectedCampaign) return
+                                startSavingConfig2(async () => {
+                                  try {
+                                    await upsertPeopleSearchConfig2(selectedCampaign.rep_name, selectedCampaign.industry, urlInput2)
+                                    setConfig((prev) => prev ? { ...prev, base_url_2: urlInput2 } : prev)
+                                    setShowUrlEdit2(false)
+                                  } catch (e) {
+                                    setError(e instanceof Error ? e.message : "Error guardando URL 2")
+                                  }
+                                })
+                              }}>
+                              {isSavingConfig2 ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit2(false)}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                            <Link2 className="size-3 shrink-0 opacity-60" />
+                            <span className="truncate font-mono text-[11px]">{config.base_url_2!.slice(0, 34)}…</span>
+                            <Button variant="ghost" size="sm" className="h-5 px-1 text-[11px] ml-auto shrink-0"
+                              onClick={() => { setShowUrlEdit2(true); setUrlInput2(config.base_url_2!) }}>
+                              editar
+                            </Button>
+                          </div>
+
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Button size="sm" className="w-full"
+                              variant={generatedUrl2 ? "outline" : "default"}
+                              disabled={!pickedListId}
+                              onClick={() => {
+                                const url = updateAccountListInUrl(config.base_url_2!, pickedListId, pickedListName)
+                                setGeneratedUrl2(url)
+                                setSelectedUrlIndex(2)
+                              }}
+                            >
+                              <RefreshCw className="mr-1.5 size-3.5" />
+                              {generatedUrl2 ? "Re-generar" : "Generar URL 2"}
+                            </Button>
+                          </div>
+
+                          {generatedUrl2 && (
+                            <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                              <p className="text-[10px] font-semibold text-green-700">✓ URL 2 generada</p>
+                              <p className="text-[10px] font-mono text-muted-foreground truncate">{generatedUrl2.slice(0, 55)}…</p>
+                              <a href={generatedUrl2} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
+                                <ExternalLink className="size-3" /> Abrir en Sales Navigator
+                              </a>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -665,39 +698,7 @@ export function PeopleSearchClient({
               </p>
             </div>
 
-            {config?.base_url_2 && (
-              <div className="rounded-lg border-2 border-dashed p-3 space-y-2">
-                <label className="text-sm font-medium">¿Con cuál URL scrapea Apify?</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedUrlIndex(1)}
-                    className={`flex-1 rounded-md border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 1 ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted/50"}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium">URL 1</span>
-                      {generatedUrl && <span className="text-[10px] text-green-500 font-medium">✓ generada</span>}
-                    </div>
-                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 1 ? "opacity-70" : "text-muted-foreground"}`}>
-                      {(generatedUrl ?? config.base_url).slice(0, 38)}…
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => setSelectedUrlIndex(2)}
-                    className={`flex-1 rounded-md border px-3 py-2 text-sm text-left transition-colors ${selectedUrlIndex === 2 ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted/50"}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium">URL 2</span>
-                      {generatedUrl2 && <span className="text-[10px] text-green-500 font-medium">✓ generada</span>}
-                    </div>
-                    <span className={`block text-xs mt-0.5 font-mono truncate ${selectedUrlIndex === 2 ? "opacity-70" : "text-muted-foreground"}`}>
-                      {(generatedUrl2 ?? config.base_url_2).slice(0, 38)}…
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
+{error && <p className="text-sm text-destructive">{error}</p>}
 
             <Button
               className="w-full"
