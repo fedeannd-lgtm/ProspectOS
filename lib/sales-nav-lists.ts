@@ -1,40 +1,78 @@
 /**
- * Appends a new INCLUDED account list entry to the ACCOUNT_LIST section of a
- * Sales Navigator People Search URL. Does NOT touch existing list entries.
+ * Updates the ACCOUNT_LIST filter in a Sales Navigator People Search URL.
+ * - Keeps all existing list entries (permanent filters from the base URL)
+ * - Removes the previously used campaign list (oldListId) if present
+ * - Adds the new campaign list
  */
 export function updateAccountListInUrl(
   currentUrl: string,
   newListId: string,
-  newListName: string
+  newListName: string,
+  oldListId?: string | null
 ): string {
-  const ACCOUNT_LIST_MARKER = 'type%3AACCOUNT_LIST'
-
+  const ACCOUNT_LIST_MARKER = "type%3AACCOUNT_LIST"
   const markerIdx = currentUrl.indexOf(ACCOUNT_LIST_MARKER)
   if (markerIdx === -1) return currentUrl
 
-  // Walk back to find the opening ( of the type:ACCOUNT_LIST group
-  const openIdx = currentUrl.lastIndexOf('(', markerIdx)
+  // Find the opening ( of the type:ACCOUNT_LIST group
+  const openIdx = currentUrl.lastIndexOf("(", markerIdx)
 
-  // Count parens to find the matching closing )
-  let depth = 0
-  let closeIdx = -1
+  // Find the matching closing )
+  let depth = 0, closeIdx = -1
   for (let i = openIdx; i < currentUrl.length; i++) {
-    if (currentUrl[i] === '(') depth++
-    else if (currentUrl[i] === ')') {
-      depth--
-      if (depth === 0) { closeIdx = i; break }
+    if (currentUrl[i] === "(") depth++
+    else if (currentUrl[i] === ")") { depth--; if (depth === 0) { closeIdx = i; break } }
+  }
+  if (closeIdx === -1) return currentUrl
+
+  const block = currentUrl.slice(openIdx, closeIdx + 1)
+
+  // Find values%3AList( and its matching )
+  const valuesMarker = "values%3AList("
+  const vmIdx = block.indexOf(valuesMarker)
+  if (vmIdx === -1) return currentUrl
+
+  const entriesStartIdx = vmIdx + valuesMarker.length
+
+  // Find the matching ) for values%3AList(
+  let vd = 0, vCloseIdx = -1
+  for (let i = entriesStartIdx - 1; i < block.length; i++) {
+    if (block[i] === "(") vd++
+    else if (block[i] === ")") { vd--; if (vd === 0) { vCloseIdx = i; break } }
+  }
+  if (vCloseIdx === -1) return currentUrl
+
+  // Parse individual (entry) items between entriesStartIdx and vCloseIdx
+  const entriesStr = block.slice(entriesStartIdx, vCloseIdx)
+  const entries: string[] = []
+  let d = 0, start = -1
+  for (let i = 0; i < entriesStr.length; i++) {
+    if (entriesStr[i] === "(") { if (d === 0) start = i; d++ }
+    else if (entriesStr[i] === ")") {
+      d--
+      if (d === 0 && start !== -1) { entries.push(entriesStr.slice(start, i + 1)); start = -1 }
     }
   }
 
-  if (closeIdx === -1) return currentUrl
+  // Keep all entries except: previous campaign list + any duplicate of the new list
+  const filtered = entries.filter((e) => {
+    if (oldListId && e.includes(`id%3A${oldListId}`)) return false
+    if (e.includes(`id%3A${newListId}`)) return false
+    return true
+  })
 
   const encodedName = encodeURIComponent(newListName)
-    .replace(/%20/g, '%2520')
-    .replace(/%2C/g, '%252C')
-    .replace(/%3A/g, '%253A')
+    .replace(/%20/g, "%2520")
+    .replace(/%2C/g, "%252C")
+    .replace(/%3A/g, "%253A")
 
-  // Replace the entire ACCOUNT_LIST block with a clean one containing only the selected list
-  const newGroup = `(type%3AACCOUNT_LIST%2Cvalues%3AList((id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist)))`
+  filtered.push(
+    `(id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist)`
+  )
 
-  return currentUrl.slice(0, openIdx) + newGroup + currentUrl.slice(closeIdx + 1)
+  const beforeEntries = block.slice(0, entriesStartIdx)
+  const afterEntries = block.slice(vCloseIdx) // starts with )
+  const newBlock = beforeEntries + filtered.join("%2C") + afterEntries
+
+  return currentUrl.slice(0, openIdx) + newBlock + currentUrl.slice(closeIdx + 1)
 }

@@ -229,8 +229,10 @@ export function PeopleSearchClient({
   const [pickedListId, setPickedListId] = useState("")
   const [pickedListName, setPickedListName] = useState("")
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
+  const [generatedUrlList, setGeneratedUrlList] = useState<string | null>(null)
   const [selectedUrlIndex, setSelectedUrlIndex] = useState<1 | 2>(1)
   const [generatedUrl2, setGeneratedUrl2] = useState<string | null>(null)
+  const [generatedUrl2List, setGeneratedUrl2List] = useState<string | null>(null)
   const [urlInput2, setUrlInput2] = useState("")
   const [showUrlEdit2, setShowUrlEdit2] = useState(false)
   const [isSavingConfig2, startSavingConfig2] = useTransition()
@@ -258,11 +260,11 @@ export function PeopleSearchClient({
     setPickedListId(selectedCampaign.list_id ?? "")
     setPickedListName(selectedCampaign.list_name ?? "")
     setGeneratedUrl(null)
-
-
+    setGeneratedUrlList(null)
     setConfigLoading(true)
     setError("")
     setGeneratedUrl2(null)
+    setGeneratedUrl2List(null)
     getPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry)
       .then((cfg) => {
         setConfig(cfg)
@@ -274,9 +276,11 @@ export function PeopleSearchClient({
           const listId = selectedCampaign!.list_id
           const listName = selectedCampaign!.list_name
           if (listId && listName) {
-            setGeneratedUrl(updateAccountListInUrl(cfg.base_url, listId, listName))
+            setGeneratedUrl(updateAccountListInUrl(cfg.base_url, listId, listName, cfg.list_id))
+            setGeneratedUrlList(listName)
             if (cfg.base_url_2) {
-              setGeneratedUrl2(updateAccountListInUrl(cfg.base_url_2, listId, listName))
+              setGeneratedUrl2(updateAccountListInUrl(cfg.base_url_2, listId, listName, cfg.list_id))
+              setGeneratedUrl2List(listName)
             }
           }
         } else {
@@ -476,15 +480,20 @@ export function PeopleSearchClient({
                           setPickedListId(v)
                           setPickedListName(name)
                           if (config) {
-                            setGeneratedUrl(updateAccountListInUrl(config.base_url, v, name))
+                            setGeneratedUrl(updateAccountListInUrl(config.base_url, v, name, config.list_id))
+                            setGeneratedUrlList(name)
                             if (config.base_url_2) {
-                              setGeneratedUrl2(updateAccountListInUrl(config.base_url_2, v, name))
+                              setGeneratedUrl2(updateAccountListInUrl(config.base_url_2, v, name, config.list_id))
+                              setGeneratedUrl2List(name)
                             } else {
                               setGeneratedUrl2(null)
+                              setGeneratedUrl2List(null)
                             }
                           } else {
                             setGeneratedUrl(null)
+                            setGeneratedUrlList(null)
                             setGeneratedUrl2(null)
+                            setGeneratedUrl2List(null)
                           }
                         }}
                       >
@@ -582,8 +591,9 @@ export function PeopleSearchClient({
                           variant={generatedUrl ? "outline" : "default"}
                           disabled={!pickedListId}
                           onClick={() => {
-                            const url = updateAccountListInUrl(config.base_url, pickedListId, pickedListName)
+                            const url = updateAccountListInUrl(config.base_url, pickedListId, pickedListName, config.list_id)
                             setGeneratedUrl(url)
+                            setGeneratedUrlList(pickedListName)
                             if (config.base_url_2) setSelectedUrlIndex(1)
                           }}
                         >
@@ -594,8 +604,8 @@ export function PeopleSearchClient({
 
                       {generatedUrl && (
                         <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1" onClick={(e) => e.stopPropagation()}>
-                          <p className="text-[10px] font-semibold text-green-700">✓ URL generada</p>
-                          <p className="text-[10px] font-mono text-muted-foreground truncate">{generatedUrl.slice(0, 55)}…</p>
+                          <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
+                          {generatedUrlList && <p className="text-xs font-medium text-green-800 truncate">{generatedUrlList}</p>}
                           <a href={generatedUrl} target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                             <ExternalLink className="size-3" /> Abrir en Sales Navigator
@@ -667,8 +677,9 @@ export function PeopleSearchClient({
                               variant={generatedUrl2 ? "outline" : "default"}
                               disabled={!pickedListId}
                               onClick={() => {
-                                const url = updateAccountListInUrl(config.base_url_2!, pickedListId, pickedListName)
+                                const url = updateAccountListInUrl(config.base_url_2!, pickedListId, pickedListName, config.list_id)
                                 setGeneratedUrl2(url)
+                                setGeneratedUrl2List(pickedListName)
                                 setSelectedUrlIndex(2)
                               }}
                             >
@@ -679,8 +690,8 @@ export function PeopleSearchClient({
 
                           {generatedUrl2 && (
                             <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1" onClick={(e) => e.stopPropagation()}>
-                              <p className="text-[10px] font-semibold text-green-700">✓ URL 2 generada</p>
-                              <p className="text-[10px] font-mono text-muted-foreground truncate">{generatedUrl2.slice(0, 55)}…</p>
+                              <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
+                              {generatedUrl2List && <p className="text-xs font-medium text-green-800 truncate">{generatedUrl2List}</p>}
                               <a href={generatedUrl2} target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                                 <ExternalLink className="size-3" /> Abrir en Sales Navigator
