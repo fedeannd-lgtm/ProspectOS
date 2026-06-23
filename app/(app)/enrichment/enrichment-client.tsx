@@ -74,6 +74,7 @@ export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
   // Enrichment state
   const [enriching, setEnriching] = useState(false)
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 })
+  const [rowStatus, setRowStatus] = useState<Map<string, "enriching" | "found" | "not_found" | "error">>(new Map())
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
@@ -172,17 +173,23 @@ export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
 
     for (let i = 0; i < toEnrich.length; i++) {
       const id = toEnrich[i]
+      setRowStatus((prev) => new Map(prev).set(id, "enriching"))
       try {
         const result = await enrichOneProspect(id)
-        setProspects((prev) =>
-          prev.map((x) =>
-            x.id === id
-              ? { ...x, email: result.email, email_status: result.zbStatus, email_provider: result.provider, icp_category: result.icpCategory, icp_score: result.icpScore, status: "enriched" }
-              : x
+        if (result.email) {
+          setProspects((prev) =>
+            prev.map((x) =>
+              x.id === id
+                ? { ...x, email: result.email, email_status: result.zbStatus, email_provider: result.provider, icp_category: result.icpCategory, icp_score: result.icpScore, status: "enriched" }
+                : x
+            )
           )
-        )
+          setRowStatus((prev) => new Map(prev).set(id, "found"))
+        } else {
+          setRowStatus((prev) => new Map(prev).set(id, "not_found"))
+        }
       } catch {
-        // continue on error
+        setRowStatus((prev) => new Map(prev).set(id, "error"))
       }
       setEnrichProgress({ done: i + 1, total: toEnrich.length })
     }
@@ -450,8 +457,20 @@ export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
                         <td className="px-3 py-2 font-medium text-center">
                           {p.icp_score > 0 ? p.icp_score : p.icp_category ? "0" : "—"}
                         </td>
-                        <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground max-w-[160px] truncate">
-                          {p.email || "—"}
+                        <td className="px-3 py-2 max-w-[160px]">
+                          {rowStatus.get(p.id) === "enriching" ? (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Loader2 className="size-3 animate-spin" /> Buscando…
+                            </span>
+                          ) : rowStatus.get(p.id) === "not_found" ? (
+                            <span className="inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-zinc-100 text-zinc-500">No encontrado</span>
+                          ) : rowStatus.get(p.id) === "error" ? (
+                            <span className="inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-red-50 text-red-600">Error</span>
+                          ) : p.email ? (
+                            <span className="font-mono text-[10px] text-muted-foreground truncate block">{p.email}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           {zb ? (
