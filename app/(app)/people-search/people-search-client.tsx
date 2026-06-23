@@ -65,14 +65,16 @@ type PeopleSearchConfig = {
   list_name: string | null
   last_result_count: number | null
   last_count_checked_at: string | null
+  last_result_count_2: number | null
+  last_count_2_checked_at: string | null
 } | null
 
 const MAX_OPTIONS = [25, 100, 250, 500]
 
-function addCountParams(salesNavUrl: string, repName: string, industry: string) {
+function addCountParams(salesNavUrl: string, repName: string, industry: string, urlIndex: 1 | 2) {
   const cb = encodeURIComponent(`${window.location.origin}/api/webhooks/extension/people-count`)
   const pos = `${encodeURIComponent(repName)}|${encodeURIComponent(industry)}`
-  return `${salesNavUrl}&_pos=${pos}&_cb=${cb}`
+  return `${salesNavUrl}&_pos=${pos}&_url=${urlIndex}&_cb=${cb}`
 }
 
 const JOB_STATUS_CONFIG = {
@@ -342,7 +344,7 @@ export function PeopleSearchClient({
     startSavingConfig(async () => {
       try {
         await upsertPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry, urlInput)
-        setConfig((prev) => ({ base_url: urlInput, base_url_2: prev?.base_url_2 ?? null, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null, last_result_count: prev?.last_result_count ?? null, last_count_checked_at: prev?.last_count_checked_at ?? null }))
+        setConfig((prev) => ({ base_url: urlInput, base_url_2: prev?.base_url_2 ?? null, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null, last_result_count: prev?.last_result_count ?? null, last_count_checked_at: prev?.last_count_checked_at ?? null, last_result_count_2: prev?.last_result_count_2 ?? null, last_count_2_checked_at: prev?.last_count_2_checked_at ?? null }))
         setShowUrlEdit(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error guardando configuración")
@@ -615,7 +617,7 @@ export function PeopleSearchClient({
                             )}
                           </div>
                           {generatedUrlList && <p className="text-xs font-medium text-green-800 truncate">{generatedUrlList}</p>}
-                          <a href={selectedCampaign ? addCountParams(generatedUrl, selectedCampaign.rep_name, selectedCampaign.industry) : generatedUrl}
+                          <a href={selectedCampaign ? addCountParams(generatedUrl, selectedCampaign.rep_name, selectedCampaign.industry, 1) : generatedUrl}
                             target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                             <ExternalLink className="size-3" /> Abrir en Sales Navigator
@@ -686,14 +688,14 @@ export function PeopleSearchClient({
                             <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-[10px] font-semibold text-green-700">✓ Lista aplicada</p>
-                                {config.last_result_count !== null && (
+                                {config.last_result_count_2 !== null && (
                                   <span className="text-[10px] font-semibold text-green-700">
-                                    {config.last_result_count.toLocaleString()} resultados
+                                    {config.last_result_count_2.toLocaleString()} resultados
                                   </span>
                                 )}
                               </div>
                               {generatedUrl2List && <p className="text-xs font-medium text-green-800 truncate">{generatedUrl2List}</p>}
-                              <a href={selectedCampaign ? addCountParams(generatedUrl2, selectedCampaign.rep_name, selectedCampaign.industry) : generatedUrl2}
+                              <a href={selectedCampaign ? addCountParams(generatedUrl2, selectedCampaign.rep_name, selectedCampaign.industry, 2) : generatedUrl2}
                                 target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800">
                                 <ExternalLink className="size-3" /> Abrir en Sales Navigator

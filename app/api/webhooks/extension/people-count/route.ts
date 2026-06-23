@@ -13,19 +13,20 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { repName, industry, count } = await req.json()
+    const { repName, industry, count, urlIndex } = await req.json()
 
     if (!repName || !industry || typeof count !== "number") {
       return NextResponse.json({ error: "Parámetros incompletos" }, { status: 400, headers: CORS })
     }
 
+    const isUrl2 = urlIndex === 2
+    const updatePayload = isUrl2
+      ? { last_result_count_2: count, last_count_2_checked_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+      : { last_result_count: count, last_count_checked_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+
     const { error } = await supabaseAdmin
       .from("people_search_configs")
-      .update({
-        last_result_count: count,
-        last_count_checked_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("rep_name", repName)
       .eq("industry", industry)
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500, headers: CORS })
     }
 
-    console.log(`[extension/people-count] ${repName} / ${industry}: ${count} resultados`)
+    console.log(`[extension/people-count] ${repName} / ${industry} URL${urlIndex ?? 1}: ${count} resultados`)
     return NextResponse.json({ ok: true }, { headers: CORS })
   } catch (err) {
     return NextResponse.json(

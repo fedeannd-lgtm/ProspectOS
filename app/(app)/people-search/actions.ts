@@ -37,7 +37,7 @@ export async function getPeopleSearchJobs() {
 export async function getPeopleSearchConfig(repName: string, industry: string) {
   const { data, error } = await supabase
     .from("people_search_configs")
-    .select("base_url, base_url_2, list_id, list_name, last_result_count, last_count_checked_at")
+    .select("base_url, base_url_2, list_id, list_name, last_result_count, last_count_checked_at, last_result_count_2, last_count_2_checked_at")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
@@ -49,6 +49,8 @@ export async function getPeopleSearchConfig(repName: string, industry: string) {
     list_name: string | null
     last_result_count: number | null
     last_count_checked_at: string | null
+    last_result_count_2: number | null
+    last_count_2_checked_at: string | null
   } | null
 }
 

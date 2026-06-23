@@ -6,6 +6,7 @@
     const hashParams = new URLSearchParams(window.location.hash.slice(1));
     const pos = hashParams.get('_pos');
     const cb = hashParams.get('_cb');
+    const urlIndex = parseInt(hashParams.get('_url') || '1', 10);
 
     if (pos && cb) {
       const [repName, industry] = pos.split('|').map(decodeURIComponent);
@@ -58,7 +59,7 @@
         await fetch(decodeURIComponent(cb), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ repName, industry, count }),
+          body: JSON.stringify({ repName, industry, count, urlIndex }),
         });
         badge.style.background = 'rgba(22,163,74,0.92)';
         badge.textContent = `✅ ProspectOS: ${count.toLocaleString()} resultados guardados`;
