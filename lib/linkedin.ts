@@ -1,6 +1,6 @@
 // Sales Navigator scrapes return encoded profile URLs like /in/ACwAABBgOrYB8-gg...
 // Email finders only understand canonical slugs like /in/firstname-lastname-123/
-// Return the URL only if it looks canonical, undefined otherwise.
+
 export function canonicalLinkedInUrl(url: string): string | undefined {
   if (!url) return undefined
   const match = url.match(/linkedin\.com\/in\/([^/?#]+)/)
@@ -10,4 +10,29 @@ export function canonicalLinkedInUrl(url: string): string | undefined {
   // Encoded IDs start with uppercase letters (Base64-like: ACwAAB..., ACoAAA...)
   if (/^[A-Z]/.test(slug) || slug.length > 40) return undefined
   return url
+}
+
+// Attempt to resolve an encoded Sales Nav URL to the canonical LinkedIn profile URL
+// by following the HTTP redirect. Returns undefined if blocked or unresolvable.
+export async function resolveCanonicalLinkedInUrl(url: string): Promise<string | undefined> {
+  // Already canonical — nothing to resolve
+  if (canonicalLinkedInUrl(url)) return url
+  if (!url) return undefined
+
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; bot)",
+      },
+    })
+    const finalUrl = res.url
+    if (finalUrl && finalUrl !== url && canonicalLinkedInUrl(finalUrl)) {
+      return finalUrl
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
 }
