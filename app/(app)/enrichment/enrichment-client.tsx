@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X } from "lucide-react"
+import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -41,6 +41,26 @@ const ICP_CFG: Record<string, { cls: string }> = {
 
 const PROVIDERS: Record<string, string> = {
   apollo: "Apollo", findymail: "FindyEmail", prospeo: "Prospeo", hunter: "Hunter"
+}
+
+function exportCsv(prospects: Prospect[], campaignLabel: string) {
+  const esc = (v: string | null | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`
+  const headers = ["Nombre", "Apellido", "Nombre completo", "Cargo", "Empresa", "Dominio", "LinkedIn", "Email", "ZB Status", "Provider", "ICP Categoría", "ICP Score", "Estado"]
+  const rows = prospects.map((p) => [
+    esc(p.first_name), esc(p.last_name), esc(p.full_name),
+    esc(p.job_title), esc(p.company_name), esc(p.company_domain),
+    esc(p.linkedin_url), esc(p.email), esc(p.email_status),
+    esc(p.email_provider), esc(p.icp_category),
+    p.icp_score > 0 ? p.icp_score : "",
+    esc(p.status),
+  ].join(","))
+  const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `enriquecimiento-${campaignLabel}-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function hasValidEmail(p: Prospect) {
@@ -389,6 +409,11 @@ export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
             </Select>
 
             <span className="ml-auto text-xs text-muted-foreground">{filtered.length} visibles</span>
+            {filtered.length > 0 && (
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => exportCsv(filtered, selectedCampaign?.week_label ?? "campaña")}>
+                <Download className="mr-1.5 size-3" /> Exportar CSV
+              </Button>
+            )}
           </div>
 
           {/* Table */}
