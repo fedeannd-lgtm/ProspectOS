@@ -6,7 +6,8 @@ export async function findEmailApollo(
   firstName: string,
   lastName: string,
   companyName: string,
-  linkedinUrl: string
+  linkedinUrl: string,
+  companyDomain?: string | null
 ): Promise<string | null> {
   try {
     const res = await fetch("https://api.apollo.io/v1/people/match", {
@@ -20,7 +21,8 @@ export async function findEmailApollo(
         api_key: APOLLO_API_KEY,
         first_name: firstName,
         last_name: lastName,
-        organization_name: companyName,
+        organization_name: companyName || undefined,
+        domain: companyDomain || undefined,
         linkedin_url: canonicalLinkedInUrl(linkedinUrl),
         reveal_personal_emails: true,
       }),

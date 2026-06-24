@@ -26,7 +26,7 @@ const PROVIDERS: Array<{
 }> = [
   {
     name: "apollo",
-    find: (p) => findEmailApollo(p.first_name, p.last_name, p.company_name, p.linkedin_url),
+    find: (p) => findEmailApollo(p.first_name, p.last_name, p.company_name, p.linkedin_url, p.company_domain),
   },
   {
     name: "findymail",
