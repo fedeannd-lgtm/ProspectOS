@@ -235,7 +235,10 @@ export function PeopleSearchClient({
   initialJobs: SearchJob[]
 }) {
   const [jobs, setJobs] = useState<SearchJob[]>(initialJobs)
-  const [campaignId, setCampaignId] = useState("")
+  const [campaignId, setCampaignId] = useState(() => {
+    if (typeof window === "undefined") return ""
+    return localStorage.getItem("ps_last_campaign") ?? ""
+  })
   const [comboOpen, setComboOpen] = useState(false)
   const [config, setConfig] = useState<PeopleSearchConfig>(null)
   const [configLoading, setConfigLoading] = useState(false)
@@ -450,7 +453,7 @@ export function PeopleSearchClient({
                         <CommandGroup key={rep} heading={rep}>
                           {items.map((c) => (
                             <CommandItem key={c.id} value={`${c.week_label} ${c.rep_name} ${c.industry}`}
-                              onSelect={() => { setCampaignId(c.id); setComboOpen(false) }}>
+                              onSelect={() => { setCampaignId(c.id); localStorage.setItem("ps_last_campaign", c.id); setComboOpen(false) }}>
                               <Check className={`mr-2 size-4 ${campaignId === c.id ? "opacity-100" : "opacity-0"}`} />
                               <span>{c.week_label}</span>
                               <span className="ml-2 text-muted-foreground text-xs">{c.industry}</span>

@@ -8,7 +8,7 @@ export async function getAllProspects() {
     .from("prospects")
     .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, connection_degree, location, email, icp_score, is_premium, status, started_role_months, highlights, created_at, campaign_id, campaigns(week_label, rep_name, industry)")
     .order("created_at", { ascending: false })
-    .limit(500)
+    .limit(5000)
   if (error) throw new Error(error.message)
   return (data ?? []) as unknown as {
     id: string; first_name: string; last_name: string; full_name: string
