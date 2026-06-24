@@ -1,3 +1,5 @@
+import { canonicalLinkedInUrl } from "./linkedin"
+
 const PROSPEO_API_KEY = process.env.PROSPEO_API_KEY!
 
 export async function findEmailProspeo(
@@ -7,15 +9,16 @@ export async function findEmailProspeo(
   linkedinUrl: string
 ): Promise<string | null> {
   try {
+    const canonical = canonicalLinkedInUrl(linkedinUrl)
     // Prefer LinkedIn URL lookup when available
-    if (linkedinUrl) {
+    if (canonical) {
       const res = await fetch("https://api.prospeo.io/linkedin-email-finder", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-KEY": PROSPEO_API_KEY,
         },
-        body: JSON.stringify({ url: linkedinUrl }),
+        body: JSON.stringify({ url: canonical }),
       })
       if (res.ok) {
         const data = await res.json()

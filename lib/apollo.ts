@@ -1,3 +1,5 @@
+import { canonicalLinkedInUrl } from "./linkedin"
+
 const APOLLO_API_KEY = process.env.APOLLO_API_KEY!
 
 export async function findEmailApollo(
@@ -19,7 +21,7 @@ export async function findEmailApollo(
         first_name: firstName,
         last_name: lastName,
         organization_name: companyName,
-        linkedin_url: linkedinUrl || undefined,
+        linkedin_url: canonicalLinkedInUrl(linkedinUrl),
         reveal_personal_emails: true,
       }),
     })
@@ -31,7 +33,6 @@ export async function findEmailApollo(
       return email
     }
 
-    // Some Apollo responses put emails in contact_emails array
     const contacts: Array<{ email?: string }> = data?.person?.contact_emails ?? []
     const contactEmail = contacts.find((c) => c.email && c.email.includes("@"))?.email
     if (contactEmail) return contactEmail

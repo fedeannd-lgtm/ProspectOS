@@ -1,3 +1,5 @@
+import { canonicalLinkedInUrl } from "./linkedin"
+
 const FINDYMAIL_API_KEY = process.env.FINDYMAIL_API_KEY!
 
 export async function findEmailFindymail(
@@ -7,15 +9,16 @@ export async function findEmailFindymail(
   linkedinUrl: string
 ): Promise<string | null> {
   try {
+    const canonical = canonicalLinkedInUrl(linkedinUrl)
     // Prefer LinkedIn URL lookup when available
-    if (linkedinUrl) {
+    if (canonical) {
       const res = await fetch("https://app.findymail.com/api/search/linkedin", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${FINDYMAIL_API_KEY}`,
         },
-        body: JSON.stringify({ linkedin_url: linkedinUrl }),
+        body: JSON.stringify({ linkedin_url: canonical }),
       })
       if (res.ok) {
         const data = await res.json()
