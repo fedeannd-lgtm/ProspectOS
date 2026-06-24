@@ -2,13 +2,18 @@ import { canonicalLinkedInUrl } from "./linkedin"
 
 const APOLLO_API_KEY = process.env.APOLLO_API_KEY!
 
+export type ApolloResult = {
+  email: string | null
+  canonicalLinkedInUrl: string | null
+}
+
 export async function findEmailApollo(
   firstName: string,
   lastName: string,
   companyName: string,
   linkedinUrl: string,
   companyDomain?: string | null
-): Promise<string | null> {
+): Promise<ApolloResult> {
   try {
     const res = await fetch("https://api.apollo.io/v1/people/match", {
       method: "POST",
@@ -27,20 +32,24 @@ export async function findEmailApollo(
         reveal_personal_emails: true,
       }),
     })
-    if (!res.ok) return null
+    if (!res.ok) return { email: null, canonicalLinkedInUrl: null }
     const data = await res.json()
+    const person = data?.person
 
-    const email = data?.person?.email
+    // Extract canonical LinkedIn URL Apollo has on file
+    const apolloLinkedIn: string | null = person?.linkedin_url ?? null
+
+    const email = person?.email
     if (email && email !== "email_not_unlocked@domain.com" && email.includes("@")) {
-      return email
+      return { email, canonicalLinkedInUrl: apolloLinkedIn }
     }
 
-    const contacts: Array<{ email?: string }> = data?.person?.contact_emails ?? []
+    const contacts: Array<{ email?: string }> = person?.contact_emails ?? []
     const contactEmail = contacts.find((c) => c.email && c.email.includes("@"))?.email
-    if (contactEmail) return contactEmail
+    if (contactEmail) return { email: contactEmail, canonicalLinkedInUrl: apolloLinkedIn }
 
-    return null
+    return { email: null, canonicalLinkedInUrl: apolloLinkedIn }
   } catch {
-    return null
+    return { email: null, canonicalLinkedInUrl: null }
   }
 }

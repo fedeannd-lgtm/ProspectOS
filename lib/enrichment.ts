@@ -3,11 +3,11 @@ import { findEmailFindymail } from "./findymail"
 import { findEmailProspeo } from "./prospeo"
 import { findEmailHunter } from "./hunter"
 import { validateEmail, isUsable, type ZBStatus } from "./zerobounce"
-import { resolveCanonicalLinkedInUrl } from "./linkedin"
+import { canonicalLinkedInUrl } from "./linkedin"
 
 export type EnrichmentResult = {
   email: string | null
-  provider: string | null   // apollo | findymail | prospeo | hunter
+  provider: string | null
   zbStatus: ZBStatus | null
   zbSubStatus: string | null
   enriched: boolean
@@ -22,27 +22,38 @@ type ProspectInput = {
 }
 
 export async function enrichProspect(prospect: ProspectInput): Promise<EnrichmentResult> {
-  // Resolve canonical LinkedIn URL once before hitting any provider
-  const canonicalUrl = await resolveCanonicalLinkedInUrl(prospect.linkedin_url)
-  const p = { ...prospect, linkedin_url: canonicalUrl ?? "" }
+  const { first_name, last_name, company_name, company_domain } = prospect
 
-  const PROVIDERS: Array<{ name: string; find: () => Promise<string | null> }> = [
-    { name: "apollo",    find: () => findEmailApollo(p.first_name, p.last_name, p.company_name, p.linkedin_url, p.company_domain) },
-    { name: "findymail", find: () => findEmailFindymail(p.first_name, p.last_name, p.company_domain ?? "", p.linkedin_url) },
-    { name: "prospeo",  find: () => findEmailProspeo(p.first_name, p.last_name, p.company_name, p.linkedin_url) },
-    { name: "hunter",   find: () => findEmailHunter(p.first_name, p.last_name, p.company_domain ?? "") },
+  // Use canonical URL if already canonical, otherwise empty (Apollo will still match by name+domain)
+  const initialUrl = canonicalLinkedInUrl(prospect.linkedin_url) ?? ""
+
+  // 1. Apollo — also returns the canonical LinkedIn URL it has on file
+  const apolloResult = await findEmailApollo(first_name, last_name, company_name, initialUrl, company_domain)
+
+  // Best LinkedIn URL we have: prefer what Apollo returned (canonical), then our own if canonical
+  const bestLinkedInUrl = apolloResult.canonicalLinkedInUrl ?? initialUrl
+
+  if (apolloResult.email) {
+    const { status, subStatus } = await validateEmail(apolloResult.email)
+    if (isUsable(status)) {
+      return { email: apolloResult.email, provider: "apollo", zbStatus: status, zbSubStatus: subStatus, enriched: true }
+    }
+  }
+
+  // 2–4. FindyEmail, Prospeo, Hunter — now using canonical URL from Apollo if available
+  const REST: Array<{ name: string; find: () => Promise<string | null> }> = [
+    { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
+    { name: "prospeo",  find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
+    { name: "hunter",   find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
   ]
 
-  for (const provider of PROVIDERS) {
+  for (const provider of REST) {
     const email = await provider.find()
     if (!email) continue
-
     const { status, subStatus } = await validateEmail(email)
-
     if (isUsable(status)) {
       return { email, provider: provider.name, zbStatus: status, zbSubStatus: subStatus, enriched: true }
     }
-    // Email found but invalid — keep trying
   }
 
   return { email: null, provider: null, zbStatus: null, zbSubStatus: null, enriched: false }
