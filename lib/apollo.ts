@@ -7,6 +7,28 @@ export type ApolloResult = {
   canonicalLinkedInUrl: string | null
 }
 
+async function matchPerson(payload: Record<string, unknown>): Promise<{ person: Record<string, unknown> } | null> {
+  const res = await fetch("https://api.apollo.io/v1/people/match", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      "X-Api-Key": APOLLO_API_KEY,
+    },
+    body: JSON.stringify({ api_key: APOLLO_API_KEY, reveal_personal_emails: true, ...payload }),
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  return data?.person ? data : null
+}
+
+function extractEmail(person: Record<string, unknown>): string | null {
+  const email = person?.email as string | undefined
+  if (email && email !== "email_not_unlocked@domain.com" && email.includes("@")) return email
+  const contacts = (person?.contact_emails ?? []) as Array<{ email?: string }>
+  return contacts.find((c) => c.email?.includes("@"))?.email ?? null
+}
+
 export async function findEmailApollo(
   firstName: string,
   lastName: string,
@@ -15,38 +37,34 @@ export async function findEmailApollo(
   companyDomain?: string | null
 ): Promise<ApolloResult> {
   try {
-    const res = await fetch("https://api.apollo.io/v1/people/match", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-cache",
-        "X-Api-Key": APOLLO_API_KEY,
-      },
-      body: JSON.stringify({
-        api_key: APOLLO_API_KEY,
-        first_name: firstName,
-        last_name: lastName,
-        organization_name: companyName || undefined,
-        domain: companyDomain || undefined,
-        linkedin_url: canonicalLinkedInUrl(linkedinUrl),
-        reveal_personal_emails: true,
-      }),
+    // First call: match by name + domain
+    const first = await matchPerson({
+      first_name: firstName,
+      last_name: lastName,
+      organization_name: companyName || undefined,
+      domain: companyDomain || undefined,
+      linkedin_url: canonicalLinkedInUrl(linkedinUrl),
     })
-    if (!res.ok) return { email: null, canonicalLinkedInUrl: null }
-    const data = await res.json()
-    const person = data?.person
 
-    // Extract canonical LinkedIn URL Apollo has on file
-    const apolloLinkedIn: string | null = person?.linkedin_url ?? null
+    const person = first?.person as Record<string, unknown> | undefined
+    if (!person) return { email: null, canonicalLinkedInUrl: null }
 
-    const email = person?.email
-    if (email && email !== "email_not_unlocked@domain.com" && email.includes("@")) {
-      return { email, canonicalLinkedInUrl: apolloLinkedIn }
+    const apolloLinkedIn = (person.linkedin_url as string) ?? null
+    const email = extractEmail(person)
+    if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn }
+
+    // Second call: if we have the Apollo person ID, match by ID to force email reveal
+    const apolloId = person.id as string | undefined
+    if (apolloId) {
+      const second = await matchPerson({ id: apolloId })
+      const p2 = second?.person as Record<string, unknown> | undefined
+      if (p2) {
+        const email2 = extractEmail(p2)
+        const linkedin2 = (p2.linkedin_url as string) ?? apolloLinkedIn
+        if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2 }
+        return { email: null, canonicalLinkedInUrl: linkedin2 }
+      }
     }
-
-    const contacts: Array<{ email?: string }> = person?.contact_emails ?? []
-    const contactEmail = contacts.find((c) => c.email && c.email.includes("@"))?.email
-    if (contactEmail) return { email: contactEmail, canonicalLinkedInUrl: apolloLinkedIn }
 
     return { email: null, canonicalLinkedInUrl: apolloLinkedIn }
   } catch {
