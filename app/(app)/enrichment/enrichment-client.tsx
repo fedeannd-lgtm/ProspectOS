@@ -83,8 +83,14 @@ export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
     setSelectedIds(new Set())
     setError("")
     try {
-      const data = await getProspectsForEnrichment(id)
-      setProspects(data as Prospect[])
+      const data = await getProspectsForEnrichment(id) as Prospect[]
+      setProspects(data)
+      const initial = new Map<string, "enriching" | "found" | "not_found" | "error">()
+      for (const p of data) {
+        if (p.status === "not_found") initial.set(p.id, "not_found")
+        else if (p.status === "enriched" && p.email) initial.set(p.id, "found")
+      }
+      setRowStatus(initial)
     } catch {
       setError("Error cargando prospectos")
     } finally {

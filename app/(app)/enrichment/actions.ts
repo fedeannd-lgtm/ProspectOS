@@ -58,13 +58,13 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   await supabaseAdmin
     .from("prospects")
     .update({
-      email: result.email,
-      email_status: result.zbStatus,
+      email: result.email ?? null,
+      email_status: result.zbStatus ?? null,
       email_validated: result.enriched,
-      email_provider: result.provider,
+      email_provider: result.provider ?? null,
       icp_category: category,
       icp_score: score,
-      status: "enriched",
+      status: result.enriched ? "enriched" : "not_found",
     })
     .eq("id", prospectId)
 
