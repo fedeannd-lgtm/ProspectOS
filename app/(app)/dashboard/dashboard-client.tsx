@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { Plus, Pencil, Trash2, Building2, Users, Send, Zap, LayoutList, CalendarDays, CalendarIcon } from "lucide-react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Zap, LayoutList, CalendarDays, CalendarIcon, BarChart3 } from "lucide-react"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -268,9 +269,110 @@ function WeeklyView({ campaigns }: { campaigns: Campaign[] }) {
   )
 }
 
+function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
+  const weeklyData = useMemo(() => {
+    const map = new Map<string, { label: string; order: string; empresas: number; prospectos: number }>()
+    campaigns.forEach((c) => {
+      const date = parseCampaignDate(c.week_label)
+      if (!date) return
+      const { key, week, year } = getISOWeekInfo(date)
+      if (!map.has(key)) map.set(key, { label: `S${week}`, order: `${year}-${String(week).padStart(2, "0")}`, empresas: 0, prospectos: 0 })
+      const entry = map.get(key)!
+      entry.empresas += c.accounts_found
+      entry.prospectos += c.prospects_found
+    })
+    return Array.from(map.values()).sort((a, b) => a.order.localeCompare(b.order))
+  }, [campaigns])
+
+  const sdrData = useMemo(() => {
+    const map = new Map<string, { rep: string; empresas: number; prospectos: number }>()
+    campaigns.forEach((c) => {
+      if (!map.has(c.rep_name)) map.set(c.rep_name, { rep: c.rep_name, empresas: 0, prospectos: 0 })
+      const entry = map.get(c.rep_name)!
+      entry.empresas += c.accounts_found
+      entry.prospectos += c.prospects_found
+    })
+    return Array.from(map.values()).sort((a, b) => b.prospectos - a.prospectos)
+  }, [campaigns])
+
+  const industryData = useMemo(() => {
+    const map = new Map<string, { industry: string; empresas: number; prospectos: number }>()
+    campaigns.forEach((c) => {
+      if (!map.has(c.industry)) map.set(c.industry, { industry: c.industry, empresas: 0, prospectos: 0 })
+      const entry = map.get(c.industry)!
+      entry.empresas += c.accounts_found
+      entry.prospectos += c.prospects_found
+    })
+    return Array.from(map.values()).sort((a, b) => b.prospectos - a.prospectos)
+  }, [campaigns])
+
+  const shortIndustry = (name: string) => name.split(" ")[0]
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Evolución semanal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={weeklyData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="empresas" name="Empresas" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="prospectos" name="Prospectos" fill="#10b981" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Por SDR</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={sdrData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="rep" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="empresas" name="Empresas" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="prospectos" name="Prospectos" fill="#10b981" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Por industria</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={industryData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="industry" tick={{ fontSize: 11 }} width={80} tickFormatter={shortIndustry} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="empresas" name="Empresas" fill="#3b82f6" radius={[0, 3, 3, 0]} />
+              <Bar dataKey="prospectos" name="Prospectos" fill="#10b981" radius={[0, 3, 3, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campaign[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
-  const [view, setView] = useState<"list" | "weekly">("list")
+  const [view, setView] = useState<"list" | "weekly" | "charts">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormData>(emptyForm())
@@ -343,10 +445,17 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
             </button>
             <button
               onClick={() => setView("weekly")}
-              className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "weekly" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              className={`px-2.5 py-1.5 border-l transition-colors ${view === "weekly" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
               title="Vista semanal"
             >
               <CalendarDays className="size-4" />
+            </button>
+            <button
+              onClick={() => setView("charts")}
+              className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "charts" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              title="Analytics"
+            >
+              <BarChart3 className="size-4" />
             </button>
           </div>
           <Button onClick={openCreate} disabled={isPending}>
@@ -396,6 +505,7 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
       </div>
 
       {view === "weekly" && <WeeklyView campaigns={campaigns} />}
+      {view === "charts" && <ChartsView campaigns={campaigns} />}
 
       {view === "list" && <Tabs defaultValue="Todos">
         <TabsList>
