@@ -7,12 +7,12 @@ const isPublic = createRouteMatcher([
   "/api/webhooks/(.*)",
 ])
 
-export default clerkMiddleware((auth, req) => {
+export default clerkMiddleware(async (auth, req) => {
   if (req.nextUrl.pathname === "/") {
     return NextResponse.redirect(new URL("/dashboard", req.url))
   }
   if (!isPublic(req)) {
-    auth.protect()
+    await auth.protect()
   }
 })
 
