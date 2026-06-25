@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { Plus, Pencil, Trash2, Building2, Users, Send, Zap, LayoutList, CalendarDays } from "lucide-react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Zap, LayoutList, CalendarDays, CalendarIcon } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -30,6 +32,10 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { createCampaign, updateCampaign, deleteCampaign } from "./actions"
+
+function formatDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
 
 type CampaignStatus = "pending" | "searching" | "enriching" | "distributing" | "done"
 
@@ -81,11 +87,8 @@ const STATUS_CLASSES: Record<CampaignStatus, string> = {
   done: "bg-green-50 text-green-700 border border-green-200",
 }
 
-const EMPTY_FORM: FormData = {
-  week_label: "S24 - 2026-06-08",
-  rep_name: "",
-  industry: "",
-  notes: "",
+function emptyForm(): FormData {
+  return { week_label: formatDate(new Date()), rep_name: "", industry: "", notes: "" }
 }
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
@@ -119,7 +122,7 @@ function CampaignTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Semana</TableHead>
+          <TableHead>Fecha</TableHead>
           <TableHead>Rep</TableHead>
           <TableHead>Industria</TableHead>
           <TableHead>Estado</TableHead>
@@ -234,7 +237,8 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
   const [view, setView] = useState<"list" | "weekly">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<FormData>(EMPTY_FORM)
+  const [form, setForm] = useState<FormData>(emptyForm())
+  const [calOpen, setCalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const kpis = {
@@ -246,7 +250,7 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
 
   function openCreate() {
     setEditingId(null)
-    setForm(EMPTY_FORM)
+    setForm(emptyForm())
     setDialogOpen(true)
   }
 
@@ -380,12 +384,25 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Semana</label>
-              <Input
-                value={form.week_label}
-                onChange={(e) => setForm((f) => ({ ...f, week_label: e.target.value }))}
-                placeholder="S24 - 2026-06-08"
-              />
+              <label className="text-sm font-medium">Fecha</label>
+              <Popover open={calOpen} onOpenChange={setCalOpen}>
+                <PopoverTrigger className="flex h-9 w-full items-center justify-start rounded-md border border-input bg-background px-3 text-sm font-normal hover:bg-accent hover:text-accent-foreground">
+                  <CalendarIcon className="mr-2 size-4 text-muted-foreground" />
+                  {form.week_label || "Seleccionar fecha"}
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={form.week_label ? new Date(form.week_label + "T12:00:00") : undefined}
+                    onSelect={(d) => {
+                      if (d) {
+                        setForm((f) => ({ ...f, week_label: formatDate(d) }))
+                        setCalOpen(false)
+                      }
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Rep</label>
