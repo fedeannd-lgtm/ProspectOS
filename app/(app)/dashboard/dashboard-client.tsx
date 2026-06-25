@@ -308,6 +308,26 @@ function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
 
   const shortIndustry = (name: string) => name.split(" ")[0]
 
+  const INDUSTRY_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#84cc16"]
+
+  const weekIndustryData = useMemo(() => {
+    const weekMap = new Map<string, { label: string; order: string; [k: string]: number | string }>()
+    const industries = new Set<string>()
+    campaigns.forEach((c) => {
+      const date = parseCampaignDate(c.week_label)
+      if (!date) return
+      const { key, week, year } = getISOWeekInfo(date)
+      if (!weekMap.has(key)) weekMap.set(key, { label: `S${week}`, order: `${year}-${String(week).padStart(2, "0")}` })
+      const entry = weekMap.get(key)!
+      entry[c.industry] = ((entry[c.industry] as number) || 0) + c.prospects_found
+      industries.add(c.industry)
+    })
+    return {
+      data: Array.from(weekMap.values()).sort((a, b) => (a.order as string).localeCompare(b.order as string)),
+      industries: Array.from(industries),
+    }
+  }, [campaigns])
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card className="lg:col-span-2">
@@ -362,6 +382,26 @@ function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Bar dataKey="empresas" name="Empresas" fill="#3b82f6" radius={[0, 3, 3, 0]} />
               <Bar dataKey="prospectos" name="Prospectos" fill="#10b981" radius={[0, 3, 3, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Prospectos por semana e industria</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={weekIndustryData.data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {weekIndustryData.industries.map((ind, i) => (
+                <Bar key={ind} dataKey={ind} name={shortIndustry(ind)} stackId="a" fill={INDUSTRY_COLORS[i % INDUSTRY_COLORS.length]} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
