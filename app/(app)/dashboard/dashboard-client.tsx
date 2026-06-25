@@ -582,7 +582,9 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
                     selected={form.week_label ? new Date(form.week_label + "T12:00:00") : undefined}
                     onSelect={(d) => {
                       if (d) {
-                        setForm((f) => ({ ...f, week_label: formatDate(d) }))
+                        const monday = new Date(d)
+                        monday.setDate(d.getDate() - (d.getDay() || 7) + 1)
+                        setForm((f) => ({ ...f, week_label: formatDate(monday) }))
                         setCalOpen(false)
                       }
                     }}
