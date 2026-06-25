@@ -1,12 +1,20 @@
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
 
-export function middleware(request: NextRequest) {
-  if (request.nextUrl.pathname === "/") {
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+const isPublic = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api/webhooks/(.*)",
+])
+
+export default clerkMiddleware((auth, req) => {
+  if (req.nextUrl.pathname === "/") {
+    return NextResponse.redirect(new URL("/dashboard", req.url))
   }
-  return NextResponse.next()
-}
+  if (!isPublic(req)) {
+    auth.protect()
+  }
+})
 
 export const config = {
   matcher: [
