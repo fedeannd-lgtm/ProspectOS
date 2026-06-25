@@ -159,16 +159,56 @@ function CampaignTable({
   )
 }
 
+const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+function parseCampaignDate(weekLabel: string): Date | null {
+  const match = weekLabel.match(/(\d{4}-\d{2}-\d{2})/)
+  if (!match) return null
+  const d = new Date(match[1] + "T12:00:00")
+  return isNaN(d.getTime()) ? null : d
+}
+
+function getISOWeekInfo(date: Date): { key: string; week: number; year: number; monday: Date } {
+  const d = new Date(date)
+  d.setHours(12, 0, 0, 0)
+  const day = d.getDay() || 7
+  d.setDate(d.getDate() + 4 - day)
+  const year = d.getFullYear()
+  const jan4 = new Date(year, 0, 4)
+  const week = 1 + Math.round(((d.getTime() - jan4.getTime()) / 86400000 - 3 + (jan4.getDay() || 7)) / 7)
+  const monday = new Date(date)
+  monday.setDate(date.getDate() - (date.getDay() || 7) + 1)
+  return { key: `${year}-W${String(week).padStart(2, "0")}`, week, year, monday }
+}
+
+function formatWeekRange(monday: Date): string {
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const start = `${monday.getDate()} ${MONTHS[monday.getMonth()]}`
+  const end = `${sunday.getDate()} ${MONTHS[sunday.getMonth()]} ${sunday.getFullYear()}`
+  return `${start} – ${end}`
+}
+
 function WeeklyView({ campaigns }: { campaigns: Campaign[] }) {
   const weeks = useMemo(() => {
-    const map = new Map<string, Campaign[]>()
+    const map = new Map<string, { week: number; year: number; monday: Date; campaigns: Campaign[] }>()
     campaigns.forEach((c) => {
-      const key = c.week_label
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(c)
+      const date = parseCampaignDate(c.week_label)
+      if (!date) {
+        const key = "__nodate__"
+        if (!map.has(key)) map.set(key, { week: 0, year: 0, monday: new Date(0), campaigns: [] })
+        map.get(key)!.campaigns.push(c)
+        return
+      }
+      const info = getISOWeekInfo(date)
+      if (!map.has(info.key)) map.set(info.key, { week: info.week, year: info.year, monday: info.monday, campaigns: [] })
+      map.get(info.key)!.campaigns.push(c)
     })
-    // Sort weeks descending by label
-    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+    return Array.from(map.entries()).sort((a, b) => {
+      if (a[0] === "__nodate__") return 1
+      if (b[0] === "__nodate__") return -1
+      return b[0].localeCompare(a[0])
+    })
   }, [campaigns])
 
   if (weeks.length === 0) {
@@ -180,46 +220,42 @@ function WeeklyView({ campaigns }: { campaigns: Campaign[] }) {
   }
 
   return (
-    <div className="space-y-6">
-      {weeks.map(([week, cams]) => {
+    <div className="space-y-8">
+      {weeks.map(([key, { week, year, monday, campaigns: cams }]) => {
         const totalAccounts = cams.reduce((s, c) => s + c.accounts_found, 0)
         const totalProspects = cams.reduce((s, c) => s + c.prospects_found, 0)
         const totalSent = cams.reduce((s, c) => s + c.prospects_sent, 0)
+        const label = key === "__nodate__" ? "Sin fecha" : `Semana ${week}`
+        const range = key === "__nodate__" ? "" : formatWeekRange(monday)
         return (
-          <div key={week}>
-            <div className="flex items-center gap-3 mb-3">
-              <h3 className="font-semibold text-base">{week}</h3>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><Building2 className="size-3" />{totalAccounts} empresas</span>
-                <span className="flex items-center gap-1"><Users className="size-3" />{totalProspects} prospectos</span>
-                <span className="flex items-center gap-1"><Send className="size-3" />{totalSent} enviados</span>
+          <div key={key}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-baseline gap-2">
+                <h3 className="font-semibold text-base">{label}</h3>
+                {range && <span className="text-sm text-muted-foreground">{range}</span>}
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground ml-2">
+                <span className="flex items-center gap-1"><Building2 className="size-3" />{totalAccounts}</span>
+                <span className="flex items-center gap-1"><Users className="size-3" />{totalProspects}</span>
+                <span className="flex items-center gap-1"><Send className="size-3" />{totalSent}</span>
               </div>
               <div className="flex-1 border-t" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {cams.map((c) => (
                 <Link key={c.id} href={`/campaigns/${c.id}`}>
-                  <div className="rounded-lg border p-3.5 hover:bg-muted/40 transition-colors cursor-pointer">
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="rounded-lg border p-3.5 hover:bg-muted/40 transition-colors cursor-pointer h-full">
+                    <div className="flex items-start justify-between gap-2 mb-3">
                       <div>
                         <p className="font-medium text-sm">{c.rep_name}</p>
-                        <p className="text-xs text-muted-foreground">{c.industry}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{c.industry}</p>
                       </div>
                       <StatusBadge status={c.status} />
                     </div>
                     <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Building2 className="size-3" />
-                        {c.accounts_found}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="size-3" />
-                        {c.prospects_found}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Send className="size-3" />
-                        {c.prospects_sent}
-                      </span>
+                      <span className="flex items-center gap-1"><Building2 className="size-3" />{c.accounts_found}</span>
+                      <span className="flex items-center gap-1"><Users className="size-3" />{c.prospects_found}</span>
+                      <span className="flex items-center gap-1"><Send className="size-3" />{c.prospects_sent}</span>
                     </div>
                   </div>
                 </Link>
