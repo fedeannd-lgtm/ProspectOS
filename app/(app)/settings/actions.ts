@@ -3,6 +3,41 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 
+export type SavedUrl = {
+  id: string
+  rep_name: string
+  industry: string
+  url_type: "company_search" | "people_search"
+  url: string
+  label: string | null
+  created_at: string
+}
+
+export async function getSavedUrls(): Promise<SavedUrl[]> {
+  const { data, error } = await supabase
+    .from("saved_urls")
+    .select("*")
+    .order("rep_name")
+    .order("industry")
+    .order("url_type")
+    .order("created_at")
+  if (error) throw new Error(error.message)
+  return (data ?? []) as SavedUrl[]
+}
+
+export async function createSavedUrl(payload: Omit<SavedUrl, "id" | "created_at">): Promise<SavedUrl> {
+  const { data, error } = await supabaseAdmin.from("saved_urls").insert(payload).select().single()
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+  return data as SavedUrl
+}
+
+export async function deleteSavedUrl(id: string) {
+  const { error } = await supabaseAdmin.from("saved_urls").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
 const REPS = ["Alu", "Fede", "Guido", "Suva", "Jess"]
 
 export async function getRepConfigs() {

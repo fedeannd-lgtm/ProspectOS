@@ -1,7 +1,7 @@
-import { getRepConfigs } from "./actions"
+import { getRepConfigs, getSavedUrls } from "./actions"
 import { SettingsClient } from "./settings-client"
 
 export default async function SettingsPage() {
-  const configs = await getRepConfigs()
-  return <SettingsClient configs={configs} />
+  const [configs, savedUrls] = await Promise.all([getRepConfigs(), getSavedUrls()])
+  return <SettingsClient configs={configs} savedUrls={savedUrls} />
 }
