@@ -33,6 +33,33 @@ export async function getIcpStats(): Promise<IcpStat[]> {
   return Array.from(map.values())
 }
 
+export type IcpCategoryStat = {
+  week_label: string
+  industry: string
+  category: string
+  count: number
+}
+
+export async function getIcpCategoryStats(): Promise<IcpCategoryStat[]> {
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("icp_category, campaigns!inner(week_label, industry)")
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, IcpCategoryStat>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(data ?? []).forEach((p: any) => {
+    const raw = p.campaigns
+    const camp: { week_label: string; industry: string } = Array.isArray(raw) ? raw[0] : raw
+    if (!camp) return
+    const category = p.icp_category || "Generic"
+    const key = `${camp.week_label}||${camp.industry}||${category}`
+    if (!map.has(key)) map.set(key, { week_label: camp.week_label, industry: camp.industry, category, count: 0 })
+    map.get(key)!.count++
+  })
+  return Array.from(map.values())
+}
+
 export async function getCampaigns() {
   const { data, error } = await supabase
     .from("campaigns")
