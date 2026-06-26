@@ -1,5 +1,3 @@
-import { canonicalLinkedInUrl } from "./linkedin"
-
 const APOLLO_API_KEY = process.env.APOLLO_API_KEY!
 
 export type ApolloResult = {
@@ -43,7 +41,7 @@ export async function findEmailApollo(
       last_name: lastName,
       organization_name: companyName || undefined,
       domain: companyDomain || undefined,
-      linkedin_url: canonicalLinkedInUrl(linkedinUrl),
+      linkedin_url: linkedinUrl || undefined,
     })
 
     const person = first?.person as Record<string, unknown> | undefined
