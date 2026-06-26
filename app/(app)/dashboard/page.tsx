@@ -1,7 +1,7 @@
-import { getCampaigns } from "./actions"
+import { getCampaigns, getIcpStats } from "./actions"
 import { DashboardClient } from "./dashboard-client"
 
 export default async function DashboardPage() {
-  const campaigns = await getCampaigns()
-  return <DashboardClient initialCampaigns={campaigns} />
+  const [campaigns, icpStats] = await Promise.all([getCampaigns(), getIcpStats()])
+  return <DashboardClient initialCampaigns={campaigns} icpStats={icpStats} />
 }

@@ -32,7 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createCampaign, updateCampaign, deleteCampaign } from "./actions"
+import { createCampaign, updateCampaign, deleteCampaign, type IcpStat } from "./actions"
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -269,7 +269,7 @@ function WeeklyView({ campaigns }: { campaigns: Campaign[] }) {
   )
 }
 
-function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
+function ChartsView({ campaigns, icpStats }: { campaigns: Campaign[]; icpStats: IcpStat[] }) {
   const weeklyData = useMemo(() => {
     const map = new Map<string, { label: string; order: string; empresas: number; prospectos: number; ratio: number }>()
     campaigns.forEach((c) => {
@@ -309,6 +309,33 @@ function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
     result.forEach((e) => { e.ratio = e.empresas > 0 ? +(e.prospectos / e.empresas).toFixed(1) : 0 })
     return result
   }, [campaigns])
+
+  const icpByWeek = useMemo(() => {
+    const map = new Map<string, { label: string; order: string; score10: number; score5: number; score0: number }>()
+    icpStats.forEach((s) => {
+      const date = parseCampaignDate(s.week_label)
+      if (!date) return
+      const { key, week, year, monday } = getISOWeekInfo(date)
+      if (!map.has(key)) map.set(key, { label: `${monday.getDate()} ${MONTHS[monday.getMonth()]}`, order: `${year}-${String(week).padStart(2, "0")}`, score10: 0, score5: 0, score0: 0 })
+      const entry = map.get(key)!
+      entry.score10 += s.score10
+      entry.score5 += s.score5
+      entry.score0 += s.score0
+    })
+    return Array.from(map.values()).sort((a, b) => a.order.localeCompare(b.order))
+  }, [icpStats])
+
+  const icpByIndustry = useMemo(() => {
+    const map = new Map<string, { industry: string; score10: number; score5: number; score0: number }>()
+    icpStats.forEach((s) => {
+      if (!map.has(s.industry)) map.set(s.industry, { industry: s.industry, score10: 0, score5: 0, score0: 0 })
+      const entry = map.get(s.industry)!
+      entry.score10 += s.score10
+      entry.score5 += s.score5
+      entry.score0 += s.score0
+    })
+    return Array.from(map.values()).sort((a, b) => (b.score10 + b.score5) - (a.score10 + a.score5))
+  }, [icpStats])
 
   const shortIndustry = (name: string) => name.split(" ")[0]
 
@@ -444,11 +471,59 @@ function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
           </ResponsiveContainer>
         </CardContent>
       </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Prospectos por ICP y semana</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {icpByWeek.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Sin datos de ICP todavía</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={icpByWeek} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="score10" name="ICP 10" stackId="a" fill="#10b981" />
+                <Bar dataKey="score5" name="ICP 5" stackId="a" fill="#f59e0b" />
+                <Bar dataKey="score0" name="ICP 0" stackId="a" fill="#d1d5db" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Prospectos por ICP e industria</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {icpByIndustry.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Sin datos de ICP todavía</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={icpByIndustry} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="industry" tick={{ fontSize: 11 }} width={80} tickFormatter={shortIndustry} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="score10" name="ICP 10" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="score5" name="ICP 5" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="score0" name="ICP 0" stackId="a" fill="#d1d5db" radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campaign[] }) {
+export function DashboardClient({ initialCampaigns, icpStats }: { initialCampaigns: Campaign[]; icpStats: IcpStat[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
   const [view, setView] = useState<"list" | "weekly" | "charts">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -583,7 +658,7 @@ export function DashboardClient({ initialCampaigns }: { initialCampaigns: Campai
       </div>
 
       {view === "weekly" && <WeeklyView campaigns={campaigns} />}
-      {view === "charts" && <ChartsView campaigns={campaigns} />}
+      {view === "charts" && <ChartsView campaigns={campaigns} icpStats={icpStats} />}
 
       {view === "list" && <Tabs defaultValue="Todos">
         <TabsList>
