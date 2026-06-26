@@ -271,17 +271,19 @@ function WeeklyView({ campaigns }: { campaigns: Campaign[] }) {
 
 function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
   const weeklyData = useMemo(() => {
-    const map = new Map<string, { label: string; order: string; empresas: number; prospectos: number }>()
+    const map = new Map<string, { label: string; order: string; empresas: number; prospectos: number; ratio: number }>()
     campaigns.forEach((c) => {
       const date = parseCampaignDate(c.week_label)
       if (!date) return
-      const { key, week, year } = getISOWeekInfo(date)
-      if (!map.has(key)) map.set(key, { label: `S${week}`, order: `${year}-${String(week).padStart(2, "0")}`, empresas: 0, prospectos: 0 })
+      const { key, week, year, monday } = getISOWeekInfo(date)
+      if (!map.has(key)) map.set(key, { label: `${monday.getDate()} ${MONTHS[monday.getMonth()]}`, order: `${year}-${String(week).padStart(2, "0")}`, empresas: 0, prospectos: 0, ratio: 0 })
       const entry = map.get(key)!
       entry.empresas += c.accounts_found
       entry.prospectos += c.prospects_found
     })
-    return Array.from(map.values()).sort((a, b) => a.order.localeCompare(b.order))
+    const result = Array.from(map.values()).sort((a, b) => a.order.localeCompare(b.order))
+    result.forEach((e) => { e.ratio = e.empresas > 0 ? +(e.prospectos / e.empresas).toFixed(1) : 0 })
+    return result
   }, [campaigns])
 
   const sdrData = useMemo(() => {
@@ -296,14 +298,16 @@ function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
   }, [campaigns])
 
   const industryData = useMemo(() => {
-    const map = new Map<string, { industry: string; empresas: number; prospectos: number }>()
+    const map = new Map<string, { industry: string; empresas: number; prospectos: number; ratio: number }>()
     campaigns.forEach((c) => {
-      if (!map.has(c.industry)) map.set(c.industry, { industry: c.industry, empresas: 0, prospectos: 0 })
+      if (!map.has(c.industry)) map.set(c.industry, { industry: c.industry, empresas: 0, prospectos: 0, ratio: 0 })
       const entry = map.get(c.industry)!
       entry.empresas += c.accounts_found
       entry.prospectos += c.prospects_found
     })
-    return Array.from(map.values()).sort((a, b) => b.prospectos - a.prospectos)
+    const result = Array.from(map.values()).sort((a, b) => b.prospectos - a.prospectos)
+    result.forEach((e) => { e.ratio = e.empresas > 0 ? +(e.prospectos / e.empresas).toFixed(1) : 0 })
+    return result
   }, [campaigns])
 
   const shortIndustry = (name: string) => name.split(" ")[0]
@@ -316,8 +320,8 @@ function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
     campaigns.forEach((c) => {
       const date = parseCampaignDate(c.week_label)
       if (!date) return
-      const { key, week, year } = getISOWeekInfo(date)
-      if (!weekMap.has(key)) weekMap.set(key, { label: `S${week}`, order: `${year}-${String(week).padStart(2, "0")}` })
+      const { key, week, year, monday } = getISOWeekInfo(date)
+      if (!weekMap.has(key)) weekMap.set(key, { label: `${monday.getDate()} ${MONTHS[monday.getMonth()]}`, order: `${year}-${String(week).padStart(2, "0")}` })
       const entry = weekMap.get(key)!
       entry[c.industry] = ((entry[c.industry] as number) || 0) + c.prospects_found
       industries.add(c.industry)
@@ -402,6 +406,40 @@ function ChartsView({ campaigns }: { campaigns: Campaign[] }) {
               {weekIndustryData.industries.map((ind, i) => (
                 <Bar key={ind} dataKey={ind} name={shortIndustry(ind)} stackId="a" fill={INDUSTRY_COLORS[i % INDUSTRY_COLORS.length]} />
               ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Ratio prospectos/empresa por semana</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={weeklyData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip formatter={(v) => [`${v}`, "Ratio p/e"]} />
+              <Bar dataKey="ratio" name="Ratio p/e" fill="#f97316" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Ratio prospectos/empresa por industria</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={industryData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="industry" tick={{ fontSize: 11 }} width={80} tickFormatter={shortIndustry} />
+              <Tooltip formatter={(v) => [`${v}`, "Ratio p/e"]} />
+              <Bar dataKey="ratio" name="Ratio p/e" fill="#f97316" radius={[0, 3, 3, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
