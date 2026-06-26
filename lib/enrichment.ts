@@ -24,13 +24,14 @@ type ProspectInput = {
 export async function enrichProspect(prospect: ProspectInput): Promise<EnrichmentResult> {
   const { first_name, last_name, company_name, company_domain } = prospect
 
-  // Pass raw URL to Apollo — it can resolve both canonical and encoded Sales Nav IDs.
-  // Only use canonical filtering for other providers that don't understand encoded slugs.
   const rawUrl = prospect.linkedin_url ?? ""
   const canonicalUrl = canonicalLinkedInUrl(rawUrl) ?? ""
 
-  // 1. Apollo — also returns the canonical LinkedIn URL it has on file
-  const apolloResult = await findEmailApollo(first_name, last_name, company_name, rawUrl, company_domain)
+  // Apollo works best with just the first word of first_name (e.g. "Cesar", not "Cesar Leopoldo")
+  const apolloFirstName = first_name.split(" ")[0]
+
+  // 1. Apollo — pass raw URL (handles encoded Sales Nav IDs); use trimmed first name
+  const apolloResult = await findEmailApollo(apolloFirstName, last_name, company_name, rawUrl, company_domain)
 
   // Best LinkedIn URL we have: prefer what Apollo returned (canonical), then our own canonical
   const bestLinkedInUrl = apolloResult.canonicalLinkedInUrl ?? canonicalUrl

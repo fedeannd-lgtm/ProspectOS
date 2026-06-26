@@ -44,7 +44,14 @@ export async function findEmailApollo(
       linkedin_url: linkedinUrl || undefined,
     })
 
-    const person = first?.person as Record<string, unknown> | undefined
+    let person = first?.person as Record<string, unknown> | undefined
+
+    // If name+domain match failed but we have a LinkedIn URL, retry with URL only
+    if (!person && linkedinUrl) {
+      const urlOnly = await matchPerson({ linkedin_url: linkedinUrl })
+      person = urlOnly?.person as Record<string, unknown> | undefined
+    }
+
     if (!person) return { email: null, canonicalLinkedInUrl: null }
 
     const apolloLinkedIn = (person.linkedin_url as string) ?? null
