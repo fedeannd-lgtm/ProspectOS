@@ -3,6 +3,7 @@ const APOLLO_API_KEY = process.env.APOLLO_API_KEY!
 export type ApolloResult = {
   email: string | null
   canonicalLinkedInUrl: string | null
+  apolloEmailStatus: string | null  // Apollo's own verified/unverified status
 }
 
 async function matchPerson(payload: Record<string, unknown>): Promise<{ person: Record<string, unknown> } | null> {
@@ -111,8 +112,9 @@ export async function findEmailApollo(
 
     if (person) {
       const apolloLinkedIn = (person.linkedin_url as string) ?? null
+      const apolloEmailStatus = (person.email_status as string) ?? null
       const email = extractEmail(person)
-      if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn }
+      if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus }
 
       // Force email reveal via Apollo person ID
       const apolloId = person.id as string | undefined
@@ -122,21 +124,22 @@ export async function findEmailApollo(
         if (p2) {
           const email2 = extractEmail(p2)
           const linkedin2 = (p2.linkedin_url as string) ?? apolloLinkedIn
-          if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2 }
-          return { email: null, canonicalLinkedInUrl: linkedin2 }
+          const status2 = (p2.email_status as string) ?? apolloEmailStatus
+          if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: status2 }
+          return { email: null, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: null }
         }
       }
-      return { email: null, canonicalLinkedInUrl: apolloLinkedIn }
+      return { email: null, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus: null }
     }
 
     // 4. mixed_people/search by company domain + name match
     if (companyDomain) {
       const found = await searchPeopleAtCompany(firstName, lastName, companyDomain)
-      if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl }
+      if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl, apolloEmailStatus: null }
     }
 
-    return { email: null, canonicalLinkedInUrl: null }
+    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null }
   } catch {
-    return { email: null, canonicalLinkedInUrl: null }
+    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null }
   }
 }

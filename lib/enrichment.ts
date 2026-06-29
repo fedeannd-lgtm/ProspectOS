@@ -39,8 +39,17 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
 
   if (apolloResult.email) {
     const { status, subStatus } = await validateEmail(apolloResult.email)
-    if (isUsable(status)) {
-      return { email: apolloResult.email, provider: "apollo", zbStatus: status, zbSubStatus: subStatus, enriched: true }
+    // If ZeroBounce fails (unknown = key missing/no credits/network error),
+    // fall back to Apollo's own email_status. Apollo marks emails as "verified"
+    // after their own validation pipeline.
+    const effectiveStatus: ZBStatus =
+      status !== "unknown"
+        ? status
+        : apolloResult.apolloEmailStatus === "verified"
+          ? "valid"
+          : "unknown"
+    if (isUsable(effectiveStatus)) {
+      return { email: apolloResult.email, provider: "apollo", zbStatus: effectiveStatus, zbSubStatus: subStatus, enriched: true }
     }
   }
 
