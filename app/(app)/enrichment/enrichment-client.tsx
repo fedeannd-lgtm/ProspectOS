@@ -40,18 +40,23 @@ const ICP_CFG: Record<string, { cls: string }> = {
   "Genérico":    { cls: "bg-zinc-100 text-zinc-500" },
 }
 
-const PROVIDERS: Record<string, string> = {
-  apollo: "Apollo", findymail: "FindyEmail", prospeo: "Prospeo", hunter: "Hunter"
-}
+const PROVIDER_COLS: { key: string; label: string }[] = [
+  { key: "apollo",    label: "Apollo"  },
+  { key: "findymail", label: "Findy"   },
+  { key: "prospeo",   label: "Prospeo" },
+  { key: "hunter",    label: "Hunter"  },
+  { key: "pattern",   label: "Patrón"  },
+]
 
 function exportCsv(prospects: Prospect[], campaignLabel: string) {
   const esc = (v: string | null | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`
-  const headers = ["Nombre", "Apellido", "Nombre completo", "Cargo", "Empresa", "Dominio", "LinkedIn", "Email", "ZB Status", "Provider", "ICP Categoría", "ICP Score", "Estado"]
+  const headers = ["Nombre", "Apellido", "Nombre completo", "Cargo", "Empresa", "Dominio", "LinkedIn", "Email", "ZB Status", ...PROVIDER_COLS.map((c) => c.label), "ICP Categoría", "ICP Score", "Estado"]
   const rows = prospects.map((p) => [
     esc(p.first_name), esc(p.last_name), esc(p.full_name),
     esc(p.job_title), esc(p.company_name), esc(p.company_domain),
     esc(p.linkedin_url), esc(p.email), esc(p.email_status),
-    esc(p.email_provider), esc(p.icp_category),
+    ...PROVIDER_COLS.map((c) => p.email_provider === c.key ? "✓" : ""),
+    esc(p.icp_category),
     p.icp_score > 0 ? p.icp_score : "",
     esc(p.status),
   ].join(","))
@@ -463,7 +468,9 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Score</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">ZB</th>
-                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Provider</th>
+                    {PROVIDER_COLS.map((c) => (
+                      <th key={c.key} className="px-2 py-2.5 text-center font-medium text-muted-foreground w-14">{c.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -525,9 +532,19 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                             </span>
                           ) : "—"}
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {p.email_provider ? PROVIDERS[p.email_provider] ?? p.email_provider : "—"}
-                        </td>
+                        {PROVIDER_COLS.map((c) => (
+                          <td key={c.key} className="px-2 py-2 text-center">
+                            {p.email_provider === c.key ? (
+                              <span className="inline-flex items-center justify-center size-5 rounded-full bg-green-100 text-green-700">
+                                <Check className="size-3" />
+                              </span>
+                            ) : rowStatus.get(p.id) === "enriching" ? (
+                              <span className="text-muted-foreground/30 text-[10px]">·</span>
+                            ) : (
+                              <span className="text-muted-foreground/30 text-[10px]">—</span>
+                            )}
+                          </td>
+                        ))}
                       </tr>
                     )
                   })}
