@@ -63,10 +63,16 @@ export async function getIcpCategoryStats(): Promise<IcpCategoryStat[]> {
 export async function getCampaigns() {
   const { data, error } = await supabase
     .from("campaigns")
-    .select("*")
+    .select("*, accounts(count), prospects(count)")
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
-  return data
+  // Replace stored counts with live counts from related tables
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((c: any) => ({
+    ...c,
+    accounts_found: c.accounts?.[0]?.count ?? c.accounts_found ?? 0,
+    prospects_found: c.prospects?.[0]?.count ?? c.prospects_found ?? 0,
+  }))
 }
 
 export async function createCampaign(form: {
