@@ -16,7 +16,11 @@ export async function findEmailHunter(
     const res = await fetch(`https://api.hunter.io/v2/email-finder?${params}`)
     if (!res.ok) return null
     const data = await res.json()
-    return data?.data?.email ?? null
+    const email = data?.data?.email ?? null
+    const score = data?.data?.score ?? 0
+    // Require at least 50% confidence from Hunter
+    if (!email || score < 50) return null
+    return email
   } catch {
     return null
   }

@@ -64,7 +64,10 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
     const email = await provider.find()
     if (!email) continue
     const { status, subStatus } = await validateEmail(email)
-    if (isUsable(status)) {
+    // Accept if ZeroBounce confirms valid/catch-all, OR if ZB returned "unknown" (no credits/key error).
+    // "unknown" means ZeroBounce couldn't verify — not that the email is invalid.
+    // These providers do their own validation before returning an email.
+    if (isUsable(status) || status === "unknown") {
       return { email, provider: provider.name, zbStatus: status, zbSubStatus: subStatus, enriched: true }
     }
   }
