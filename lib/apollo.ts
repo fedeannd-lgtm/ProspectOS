@@ -65,6 +65,17 @@ async function searchPeopleAtCompany(
   return { email, linkedInUrl: (match.linkedin_url as string) ?? null }
 }
 
+// Returns true for standard LinkedIn slugs (/in/firstname-lastname-id)
+// Returns false for encoded Sales Nav IDs (/in/ACwAABxxx...)
+function isCanonicalLinkedIn(url: string): boolean {
+  if (!url) return false
+  const match = url.match(/linkedin\.com\/in\/([^/?]+)/)
+  if (!match) return false
+  const slug = match[1]
+  // Encoded Sales Nav IDs start with uppercase or are very long base64-like strings
+  return !(slug[0] === slug[0].toUpperCase() && slug[0] !== slug[0].toLowerCase()) && slug.length < 60
+}
+
 export async function findEmailApollo(
   firstName: string,
   lastName: string,
@@ -73,21 +84,30 @@ export async function findEmailApollo(
   companyDomain?: string | null
 ): Promise<ApolloResult> {
   try {
-    // 1. people/match: match by name + LinkedIn URL
+    // 1. name + company only — most flexible, avoids domain/URL confusion
+    //    Apollo matches even when domain or LinkedIn URL in our DB differ from theirs
     const first = await matchPerson({
       first_name: firstName,
       last_name: lastName,
       organization_name: companyName || undefined,
-      domain: companyDomain || undefined,
-      linkedin_url: linkedinUrl || undefined,
     })
 
     let person = first?.person as Record<string, unknown> | undefined
 
-    // 1b. Retry with LinkedIn URL only (handles encoded Sales Nav IDs)
-    if (!person && linkedinUrl) {
+    // 2. Canonical LinkedIn URL only (skip encoded Sales Nav IDs — they break Apollo matching)
+    if (!person && linkedinUrl && isCanonicalLinkedIn(linkedinUrl)) {
       const urlOnly = await matchPerson({ linkedin_url: linkedinUrl })
       person = urlOnly?.person as Record<string, unknown> | undefined
+    }
+
+    // 3. name + domain (if domain available and previous attempts failed)
+    if (!person && companyDomain) {
+      const withDomain = await matchPerson({
+        first_name: firstName,
+        last_name: lastName,
+        domain: companyDomain,
+      })
+      person = withDomain?.person as Record<string, unknown> | undefined
     }
 
     if (person) {
@@ -110,7 +130,7 @@ export async function findEmailApollo(
       return { email: null, canonicalLinkedInUrl: apolloLinkedIn }
     }
 
-    // 2. Fallback: mixed_people/search by company domain + name match
+    // 4. mixed_people/search by company domain + name match
     if (companyDomain) {
       const found = await searchPeopleAtCompany(firstName, lastName, companyDomain)
       if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl }
