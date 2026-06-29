@@ -12,15 +12,16 @@ async function checkZeroBounce(): Promise<ProviderStatus> {
   const key = process.env.ZEROBOUNCE_API_KEY
   if (!key) return { name: "zerobounce", label: "ZeroBounce", status: "unconfigured", detail: "API key no configurada" }
   try {
-    const res = await fetch(`https://api.zerobounce.net/v2/getcredits?apikey=${key}`)
+    const res = await fetch(`https://api.zerobounce.net/v2/getcredits?api_key=${key}`)
+    if (!res.ok) return { name: "zerobounce", label: "ZeroBounce", status: "error", detail: `HTTP ${res.status}` }
     const data = await res.json()
-    const credits = parseInt(data?.Credits ?? "-1", 10)
+    const credits = parseInt(data?.Credits ?? data?.credits ?? "-1", 10)
     if (credits === -1) return { name: "zerobounce", label: "ZeroBounce", status: "error", credits: null, detail: "API key inválida" }
     if (credits === 0) return { name: "zerobounce", label: "ZeroBounce", status: "out", credits: 0, detail: "Sin créditos" }
     if (credits < 100) return { name: "zerobounce", label: "ZeroBounce", status: "low", credits, detail: `${credits} créditos restantes` }
     return { name: "zerobounce", label: "ZeroBounce", status: "ok", credits, detail: `${credits.toLocaleString()} créditos` }
-  } catch {
-    return { name: "zerobounce", label: "ZeroBounce", status: "error", detail: "Error al consultar" }
+  } catch (e) {
+    return { name: "zerobounce", label: "ZeroBounce", status: "error", detail: `Error: ${e instanceof Error ? e.message : "desconocido"}` }
   }
 }
 
