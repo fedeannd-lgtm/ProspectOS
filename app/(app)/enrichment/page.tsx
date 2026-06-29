@@ -1,7 +1,8 @@
-import { getCampaigns, getProspectsForEnrichment } from "./actions"
+import { getCampaigns } from "./actions"
+import { getProviderStatus } from "../settings/provider-status"
 import { EnrichmentClient } from "./enrichment-client"
 
 export default async function EnrichmentPage() {
-  const campaigns = await getCampaigns()
-  return <EnrichmentClient campaigns={campaigns} />
+  const [campaigns, providerStatus] = await Promise.all([getCampaigns(), getProviderStatus()])
+  return <EnrichmentClient campaigns={campaigns} providerStatus={providerStatus} />
 }

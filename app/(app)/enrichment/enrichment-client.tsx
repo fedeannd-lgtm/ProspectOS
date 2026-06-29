@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download } from "lucide-react"
+import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download, AlertCircle } from "lucide-react"
+import type { ProviderStatus } from "../settings/provider-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -71,7 +72,7 @@ function isClassified(p: Prospect) {
   return !!(p.icp_category)
 }
 
-export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
+export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Campaign[]; providerStatus: ProviderStatus[] }) {
   const [campaignId, setCampaignId] = useState("")
   const [comboOpen, setComboOpen] = useState(false)
   const [prospects, setProspects] = useState<Prospect[]>([])
@@ -228,6 +229,8 @@ export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
     return p && !hasValidEmail(p)
   }).length
 
+  const problemProviders = providerStatus.filter((p) => p.status === "out" || p.status === "error")
+
   return (
     <div className="space-y-6">
       <div>
@@ -236,6 +239,18 @@ export function EnrichmentClient({ campaigns }: { campaigns: Campaign[] }) {
           Apollo → FindyEmail → Prospeo → Hunter, validado con Zerobounce.
         </p>
       </div>
+
+      {problemProviders.length > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-yellow-600" />
+          <div>
+            <span className="font-medium">Providers con problemas: </span>
+            {problemProviders.map((p) => `${p.label} (${p.detail})`).join(", ")}.
+            {" "}El enriquecimiento sigue corriendo con los demás providers.
+            {" "}<a href="/settings" className="underline font-medium">Ver estado completo →</a>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         {/* Left panel */}

@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Plus, Trash2, Copy, Check, Link2 } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle } from "lucide-react"
+import type { ProviderStatus } from "./provider-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -415,7 +416,40 @@ function SavedUrlsCard({ initialUrls }: { initialUrls: SavedUrl[] }) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function SettingsClient({ configs, savedUrls }: { configs: RepConfig[]; savedUrls: SavedUrl[] }) {
+const STATUS_CFG = {
+  ok:           { icon: CheckCircle2, cls: "text-green-600",  bg: "bg-green-50",  label: "OK" },
+  low:          { icon: AlertTriangle, cls: "text-yellow-600", bg: "bg-yellow-50", label: "Pocos créditos" },
+  out:          { icon: AlertCircle,   cls: "text-red-600",    bg: "bg-red-50",    label: "Sin créditos" },
+  unconfigured: { icon: MinusCircle,   cls: "text-zinc-400",   bg: "bg-zinc-50",   label: "No configurado" },
+  error:        { icon: XCircle,       cls: "text-red-600",    bg: "bg-red-50",    label: "Error" },
+}
+
+function ProviderRow({ p }: { p: ProviderStatus }) {
+  const cfg = STATUS_CFG[p.status]
+  const Icon = cfg.icon
+  return (
+    <div className="flex items-center justify-between py-2">
+      <div className="flex items-center gap-2">
+        <Icon className={`size-4 ${cfg.cls}`} />
+        <span className="text-sm font-medium">{p.label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {p.credits != null && (
+          <span className="text-xs text-muted-foreground">{p.credits.toLocaleString()} créditos</span>
+        )}
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.bg} ${cfg.cls}`}>
+          {p.detail}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+export function SettingsClient({ configs, savedUrls, providerStatus }: {
+  configs: RepConfig[]
+  savedUrls: SavedUrl[]
+  providerStatus: ProviderStatus[]
+}) {
   return (
     <div className="space-y-6">
       <div>
@@ -424,6 +458,16 @@ export function SettingsClient({ configs, savedUrls }: { configs: RepConfig[]; s
           Configuración de cookies y URLs por SDR.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Estado de providers</CardTitle>
+          <CardDescription>Créditos disponibles por servicio de enriquecimiento.</CardDescription>
+        </CardHeader>
+        <CardContent className="divide-y">
+          {providerStatus.map((p) => <ProviderRow key={p.name} p={p} />)}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
