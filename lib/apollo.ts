@@ -27,6 +27,44 @@ function extractEmail(person: Record<string, unknown>): string | null {
   return contacts.find((c) => c.email?.includes("@"))?.email ?? null
 }
 
+async function searchPeopleAtCompany(
+  firstName: string,
+  lastName: string,
+  companyDomain: string,
+): Promise<{ email: string; linkedInUrl: string | null } | null> {
+  const res = await fetch("https://api.apollo.io/v1/mixed_people/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+      "X-Api-Key": APOLLO_API_KEY,
+    },
+    body: JSON.stringify({
+      api_key: APOLLO_API_KEY,
+      q_organization_domains: [companyDomain],
+      contact_email_status: ["verified", "guessed", "unavailable", "bounced", "pending_manual_fulfillment"],
+      per_page: 100,
+    }),
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  const people = (data?.people ?? []) as Array<Record<string, unknown>>
+
+  // Find by name similarity
+  const firstLower = firstName.toLowerCase()
+  const lastLower = lastName.split(" ")[0].toLowerCase() // first word of last name
+  const match = people.find((p) => {
+    const pFirst = ((p.first_name as string) ?? "").toLowerCase()
+    const pLast = ((p.last_name as string) ?? "").toLowerCase()
+    return pFirst.startsWith(firstLower) && pLast.startsWith(lastLower)
+  })
+
+  if (!match) return null
+  const email = extractEmail(match)
+  if (!email) return null
+  return { email, linkedInUrl: (match.linkedin_url as string) ?? null }
+}
+
 export async function findEmailApollo(
   firstName: string,
   lastName: string,
@@ -35,7 +73,7 @@ export async function findEmailApollo(
   companyDomain?: string | null
 ): Promise<ApolloResult> {
   try {
-    // First call: match by name + domain
+    // 1. people/match: match by name + LinkedIn URL
     const first = await matchPerson({
       first_name: firstName,
       last_name: lastName,
@@ -46,32 +84,39 @@ export async function findEmailApollo(
 
     let person = first?.person as Record<string, unknown> | undefined
 
-    // If name+domain match failed but we have a LinkedIn URL, retry with URL only
+    // 1b. Retry with LinkedIn URL only (handles encoded Sales Nav IDs)
     if (!person && linkedinUrl) {
       const urlOnly = await matchPerson({ linkedin_url: linkedinUrl })
       person = urlOnly?.person as Record<string, unknown> | undefined
     }
 
-    if (!person) return { email: null, canonicalLinkedInUrl: null }
+    if (person) {
+      const apolloLinkedIn = (person.linkedin_url as string) ?? null
+      const email = extractEmail(person)
+      if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn }
 
-    const apolloLinkedIn = (person.linkedin_url as string) ?? null
-    const email = extractEmail(person)
-    if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn }
-
-    // Second call: if we have the Apollo person ID, match by ID to force email reveal
-    const apolloId = person.id as string | undefined
-    if (apolloId) {
-      const second = await matchPerson({ id: apolloId })
-      const p2 = second?.person as Record<string, unknown> | undefined
-      if (p2) {
-        const email2 = extractEmail(p2)
-        const linkedin2 = (p2.linkedin_url as string) ?? apolloLinkedIn
-        if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2 }
-        return { email: null, canonicalLinkedInUrl: linkedin2 }
+      // Force email reveal via Apollo person ID
+      const apolloId = person.id as string | undefined
+      if (apolloId) {
+        const second = await matchPerson({ id: apolloId })
+        const p2 = second?.person as Record<string, unknown> | undefined
+        if (p2) {
+          const email2 = extractEmail(p2)
+          const linkedin2 = (p2.linkedin_url as string) ?? apolloLinkedIn
+          if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2 }
+          return { email: null, canonicalLinkedInUrl: linkedin2 }
+        }
       }
+      return { email: null, canonicalLinkedInUrl: apolloLinkedIn }
     }
 
-    return { email: null, canonicalLinkedInUrl: apolloLinkedIn }
+    // 2. Fallback: mixed_people/search by company domain + name match
+    if (companyDomain) {
+      const found = await searchPeopleAtCompany(firstName, lastName, companyDomain)
+      if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl }
+    }
+
+    return { email: null, canonicalLinkedInUrl: null }
   } catch {
     return { email: null, canonicalLinkedInUrl: null }
   }
