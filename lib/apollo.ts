@@ -32,7 +32,7 @@ async function searchPeopleAtCompany(
   lastName: string,
   companyDomain: string,
 ): Promise<{ email: string; linkedInUrl: string | null } | null> {
-  const res = await fetch("https://api.apollo.io/v1/mixed_people/search", {
+  const res = await fetch("https://api.apollo.io/v1/mixed_people/api_search", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -41,8 +41,7 @@ async function searchPeopleAtCompany(
     },
     body: JSON.stringify({
       api_key: APOLLO_API_KEY,
-      q_organization_domains: [companyDomain],
-      contact_email_status: ["verified", "guessed", "unavailable", "bounced", "pending_manual_fulfillment"],
+      q_organization_domains_list: [companyDomain],
       per_page: 100,
     }),
   })
