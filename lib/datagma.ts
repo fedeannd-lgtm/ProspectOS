@@ -2,6 +2,17 @@ import { canonicalLinkedInUrl } from "./linkedin"
 
 const DATAGMA_API_KEY = process.env.DATAGMA_API_KEY
 
+async function datagmaRequest(params: Record<string, string>): Promise<string | null> {
+  const url = new URL("https://gateway.datagma.net/api/ingress/v2/find")
+  url.searchParams.set("token", DATAGMA_API_KEY!)
+  url.searchParams.set("data", "EMAIL_FINDER_DATAGMA")
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+  const res = await fetch(url.toString())
+  if (!res.ok) return null
+  const data = await res.json()
+  return data?.email ?? null
+}
+
 export async function findEmailDatagma(
   firstName: string,
   lastName: string,
@@ -10,32 +21,29 @@ export async function findEmailDatagma(
 ): Promise<string | null> {
   if (!DATAGMA_API_KEY) return null
   try {
+    // 1. LinkedIn URL (most reliable)
     const canonical = canonicalLinkedInUrl(linkedinUrl)
-
-    // Prefer LinkedIn URL lookup
     if (canonical) {
-      const url = new URL("https://gateway.datagma.net/api/ingress/v2/find")
-      url.searchParams.set("token", DATAGMA_API_KEY)
-      url.searchParams.set("uid", canonical)
-      url.searchParams.set("data", "EMAIL_FINDER_DATAGMA")
-      const res = await fetch(url.toString())
-      if (res.ok) {
-        const data = await res.json()
-        if (data?.email) return data.email
-      }
+      const email = await datagmaRequest({ uid: canonical })
+      if (email) return email
     }
 
-    // Fallback: name + domain
     if (!companyDomain) return null
-    const url = new URL("https://gateway.datagma.net/api/ingress/v2/find")
-    url.searchParams.set("token", DATAGMA_API_KEY)
-    url.searchParams.set("fullName", `${firstName} ${lastName}`.trim())
-    url.searchParams.set("companyDomain", companyDomain)
-    url.searchParams.set("data", "EMAIL_FINDER_DATAGMA")
-    const res = await fetch(url.toString())
-    if (!res.ok) return null
-    const data = await res.json()
-    return data?.email ?? null
+
+    // 2. Full first name (e.g. "Maria Constanza Dristas")
+    const email2 = await datagmaRequest({ fullName: `${firstName} ${lastName}`.trim(), companyDomain })
+    if (email2) return email2
+
+    // 3. Last word of first name — handles compound names like "Maria Constanza" → "Constanza"
+    // People with compound first names often use the last part professionally
+    const parts = firstName.trim().split(/\s+/)
+    if (parts.length > 1) {
+      const usualName = parts[parts.length - 1]
+      const email3 = await datagmaRequest({ fullName: `${usualName} ${lastName}`.trim(), companyDomain })
+      if (email3) return email3
+    }
+
+    return null
   } catch {
     return null
   }
