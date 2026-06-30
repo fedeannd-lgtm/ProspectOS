@@ -6,6 +6,7 @@ import { enrichProspect } from "@/lib/enrichment"
 import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
 import { findPhoneApollo } from "@/lib/apollo"
+import { findPhoneDatagma } from "@/lib/datagma"
 
 export async function getCampaigns() {
   const { data, error } = await supabase
@@ -118,20 +119,32 @@ export async function classifyAllIcp(campaignId: string): Promise<number> {
 export async function enrichPhoneForProspect(prospectId: string): Promise<string | null> {
   const { data: p } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, phone")
+    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, email, phone")
     .eq("id", prospectId)
     .single()
 
   if (!p) throw new Error("Prospecto no encontrado")
   if (p.phone) return p.phone
 
-  const phone = await findPhoneApollo(
-    p.first_name ?? "",
-    p.last_name ?? "",
-    p.company_name ?? "",
-    p.linkedin_url ?? "",
-    p.company_domain,
-  )
+  // 1. Datagma — preferred for phones (LinkedIn URL + email)
+  let phone = await findPhoneDatagma({
+    linkedinUrl: p.linkedin_url,
+    email: p.email,
+    firstName: p.first_name ?? "",
+    lastName: p.last_name ?? "",
+    companyName: p.company_name,
+  })
+
+  // 2. Apollo fallback
+  if (!phone) {
+    phone = await findPhoneApollo(
+      p.first_name ?? "",
+      p.last_name ?? "",
+      p.company_name ?? "",
+      p.linkedin_url ?? "",
+      p.company_domain,
+    )
+  }
 
   if (phone) {
     await supabaseAdmin.from("prospects").update({ phone }).eq("id", prospectId)
