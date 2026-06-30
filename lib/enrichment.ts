@@ -2,6 +2,7 @@ import { findEmailApollo } from "./apollo"
 import { findEmailFindymail } from "./findymail"
 import { findEmailProspeo } from "./prospeo"
 import { findEmailHunter } from "./hunter"
+import { findEmailDatagma } from "./datagma"
 import { validateEmail, isUsable, type ZBStatus } from "./zerobounce"
 import { canonicalLinkedInUrl } from "./linkedin"
 import { generateEmailCandidates } from "./email-guesser"
@@ -53,11 +54,12 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
     }
   }
 
-  // 2–4. FindyEmail, Prospeo, Hunter — now using canonical URL from Apollo if available
+  // 2–5. FindyEmail, Prospeo, Hunter, Datagma — using canonical URL from Apollo if available
   const REST: Array<{ name: string; find: () => Promise<string | null> }> = [
     { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
-    { name: "prospeo",  find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
-    { name: "hunter",   find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
+    { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
+    { name: "hunter",    find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
+    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
   ]
 
   for (const provider of REST) {

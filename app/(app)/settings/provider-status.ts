@@ -54,6 +54,7 @@ export async function getProviderStatus(): Promise<ProviderStatus[]> {
     checkKey("findymail", "FindyEmail", "FINDYMAIL_API_KEY"),
     checkKey("prospeo", "Prospeo", "PROSPEO_API_KEY"),
     hunter,
+    checkKey("datagma", "Datagma", "DATAGMA_API_KEY"),
     zb,
   ]
 }
