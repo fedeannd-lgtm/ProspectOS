@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp } from "./actions"
+import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
@@ -19,7 +19,7 @@ type Prospect = {
   job_title: string; company_name: string; company_domain: string | null
   linkedin_url: string; email: string | null; email_status: string | null
   email_provider: string | null; icp_score: number; icp_category: string | null
-  os_score: number | null; started_role_months: number | null; status: string
+  os_score: number | null; started_role_months: number | null; phone: string | null; status: string
   accounts: { headcount_range: string | null }[] | null
 }
 
@@ -111,6 +111,10 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
   const [enriching, setEnriching] = useState(false)
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 })
   const [rowStatus, setRowStatus] = useState<Map<string, "enriching" | "found" | "not_found" | "error">>(new Map())
+
+  // Phone enrichment state
+  const [enrichingPhone, setEnrichingPhone] = useState(false)
+  const [phoneProgress, setPhoneProgress] = useState({ done: 0, total: 0 })
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
@@ -243,6 +247,23 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
     }
 
     setEnriching(false)
+  }
+
+  async function handleEnrichPhones() {
+    const toEnrich = [...selectedIds]
+    if (!toEnrich.length) return
+    setEnrichingPhone(true)
+    setError("")
+    setPhoneProgress({ done: 0, total: toEnrich.length })
+    for (let i = 0; i < toEnrich.length; i++) {
+      const id = toEnrich[i]
+      try {
+        const phone = await enrichPhoneForProspect(id)
+        setProspects((prev) => prev.map((x) => x.id === id ? { ...x, phone } : x))
+      } catch { /* continue */ }
+      setPhoneProgress({ done: i + 1, total: toEnrich.length })
+    }
+    setEnrichingPhone(false)
   }
 
   const selectedPending = [...selectedIds].filter((id) => {
@@ -380,6 +401,28 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
             </CardContent>
           </Card>
 
+          {/* Enrich phones */}
+          <Card>
+            <CardContent className="pt-4 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleEnrichPhones}
+                disabled={!campaignId || loadingProspects || enriching || enrichingPhone || classifying || selectedIds.size === 0}
+              >
+                {enrichingPhone
+                  ? <><Loader2 className="mr-2 size-4 animate-spin" />{phoneProgress.done}/{phoneProgress.total}</>
+                  : <><svg className="mr-2 size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>Enriquecer teléfonos{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}</>}
+              </Button>
+              {enrichingPhone && (
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-blue-500 transition-all" style={{ width: `${phoneProgress.total ? (phoneProgress.done / phoneProgress.total) * 100 : 0}%` }} />
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground">Busca teléfono en Apollo para los seleccionados.</p>
+            </CardContent>
+          </Card>
+
           {error && (
             <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               <AlertTriangle className="size-4 shrink-0" />
@@ -509,6 +552,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">Score</th>
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">OS</th>
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">LI</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tel</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">ZB</th>
                     {PROVIDER_COLS.map((c) => (
@@ -572,6 +616,11 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                               <svg className="size-3" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
                             </a>
                           ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
+                        </td>
+                        <td className="px-3 py-2">
+                          {p.phone
+                            ? <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">{p.phone}</span>
+                            : <span className="text-muted-foreground/30 text-[10px]">—</span>}
                         </td>
                         <td className="px-3 py-2 max-w-[160px]">
                           {rowStatus.get(p.id) === "enriching" ? (

@@ -3,7 +3,8 @@ const APOLLO_API_KEY = process.env.APOLLO_API_KEY!
 export type ApolloResult = {
   email: string | null
   canonicalLinkedInUrl: string | null
-  apolloEmailStatus: string | null  // Apollo's own verified/unverified status
+  apolloEmailStatus: string | null
+  phone: string | null
 }
 
 async function matchPerson(payload: Record<string, unknown>): Promise<{ person: Record<string, unknown> } | null> {
@@ -14,11 +15,23 @@ async function matchPerson(payload: Record<string, unknown>): Promise<{ person: 
       "Cache-Control": "no-cache",
       "X-Api-Key": APOLLO_API_KEY,
     },
-    body: JSON.stringify({ api_key: APOLLO_API_KEY, reveal_personal_emails: true, ...payload }),
+    body: JSON.stringify({ api_key: APOLLO_API_KEY, reveal_personal_emails: true, reveal_phone_number: true, ...payload }),
   })
   if (!res.ok) return null
   const data = await res.json()
   return data?.person ? data : null
+}
+
+function extractPhone(person: Record<string, unknown>): string | null {
+  const numbers = (person?.phone_numbers ?? []) as Array<{ sanitized_number?: string; type?: string }>
+  if (!numbers.length) return null
+  // Prefer mobile > work_direct > work_hq > first available
+  const priority = ["mobile", "work_direct", "work_hq"]
+  for (const type of priority) {
+    const match = numbers.find((n) => n.type === type && n.sanitized_number)
+    if (match?.sanitized_number) return match.sanitized_number
+  }
+  return numbers[0]?.sanitized_number ?? null
 }
 
 function extractEmail(person: Record<string, unknown>): string | null {
@@ -114,7 +127,8 @@ export async function findEmailApollo(
       const apolloLinkedIn = (person.linkedin_url as string) ?? null
       const apolloEmailStatus = (person.email_status as string) ?? null
       const email = extractEmail(person)
-      if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus }
+      const phone = extractPhone(person)
+      if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus, phone }
 
       // Force email reveal via Apollo person ID
       const apolloId = person.id as string | undefined
@@ -123,23 +137,68 @@ export async function findEmailApollo(
         const p2 = second?.person as Record<string, unknown> | undefined
         if (p2) {
           const email2 = extractEmail(p2)
+          const phone2 = extractPhone(p2) ?? phone
           const linkedin2 = (p2.linkedin_url as string) ?? apolloLinkedIn
           const status2 = (p2.email_status as string) ?? apolloEmailStatus
-          if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: status2 }
-          return { email: null, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: null }
+          if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: status2, phone: phone2 }
+          return { email: null, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: null, phone: phone2 }
         }
       }
-      return { email: null, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus: null }
+      return { email: null, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus: null, phone }
     }
 
     // 4. mixed_people/search by company domain + name match
     if (companyDomain) {
       const found = await searchPeopleAtCompany(firstName, lastName, companyDomain)
-      if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl, apolloEmailStatus: null }
+      if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl, apolloEmailStatus: null, phone: null }
     }
 
-    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null }
+    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null, phone: null }
   } catch {
-    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null }
+    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null, phone: null }
+  }
+}
+
+export async function findPhoneApollo(
+  firstName: string,
+  lastName: string,
+  companyName: string,
+  linkedinUrl: string,
+  companyDomain?: string | null
+): Promise<string | null> {
+  try {
+    const first = await matchPerson({
+      first_name: firstName.split(" ")[0],
+      last_name: lastName,
+      organization_name: companyName || undefined,
+    })
+    let person = first?.person as Record<string, unknown> | undefined
+
+    if (!person && linkedinUrl && isCanonicalLinkedIn(linkedinUrl)) {
+      const urlOnly = await matchPerson({ linkedin_url: linkedinUrl })
+      person = urlOnly?.person as Record<string, unknown> | undefined
+    }
+
+    if (!person && companyDomain) {
+      const withDomain = await matchPerson({ first_name: firstName.split(" ")[0], last_name: lastName, domain: companyDomain })
+      person = withDomain?.person as Record<string, unknown> | undefined
+    }
+
+    if (!person) return null
+
+    const phone = extractPhone(person)
+    if (phone) return phone
+
+    // Force reveal via person ID
+    const apolloId = person.id as string | undefined
+    if (apolloId) {
+      const second = await matchPerson({ id: apolloId })
+      const p2 = second?.person as Record<string, unknown> | undefined
+      if (p2) return extractPhone(p2)
+    }
+
+    return null
+  } catch {
+    return null
   }
 }

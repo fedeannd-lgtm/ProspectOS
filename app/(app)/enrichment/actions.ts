@@ -5,6 +5,7 @@ import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { enrichProspect } from "@/lib/enrichment"
 import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
+import { findPhoneApollo } from "@/lib/apollo"
 
 export async function getCampaigns() {
   const { data, error } = await supabase
@@ -18,7 +19,7 @@ export async function getCampaigns() {
 export async function getProspectsForEnrichment(campaignId: string) {
   const { data, error } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, status, accounts(headcount_range)")
+    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, status, accounts(headcount_range)")
     .eq("campaign_id", campaignId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
@@ -112,4 +113,29 @@ export async function classifyAllIcp(campaignId: string): Promise<number> {
 
   revalidatePath("/enrichment")
   return updated
+}
+
+export async function enrichPhoneForProspect(prospectId: string): Promise<string | null> {
+  const { data: p } = await supabase
+    .from("prospects")
+    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, phone")
+    .eq("id", prospectId)
+    .single()
+
+  if (!p) throw new Error("Prospecto no encontrado")
+  if (p.phone) return p.phone
+
+  const phone = await findPhoneApollo(
+    p.first_name ?? "",
+    p.last_name ?? "",
+    p.company_name ?? "",
+    p.linkedin_url ?? "",
+    p.company_domain,
+  )
+
+  if (phone) {
+    await supabaseAdmin.from("prospects").update({ phone }).eq("id", prospectId)
+  }
+
+  return phone
 }
