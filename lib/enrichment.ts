@@ -61,7 +61,7 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
     { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
     { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
     { name: "hunter",    find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
-    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn) },
+    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name) },
   ]
 
   for (const provider of REST) {

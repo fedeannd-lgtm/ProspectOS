@@ -17,7 +17,8 @@ export async function findEmailDatagma(
   firstName: string,
   lastName: string,
   companyDomain: string,
-  linkedinUrl: string
+  linkedinUrl: string,
+  companyName?: string
 ): Promise<string | null> {
   if (!DATAGMA_API_KEY) return null
   try {
@@ -34,17 +35,28 @@ export async function findEmailDatagma(
 
     if (!companyDomain) return null
 
-    // 2. Full first name (e.g. "Maria Constanza Dristas")
-    const email2 = await datagmaRequest({ fullName: `${firstName} ${lastName}`.trim(), companyDomain })
+    // 2. Full first name + domain
+    const fullName = `${firstName} ${lastName}`.trim()
+    const email2 = await datagmaRequest({ fullName, companyDomain })
     if (email2) return email2
 
-    // 3. Last word of first name — handles compound names like "Maria Constanza" → "Constanza"
-    // People with compound first names often use the last part professionally
+    // 3. Full first name + domain + company name
+    if (companyName) {
+      const email3 = await datagmaRequest({ fullName, companyDomain, companyName })
+      if (email3) return email3
+    }
+
+    // 4. Last word of first name — handles compound names like "Maria Constanza" → "Constanza"
     const parts = firstName.trim().split(/\s+/)
     if (parts.length > 1) {
       const usualName = parts[parts.length - 1]
-      const email3 = await datagmaRequest({ fullName: `${usualName} ${lastName}`.trim(), companyDomain })
-      if (email3) return email3
+      const shortName = `${usualName} ${lastName}`.trim()
+      const email4 = await datagmaRequest({ fullName: shortName, companyDomain })
+      if (email4) return email4
+      if (companyName) {
+        const email5 = await datagmaRequest({ fullName: shortName, companyDomain, companyName })
+        if (email5) return email5
+      }
     }
 
     return null
