@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download, AlertCircle } from "lucide-react"
+import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download, AlertCircle, ExternalLink } from "lucide-react"
 import type { ProviderStatus } from "../settings/provider-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect } from "./actions"
+import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectPhone } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
@@ -19,7 +19,8 @@ type Prospect = {
   job_title: string; company_name: string; company_domain: string | null
   linkedin_url: string; email: string | null; email_status: string | null
   email_provider: string | null; icp_score: number; icp_category: string | null
-  os_score: number | null; started_role_months: number | null; phone: string | null; status: string
+  os_score: number | null; started_role_months: number | null; phone: string | null
+  apollo_id: string | null; status: string
   accounts: { headcount_range: string | null }[] | null
 }
 
@@ -83,6 +84,57 @@ function hasValidEmail(p: Prospect) {
 
 function isClassified(p: Prospect) {
   return !!(p.icp_category)
+}
+
+function waLinkFor(phone: string): string | null {
+  const digits = phone.replace(/\D/g, "")
+  return digits ? `https://wa.me/${digits}` : null
+}
+
+function PhoneCell({ prospect, onSaved }: { prospect: Prospect; onSaved: (id: string, phone: string | null) => void }) {
+  const [value, setValue] = useState(prospect.phone ?? "")
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    const trimmed = value.trim()
+    if (trimmed === (prospect.phone ?? "")) return
+    setSaving(true)
+    try {
+      await setProspectPhone(prospect.id, trimmed)
+      onSaved(prospect.id, trimmed || null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const waLink = value.trim() ? waLinkFor(value) : null
+
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <input
+        className="h-6 w-24 rounded border border-input bg-background px-1.5 text-[10px] font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        value={value}
+        placeholder="+54911…"
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur() }}
+      />
+      {saving && <Loader2 className="size-3 animate-spin text-muted-foreground shrink-0" />}
+      {waLink && (
+        <a
+          href={waLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Abrir WhatsApp"
+          className="inline-flex items-center justify-center size-5 rounded bg-green-500/10 text-green-600 hover:bg-green-500/20 transition-colors shrink-0"
+        >
+          <svg className="size-3" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12.001 2C6.478 2 2 6.477 2 12c0 1.948.555 3.768 1.515 5.31L2 22l4.83-1.488A9.96 9.96 0 0012 22c5.523 0 10-4.477 10-10S17.524 2 12.001 2zm4.566 13.013c-.198.555-1.155 1.06-1.605 1.13-.41.063-.93.09-1.5-.094a3.66 3.66 0 01-.34-.106c-.6-.213-1.41-.5-2.547-1.378-1.93-1.487-3.187-3.317-3.486-3.879-.298-.562-.025-.866.225-1.14.222-.243.495-.45.66-.6.165-.15.22-.255.33-.42.11-.166.055-.31-.027-.434-.083-.124-.745-1.793-1.022-2.456-.27-.645-.544-.557-.745-.567-.193-.01-.413-.011-.633-.011-.22 0-.578.083-.88.413-.302.33-1.155 1.13-1.155 2.756 0 1.626 1.182 3.198 1.348 3.418.166.22 2.331 3.56 5.65 4.99.79.34 1.404.544 1.884.696.792.252 1.512.216 2.082.131.635-.095 1.955-.8 2.231-1.572.276-.773.276-1.434.193-1.572-.083-.138-.303-.22-.633-.385z"/>
+          </svg>
+        </a>
+      )}
+    </div>
+  )
 }
 
 export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Campaign[]; providerStatus: ProviderStatus[] }) {
@@ -552,6 +604,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">Score</th>
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">OS</th>
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">LI</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">Apollo</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tel</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">ZB</th>
@@ -617,10 +670,20 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                             </a>
                           ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
                         </td>
+                        <td className="px-3 py-2 text-center">
+                          {p.apollo_id ? (
+                            <a href={`https://app.apollo.io/#/people/${p.apollo_id}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center justify-center size-5 rounded bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20 transition-colors">
+                              <ExternalLink className="size-3" />
+                            </a>
+                          ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
+                        </td>
                         <td className="px-3 py-2">
-                          {p.phone
-                            ? <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">{p.phone}</span>
-                            : <span className="text-muted-foreground/30 text-[10px]">—</span>}
+                          <PhoneCell
+                            key={`${p.id}-${p.phone ?? ""}`}
+                            prospect={p}
+                            onSaved={(id, phone) => setProspects((prev) => prev.map((x) => x.id === id ? { ...x, phone } : x))}
+                          />
                         </td>
                         <td className="px-3 py-2 max-w-[160px]">
                           {rowStatus.get(p.id) === "enriching" ? (

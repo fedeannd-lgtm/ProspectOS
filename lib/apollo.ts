@@ -5,6 +5,7 @@ export type ApolloResult = {
   canonicalLinkedInUrl: string | null
   apolloEmailStatus: string | null
   phone: string | null
+  apolloId: string | null
 }
 
 async function matchPerson(payload: Record<string, unknown>): Promise<{ person: Record<string, unknown> } | null> {
@@ -128,10 +129,10 @@ export async function findEmailApollo(
       const apolloEmailStatus = (person.email_status as string) ?? null
       const email = extractEmail(person)
       const phone = extractPhone(person)
-      if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus, phone }
+      const apolloId = (person.id as string) ?? null
+      if (email) return { email, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus, phone, apolloId }
 
       // Force email reveal via Apollo person ID
-      const apolloId = person.id as string | undefined
       if (apolloId) {
         const second = await matchPerson({ id: apolloId })
         const p2 = second?.person as Record<string, unknown> | undefined
@@ -140,22 +141,23 @@ export async function findEmailApollo(
           const phone2 = extractPhone(p2) ?? phone
           const linkedin2 = (p2.linkedin_url as string) ?? apolloLinkedIn
           const status2 = (p2.email_status as string) ?? apolloEmailStatus
-          if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: status2, phone: phone2 }
-          return { email: null, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: null, phone: phone2 }
+          const apolloId2 = (p2.id as string) ?? apolloId
+          if (email2) return { email: email2, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: status2, phone: phone2, apolloId: apolloId2 }
+          return { email: null, canonicalLinkedInUrl: linkedin2, apolloEmailStatus: null, phone: phone2, apolloId: apolloId2 }
         }
       }
-      return { email: null, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus: null, phone }
+      return { email: null, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus: null, phone, apolloId }
     }
 
     // 4. mixed_people/search by company domain + name match
     if (companyDomain) {
       const found = await searchPeopleAtCompany(firstName, lastName, companyDomain)
-      if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl, apolloEmailStatus: null, phone: null }
+      if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl, apolloEmailStatus: null, phone: null, apolloId: null }
     }
 
-    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null, phone: null }
+    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null, phone: null, apolloId: null }
   } catch {
-    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null, phone: null }
+    return { email: null, canonicalLinkedInUrl: null, apolloEmailStatus: null, phone: null, apolloId: null }
   }
 }
 

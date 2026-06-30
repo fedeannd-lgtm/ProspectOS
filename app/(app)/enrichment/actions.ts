@@ -20,7 +20,7 @@ export async function getCampaigns() {
 export async function getProspectsForEnrichment(campaignId: string) {
   const { data, error } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, status, accounts(headcount_range)")
+    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, apollo_id, status, accounts(headcount_range)")
     .eq("campaign_id", campaignId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
@@ -76,6 +76,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
       icp_category: category,
       icp_score: score,
       os_score: osScore,
+      apollo_id: result.apolloId ?? null,
       status: result.enriched ? "enriched" : "not_found",
     })
     .eq("id", prospectId)
@@ -151,4 +152,10 @@ export async function enrichPhoneForProspect(prospectId: string): Promise<string
   }
 
   return phone
+}
+
+export async function setProspectPhone(prospectId: string, phone: string): Promise<void> {
+  const trimmed = phone.trim()
+  await supabaseAdmin.from("prospects").update({ phone: trimmed || null }).eq("id", prospectId)
+  revalidatePath("/enrichment")
 }

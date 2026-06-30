@@ -12,6 +12,7 @@ export type EnrichmentResult = {
   zbStatus: ZBStatus | null
   zbSubStatus: string | null
   enriched: boolean
+  apolloId: string | null
 }
 
 type ProspectInput = {
@@ -50,7 +51,7 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
           ? "valid"
           : "unknown"
     if (isUsable(effectiveStatus)) {
-      return { email: apolloResult.email, provider: "apollo", zbStatus: effectiveStatus, zbSubStatus: subStatus, enriched: true }
+      return { email: apolloResult.email, provider: "apollo", zbStatus: effectiveStatus, zbSubStatus: subStatus, enriched: true, apolloId: apolloResult.apolloId }
     }
   }
 
@@ -71,16 +72,16 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
     if (!email) continue
 
     if (provider.selfVerified) {
-      return { email, provider: provider.name, zbStatus: "valid", zbSubStatus: "", enriched: true }
+      return { email, provider: provider.name, zbStatus: "valid", zbSubStatus: "", enriched: true, apolloId: apolloResult.apolloId }
     }
 
     const { status, subStatus } = await validateEmail(email)
     // Accept if ZeroBounce confirms valid/catch-all, OR if ZB returned "unknown" (no credits/key error).
     // "unknown" means ZeroBounce couldn't verify — not that the email is invalid.
     if (isUsable(status) || status === "unknown") {
-      return { email, provider: provider.name, zbStatus: status, zbSubStatus: subStatus, enriched: true }
+      return { email, provider: provider.name, zbStatus: status, zbSubStatus: subStatus, enriched: true, apolloId: apolloResult.apolloId }
     }
   }
 
-  return { email: null, provider: null, zbStatus: null, zbSubStatus: null, enriched: false }
+  return { email: null, provider: null, zbStatus: null, zbSubStatus: null, enriched: false, apolloId: apolloResult.apolloId }
 }
