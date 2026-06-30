@@ -53,12 +53,15 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
     }
   }
 
-  // 2–5. FindyEmail, Prospeo, Hunter, Datagma — using canonical URL from Apollo if available
+  // 2–5. FindyEmail, Prospeo, Hunter, Datagma
+  // bestLinkedInUrl = canonical URL from Apollo (if found) or our own canonical URL
+  // For Datagma we also pass rawUrl as fallback — Datagma resolves encoded Sales Nav URLs
+  const datagmaLinkedIn = bestLinkedInUrl || rawUrl
   const REST: Array<{ name: string; find: () => Promise<string | null> }> = [
     { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
     { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
     { name: "hunter",    find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
-    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
+    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn) },
   ]
 
   for (const provider of REST) {
