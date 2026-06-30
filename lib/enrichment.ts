@@ -58,20 +58,25 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
   // bestLinkedInUrl = canonical URL from Apollo (if found) or our own canonical URL
   // For Datagma we also pass rawUrl as fallback — Datagma resolves encoded Sales Nav URLs
   const datagmaLinkedIn = bestLinkedInUrl || rawUrl
-  const REST: Array<{ name: string; find: () => Promise<string | null> }> = [
+  const REST: Array<{ name: string; selfVerified?: boolean; find: () => Promise<string | null> }> = [
     { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
     { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
     { name: "hunter",    find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
-    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name, company_linkedin_url ?? undefined) },
+    // Datagma verifies all emails internally — skip ZeroBounce to avoid wasting credits
+    { name: "datagma", selfVerified: true, find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name, company_linkedin_url ?? undefined) },
   ]
 
   for (const provider of REST) {
     const email = await provider.find()
     if (!email) continue
+
+    if (provider.selfVerified) {
+      return { email, provider: provider.name, zbStatus: "valid", zbSubStatus: "", enriched: true }
+    }
+
     const { status, subStatus } = await validateEmail(email)
     // Accept if ZeroBounce confirms valid/catch-all, OR if ZB returned "unknown" (no credits/key error).
     // "unknown" means ZeroBounce couldn't verify — not that the email is invalid.
-    // These providers do their own validation before returning an email.
     if (isUsable(status) || status === "unknown") {
       return { email, provider: provider.name, zbStatus: status, zbSubStatus: subStatus, enriched: true }
     }
