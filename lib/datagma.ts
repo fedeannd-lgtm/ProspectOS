@@ -21,10 +21,11 @@ export async function findEmailDatagma(
 ): Promise<string | null> {
   if (!DATAGMA_API_KEY) return null
   try {
-    // 1. LinkedIn URL (most reliable)
+    // 1. LinkedIn URL (most reliable) — Datagma resolves both canonical and encoded Sales Nav URLs
     const canonical = canonicalLinkedInUrl(linkedinUrl)
-    if (canonical) {
-      const email = await datagmaRequest({ uid: canonical })
+    const linkedinForDatagma = canonical || (linkedinUrl?.includes("linkedin.com") ? linkedinUrl : null)
+    if (linkedinForDatagma) {
+      const email = await datagmaRequest({ uid: linkedinForDatagma })
       if (email) return email
     }
 
