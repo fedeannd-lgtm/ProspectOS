@@ -21,9 +21,12 @@ export async function findEmailDatagma(
 ): Promise<string | null> {
   if (!DATAGMA_API_KEY) return null
   try {
-    // 1. LinkedIn URL (most reliable) — Datagma resolves both canonical and encoded Sales Nav URLs
+    // 1. LinkedIn URL (most reliable) — normalize to www.linkedin.com before sending
+    // Country subdomains like ar.linkedin.com, br.linkedin.com are not recognized by Datagma
     const canonical = canonicalLinkedInUrl(linkedinUrl)
-    const linkedinForDatagma = canonical || (linkedinUrl?.includes("linkedin.com") ? linkedinUrl : null)
+    const rawForDatagma = linkedinUrl?.includes("linkedin.com") ? linkedinUrl : null
+    const linkedinForDatagma = (canonical ?? rawForDatagma)
+      ?.replace(/https?:\/\/[a-z]{2}\.linkedin\.com/, "https://www.linkedin.com")
     if (linkedinForDatagma) {
       const email = await datagmaRequest({ uid: linkedinForDatagma })
       if (email) return email

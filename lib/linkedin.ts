@@ -9,7 +9,8 @@ export function canonicalLinkedInUrl(url: string): string | undefined {
   // Canonical slugs are lowercase with hyphens and optional trailing digits.
   // Encoded IDs start with uppercase letters (Base64-like: ACwAAB..., ACoAAA...)
   if (/^[A-Z]/.test(slug) || slug.length > 40) return undefined
-  return url
+  // Normalize country subdomains (ar.linkedin.com, br.linkedin.com) to www.linkedin.com
+  return url.replace(/https?:\/\/[a-z]{2}\.linkedin\.com/, "https://www.linkedin.com")
 }
 
 // Attempt to resolve an encoded Sales Nav URL to the canonical LinkedIn profile URL
