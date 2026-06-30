@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectPhone } from "./actions"
+import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
@@ -19,7 +19,7 @@ type Prospect = {
   job_title: string; company_name: string; company_domain: string | null
   linkedin_url: string; email: string | null; email_status: string | null
   email_provider: string | null; icp_score: number; icp_category: string | null
-  os_score: number | null; started_role_months: number | null; phone: string | null
+  os_score: number | null; started_role_months: number | null; phone: string | null; phone_wa: string | null
   apollo_id: string | null; status: string
   accounts: { headcount_range: string | null }[] | null
 }
@@ -91,16 +91,26 @@ function waLinkFor(phone: string): string | null {
   return digits ? `https://wa.me/${digits}` : null
 }
 
-function PhoneCell({ prospect, onSaved }: { prospect: Prospect; onSaved: (id: string, phone: string | null) => void }) {
-  const [value, setValue] = useState(prospect.phone ?? "")
+function FoundPhoneCell({ prospect }: { prospect: Prospect }) {
+  if (!prospect.phone) return <span className="text-muted-foreground/30 text-[10px]">—</span>
+  return (
+    <span className="inline-flex items-center gap-1">
+      <CheckCircle2 className="size-3 text-green-600 shrink-0" />
+      <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">{prospect.phone}</span>
+    </span>
+  )
+}
+
+function WhatsappCell({ prospect, onSaved }: { prospect: Prospect; onSaved: (id: string, phoneWa: string | null) => void }) {
+  const [value, setValue] = useState(prospect.phone_wa ?? "")
   const [saving, setSaving] = useState(false)
 
-  async function save() {
-    const trimmed = value.trim()
-    if (trimmed === (prospect.phone ?? "")) return
+  async function commit(next: string) {
+    const trimmed = next.trim()
+    if (trimmed === (prospect.phone_wa ?? "")) return
     setSaving(true)
     try {
-      await setProspectPhone(prospect.id, trimmed)
+      await setProspectWhatsappPhone(prospect.id, trimmed)
       onSaved(prospect.id, trimmed || null)
     } finally {
       setSaving(false)
@@ -108,6 +118,7 @@ function PhoneCell({ prospect, onSaved }: { prospect: Prospect; onSaved: (id: st
   }
 
   const waLink = value.trim() ? waLinkFor(value) : null
+  const canUseFound = prospect.phone && prospect.phone !== value.trim()
 
   return (
     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -116,10 +127,20 @@ function PhoneCell({ prospect, onSaved }: { prospect: Prospect; onSaved: (id: st
         value={value}
         placeholder="+54911…"
         onChange={(e) => setValue(e.target.value)}
-        onBlur={save}
+        onBlur={() => commit(value)}
         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur() }}
       />
       {saving && <Loader2 className="size-3 animate-spin text-muted-foreground shrink-0" />}
+      {canUseFound && (
+        <button
+          type="button"
+          title={`Usar teléfono encontrado (${prospect.phone})`}
+          onClick={() => { setValue(prospect.phone ?? ""); commit(prospect.phone ?? "") }}
+          className="inline-flex items-center justify-center size-5 rounded bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors shrink-0 text-[10px]"
+        >
+          ↙
+        </button>
+      )}
       {waLink && (
         <a
           href={waLink}
@@ -311,7 +332,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
       const id = toEnrich[i]
       try {
         const phone = await enrichPhoneForProspect(id)
-        setProspects((prev) => prev.map((x) => x.id === id ? { ...x, phone } : x))
+        setProspects((prev) => prev.map((x) => x.id === id ? { ...x, phone, phone_wa: x.phone_wa || phone } : x))
       } catch { /* continue */ }
       setPhoneProgress({ done: i + 1, total: toEnrich.length })
     }
@@ -605,7 +626,8 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">OS</th>
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">LI</th>
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">Apollo</th>
-                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tel</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tel. encontrado</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">WhatsApp</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">ZB</th>
                     {PROVIDER_COLS.map((c) => (
@@ -679,10 +701,13 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                           ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
                         </td>
                         <td className="px-3 py-2">
-                          <PhoneCell
-                            key={`${p.id}-${p.phone ?? ""}`}
+                          <FoundPhoneCell prospect={p} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <WhatsappCell
+                            key={`${p.id}-${p.phone_wa ?? ""}`}
                             prospect={p}
-                            onSaved={(id, phone) => setProspects((prev) => prev.map((x) => x.id === id ? { ...x, phone } : x))}
+                            onSaved={(id, phoneWa) => setProspects((prev) => prev.map((x) => x.id === id ? { ...x, phone_wa: phoneWa } : x))}
                           />
                         </td>
                         <td className="px-3 py-2 max-w-[160px]">

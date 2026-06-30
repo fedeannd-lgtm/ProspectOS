@@ -20,7 +20,7 @@ export async function getCampaigns() {
 export async function getProspectsForEnrichment(campaignId: string) {
   const { data, error } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, apollo_id, status, accounts(headcount_range)")
+    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, phone_wa, apollo_id, status, accounts(headcount_range)")
     .eq("campaign_id", campaignId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
@@ -120,7 +120,7 @@ export async function classifyAllIcp(campaignId: string): Promise<number> {
 export async function enrichPhoneForProspect(prospectId: string): Promise<string | null> {
   const { data: p } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, email, phone")
+    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, email, phone, phone_wa")
     .eq("id", prospectId)
     .single()
 
@@ -148,14 +148,18 @@ export async function enrichPhoneForProspect(prospectId: string): Promise<string
   }
 
   if (phone) {
-    await supabaseAdmin.from("prospects").update({ phone }).eq("id", prospectId)
+    // phone = lo que encontró el enriquecimiento (solo lectura en la UI)
+    // phone_wa = base editable del link de WhatsApp; se autocompleta si está vacía
+    const update: Record<string, string> = { phone }
+    if (!p.phone_wa) update.phone_wa = phone
+    await supabaseAdmin.from("prospects").update(update).eq("id", prospectId)
   }
 
   return phone
 }
 
-export async function setProspectPhone(prospectId: string, phone: string): Promise<void> {
+export async function setProspectWhatsappPhone(prospectId: string, phone: string): Promise<void> {
   const trimmed = phone.trim()
-  await supabaseAdmin.from("prospects").update({ phone: trimmed || null }).eq("id", prospectId)
+  await supabaseAdmin.from("prospects").update({ phone_wa: trimmed || null }).eq("id", prospectId)
   revalidatePath("/enrichment")
 }
