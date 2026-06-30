@@ -19,7 +19,7 @@ type Prospect = {
   job_title: string; company_name: string; company_domain: string | null
   linkedin_url: string; email: string | null; email_status: string | null
   email_provider: string | null; icp_score: number; icp_category: string | null
-  os_score: number | null; status: string
+  os_score: number | null; started_role_months: number | null; status: string
   accounts: { headcount_range: string | null }[] | null
 }
 
@@ -102,6 +102,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
   const [osScoreFilter, setOsScoreFilter] = useState<"all" | "tier1" | "tier2" | "tier3" | "non_icp">("all")
   const [categoryFilter, setCategoryFilter] = useState<"all" | IcpCategory>("all")
   const [emailFilter, setEmailFilter] = useState<"all" | "pending" | "enriched">("all")
+  const [mesInicioFilter, setMesInicioFilter] = useState<"all" | "con" | "sin">("all")
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -157,6 +158,8 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
     if (categoryFilter !== "all" && p.icp_category !== categoryFilter) return false
     if (emailFilter === "pending" && hasValidEmail(p)) return false
     if (emailFilter === "enriched" && !hasValidEmail(p)) return false
+    if (mesInicioFilter === "con" && p.started_role_months == null) return false
+    if (mesInicioFilter === "sin" && p.started_role_months != null) return false
     return true
   })
 
@@ -451,6 +454,17 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="pending">Sin email</SelectItem>
                 <SelectItem value="enriched">Con email</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={mesInicioFilter} onValueChange={(v) => setMesInicioFilter(v as typeof mesInicioFilter)}>
+              <SelectTrigger className="h-8 text-xs w-36">
+                <SelectValue placeholder="Mes inicio" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="con">Con mes inicio</SelectItem>
+                <SelectItem value="sin">Sin mes inicio</SelectItem>
               </SelectContent>
             </Select>
 

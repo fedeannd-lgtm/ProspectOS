@@ -18,7 +18,7 @@ export async function getCampaigns() {
 export async function getProspectsForEnrichment(campaignId: string) {
   const { data, error } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, status, accounts(headcount_range)")
+    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, status, accounts(headcount_range)")
     .eq("campaign_id", campaignId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
