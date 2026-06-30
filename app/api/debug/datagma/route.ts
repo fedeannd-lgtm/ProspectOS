@@ -47,11 +47,30 @@ export async function GET(req: Request) {
     results.step2_name_domain = { error: String(e) }
   }
 
-  // Step 3: firstName only + domain (some providers work better with split name)
+  // Step 3: last word of first name ("Constanza" from "Maria Constanza")
+  const lastFirstName = firstName.trim().split(/\s+/).slice(-1)[0]
+  if (lastFirstName !== firstName.trim()) {
+    try {
+      const url = new URL("https://gateway.datagma.net/api/ingress/v2/find")
+      url.searchParams.set("token", key)
+      url.searchParams.set("fullName", `${lastFirstName} ${lastName}`.trim())
+      url.searchParams.set("companyDomain", domain)
+      url.searchParams.set("data", "EMAIL_FINDER_DATAGMA")
+      const res = await fetch(url.toString())
+      const text = await res.text()
+      let json: unknown
+      try { json = JSON.parse(text) } catch { json = text }
+      results.step3_last_firstname = { status: res.status, body: json, fullName_used: `${lastFirstName} ${lastName}` }
+    } catch (e) {
+      results.step3_last_firstname = { error: String(e) }
+    }
+  }
+
+  // Step 4: firstName + lastName as separate params
   try {
     const url = new URL("https://gateway.datagma.net/api/ingress/v2/find")
     url.searchParams.set("token", key)
-    url.searchParams.set("firstName", firstName)
+    url.searchParams.set("firstName", lastFirstName)
     url.searchParams.set("lastName", lastName)
     url.searchParams.set("companyDomain", domain)
     url.searchParams.set("data", "EMAIL_FINDER_DATAGMA")
@@ -59,9 +78,28 @@ export async function GET(req: Request) {
     const text = await res.text()
     let json: unknown
     try { json = JSON.parse(text) } catch { json = text }
-    results.step3_split_name = { status: res.status, body: json }
+    results.step4_split_params = { status: res.status, body: json }
   } catch (e) {
-    results.step3_split_name = { error: String(e) }
+    results.step4_split_params = { error: String(e) }
+  }
+
+  // Step 5: company name instead of domain
+  const company = searchParams.get("company") ?? ""
+  if (company) {
+    try {
+      const url = new URL("https://gateway.datagma.net/api/ingress/v2/find")
+      url.searchParams.set("token", key)
+      url.searchParams.set("fullName", `${lastFirstName} ${lastName}`.trim())
+      url.searchParams.set("companyName", company)
+      url.searchParams.set("data", "EMAIL_FINDER_DATAGMA")
+      const res = await fetch(url.toString())
+      const text = await res.text()
+      let json: unknown
+      try { json = JSON.parse(text) } catch { json = text }
+      results.step5_company_name = { status: res.status, body: json }
+    } catch (e) {
+      results.step5_company_name = { error: String(e) }
+    }
   }
 
   return NextResponse.json(results, { status: 200 })
