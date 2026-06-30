@@ -84,7 +84,7 @@ export async function getProviderUsage(): Promise<ProviderUsage[]> {
 
   const { data, error } = await supabase
     .from("prospects")
-    .select("email_provider, updated_at")
+    .select("email_provider, created_at")
     .not("email_provider", "is", null)
   if (error) throw new Error(error.message)
 
@@ -97,9 +97,9 @@ export async function getProviderUsage(): Promise<ProviderUsage[]> {
     }
     const entry = map.get(key)!
     entry.total++
-    if (row.updated_at >= startOfMonth) entry.month++
-    if (row.updated_at >= startOfWeek) entry.week++
-    if (row.updated_at >= startOfToday) entry.today++
+    if (row.created_at >= startOfMonth) entry.month++
+    if (row.created_at >= startOfWeek) entry.week++
+    if (row.created_at >= startOfToday) entry.today++
   }
 
   const ORDER = ["apollo", "findymail", "prospeo", "hunter", "datagma", "pattern"]
