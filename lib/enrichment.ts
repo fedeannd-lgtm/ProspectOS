@@ -5,7 +5,6 @@ import { findEmailHunter } from "./hunter"
 import { findEmailDatagma } from "./datagma"
 import { validateEmail, isUsable, type ZBStatus } from "./zerobounce"
 import { canonicalLinkedInUrl } from "./linkedin"
-import { generateEmailCandidates } from "./email-guesser"
 
 export type EnrichmentResult = {
   email: string | null
@@ -71,17 +70,6 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
     // These providers do their own validation before returning an email.
     if (isUsable(status) || status === "unknown") {
       return { email, provider: provider.name, zbStatus: status, zbSubStatus: subStatus, enriched: true }
-    }
-  }
-
-  // 5. Email pattern guesser — constructs common patterns + validates with ZeroBounce
-  // Used when Apollo and other providers don't have the person (common for small companies in LATAM)
-  if (company_domain) {
-    for (const candidate of generateEmailCandidates(apolloFirstName, last_name, company_domain)) {
-      const { status, subStatus } = await validateEmail(candidate)
-      if (isUsable(status)) {
-        return { email: candidate, provider: "pattern", zbStatus: status, zbSubStatus: subStatus, enriched: true }
-      }
     }
   }
 

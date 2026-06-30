@@ -46,7 +46,6 @@ const PROVIDER_COLS: { key: string; label: string }[] = [
   { key: "prospeo",   label: "Prospeo"  },
   { key: "hunter",    label: "Hunter"   },
   { key: "datagma",   label: "Datagma"  },
-  { key: "pattern",   label: "Patrón"   },
 ]
 
 function exportCsv(prospects: Prospect[], campaignLabel: string) {
@@ -242,7 +241,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
       <div>
         <h1 className="text-2xl font-semibold">Enriquecimiento</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Apollo → FindyEmail → Prospeo → Hunter → Datagma, validado con Zerobounce.
+          Apollo → FindyEmail → Prospeo → Hunter → Datagma · validado con ZeroBounce.
         </p>
       </div>
 
