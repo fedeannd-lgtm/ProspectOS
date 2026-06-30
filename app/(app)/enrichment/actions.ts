@@ -5,8 +5,8 @@ import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { enrichProspect } from "@/lib/enrichment"
 import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
-import { findPhoneApollo } from "@/lib/apollo"
 import { findPhoneDatagma } from "@/lib/datagma"
+import { findPhoneProspeo } from "@/lib/prospeo"
 
 export async function getCampaigns() {
   const { data, error } = await supabase
@@ -126,7 +126,7 @@ export async function enrichPhoneForProspect(prospectId: string): Promise<string
   if (!p) throw new Error("Prospecto no encontrado")
   if (p.phone) return p.phone
 
-  // 1. Datagma — preferred for phones (LinkedIn URL + email)
+  // 1. Datagma — preferred (LinkedIn URL + email)
   let phone = await findPhoneDatagma({
     linkedinUrl: p.linkedin_url,
     email: p.email,
@@ -135,15 +135,15 @@ export async function enrichPhoneForProspect(prospectId: string): Promise<string
     companyName: p.company_name,
   })
 
-  // 2. Apollo fallback
+  // 2. Prospeo fallback
   if (!phone) {
-    phone = await findPhoneApollo(
-      p.first_name ?? "",
-      p.last_name ?? "",
-      p.company_name ?? "",
-      p.linkedin_url ?? "",
-      p.company_domain,
-    )
+    phone = await findPhoneProspeo({
+      linkedinUrl: p.linkedin_url,
+      email: p.email,
+      firstName: p.first_name ?? "",
+      lastName: p.last_name ?? "",
+      companyDomain: p.company_domain,
+    })
   }
 
   if (phone) {

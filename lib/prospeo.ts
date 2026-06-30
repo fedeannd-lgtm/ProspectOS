@@ -2,6 +2,42 @@ import { canonicalLinkedInUrl } from "./linkedin"
 
 const PROSPEO_API_KEY = process.env.PROSPEO_API_KEY!
 
+export async function findPhoneProspeo(params: {
+  linkedinUrl?: string | null
+  email?: string | null
+  firstName?: string
+  lastName?: string
+  companyDomain?: string | null
+}): Promise<string | null> {
+  if (!PROSPEO_API_KEY) return null
+  try {
+    const { linkedinUrl, email, firstName, lastName, companyDomain } = params
+    const canonical = linkedinUrl ? canonicalLinkedInUrl(linkedinUrl) : null
+
+    const data: Record<string, unknown> = {}
+    if (canonical) data.linkedin_url = canonical
+    else if (email) data.email = email
+    else if (firstName && lastName && companyDomain) {
+      data.first_name = firstName
+      data.last_name = lastName
+      data.company_website = companyDomain
+    } else return null
+
+    const res = await fetch("https://api.prospeo.io/enrich-person", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-KEY": PROSPEO_API_KEY },
+      body: JSON.stringify({ enrich_mobile: true, data }),
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    if (json?.error) return null
+    const person = json?.person
+    return person?.mobile_international ?? person?.mobile ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function findEmailProspeo(
   firstName: string,
   lastName: string,
