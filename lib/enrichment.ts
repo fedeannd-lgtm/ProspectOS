@@ -20,10 +20,11 @@ type ProspectInput = {
   company_name: string
   company_domain: string | null
   linkedin_url: string
+  company_linkedin_url?: string | null
 }
 
 export async function enrichProspect(prospect: ProspectInput): Promise<EnrichmentResult> {
-  const { first_name, last_name, company_name, company_domain } = prospect
+  const { first_name, last_name, company_name, company_domain, company_linkedin_url } = prospect
 
   const rawUrl = prospect.linkedin_url ?? ""
   const canonicalUrl = canonicalLinkedInUrl(rawUrl) ?? ""
@@ -61,7 +62,7 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
     { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
     { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
     { name: "hunter",    find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
-    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name) },
+    { name: "datagma",   find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name, company_linkedin_url ?? undefined) },
   ]
 
   for (const provider of REST) {

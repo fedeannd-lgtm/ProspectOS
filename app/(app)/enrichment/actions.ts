@@ -33,7 +33,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 }> {
   const { data: p } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, job_title, email, email_status")
+    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, job_title, email, email_status, accounts(linkedin_url)")
     .eq("id", prospectId)
     .single()
 
@@ -45,12 +45,16 @@ export async function enrichOneProspect(prospectId: string): Promise<{
     return { email: p.email, provider: null, zbStatus: p.email_status, icpCategory: category, icpScore: score }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const accountLinkedIn = (p as any).accounts?.linkedin_url ?? null
+
   const result = await enrichProspect({
     first_name: p.first_name ?? "",
     last_name: p.last_name ?? "",
     company_name: p.company_name ?? "",
     company_domain: p.company_domain,
     linkedin_url: p.linkedin_url ?? "",
+    company_linkedin_url: accountLinkedIn,
   })
 
   const { category, score } = classifyIcp(p.job_title ?? "")

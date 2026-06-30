@@ -18,7 +18,8 @@ export async function findEmailDatagma(
   lastName: string,
   companyDomain: string,
   linkedinUrl: string,
-  companyName?: string
+  companyName?: string,
+  companyLinkedInUrl?: string
 ): Promise<string | null> {
   if (!DATAGMA_API_KEY) return null
   try {
@@ -29,7 +30,9 @@ export async function findEmailDatagma(
     const linkedinForDatagma = (canonical ?? rawForDatagma)
       ?.replace(/https?:\/\/[a-z]{2}\.linkedin\.com/, "https://www.linkedin.com")
     if (linkedinForDatagma) {
-      const email = await datagmaRequest({ uid: linkedinForDatagma })
+      const params: Record<string, string> = { uid: linkedinForDatagma }
+      if (companyLinkedInUrl) params.companyLinkedInUrl = companyLinkedInUrl
+      const email = await datagmaRequest(params)
       if (email) return email
     }
 
