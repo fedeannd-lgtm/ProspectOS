@@ -34,7 +34,7 @@ import {
   getProspectsForCampaign,
   deleteSearchJobs,
 } from "./actions"
-import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
+import { updateAccountListInUrl, stripCompanyFiltersFromUrl } from "@/lib/sales-nav-lists"
 
 type Campaign = {
   id: string
@@ -555,9 +555,12 @@ export function PeopleSearchClient({
                         <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
                           placeholder="https://www.linkedin.com/sales/search/people#query=..."
                           className="font-mono text-xs" />
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
                             {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setUrlInput(stripCompanyFiltersFromUrl(urlInput))}>
+                            Limpiar filtros empresa
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
                         </div>
@@ -591,9 +594,12 @@ export function PeopleSearchClient({
                           <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
                             placeholder="https://www.linkedin.com/sales/search/people#query=..."
                             className="font-mono text-xs" />
-                          <div className="flex gap-1.5">
+                          <div className="flex gap-1.5 flex-wrap">
                             <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
                               {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setUrlInput(stripCompanyFiltersFromUrl(urlInput))}>
+                              Limpiar filtros empresa
                             </Button>
                             <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
                           </div>
@@ -657,7 +663,7 @@ export function PeopleSearchClient({
                           <Input value={urlInput2} onChange={(e) => setUrlInput2(e.target.value)}
                             placeholder="https://www.linkedin.com/sales/search/people#query=..."
                             className="font-mono text-xs" />
-                          <div className="flex gap-1.5">
+                          <div className="flex gap-1.5 flex-wrap">
                             <Button size="sm" disabled={isSavingConfig2}
                               onClick={() => {
                                 if (!selectedCampaign) return
@@ -672,6 +678,9 @@ export function PeopleSearchClient({
                                 })
                               }}>
                               {isSavingConfig2 ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setUrlInput2(stripCompanyFiltersFromUrl(urlInput2))}>
+                              Limpiar filtros empresa
                             </Button>
                             <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit2(false)}>Cancelar</Button>
                           </div>

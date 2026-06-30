@@ -76,3 +76,49 @@ export function updateAccountListInUrl(
 
   return currentUrl.slice(0, openIdx) + newBlock + currentUrl.slice(closeIdx + 1)
 }
+
+const COMPANY_FILTER_TYPES = [
+  "COMPANY_HEADCOUNT",
+  "COMPANY_HEADQUARTERS",
+  "COMPANY_TYPE",
+  "ACCOUNT_LIST",
+  "INDUSTRY",
+]
+
+/**
+ * Removes company-level filter blocks from a Sales Navigator people search URL.
+ * Strips COMPANY_HEADCOUNT, COMPANY_HEADQUARTERS, COMPANY_TYPE, INDUSTRY, and ACCOUNT_LIST
+ * (ACCOUNT_LIST gets injected dynamically per campaign via updateAccountListInUrl).
+ */
+export function stripCompanyFiltersFromUrl(url: string): string {
+  const filtersMarker = "filters%3AList("
+  const markerIdx = url.indexOf(filtersMarker)
+  if (markerIdx === -1) return url
+
+  const listStart = markerIdx + filtersMarker.length
+
+  let depth = 0, listEnd = -1
+  for (let i = listStart - 1; i < url.length; i++) {
+    if (url[i] === "(") depth++
+    else if (url[i] === ")") { depth--; if (depth === 0) { listEnd = i; break } }
+  }
+  if (listEnd === -1) return url
+
+  const listContent = url.slice(listStart, listEnd)
+
+  const blocks: string[] = []
+  let d = 0, start = -1
+  for (let i = 0; i < listContent.length; i++) {
+    if (listContent[i] === "(") { if (d === 0) start = i; d++ }
+    else if (listContent[i] === ")") {
+      d--
+      if (d === 0 && start !== -1) { blocks.push(listContent.slice(start, i + 1)); start = -1 }
+    }
+  }
+
+  const kept = blocks.filter(
+    (block) => !COMPANY_FILTER_TYPES.some((type) => block.includes(`type%3A${type}`))
+  )
+
+  return url.slice(0, listStart) + kept.join("%2C") + url.slice(listEnd)
+}

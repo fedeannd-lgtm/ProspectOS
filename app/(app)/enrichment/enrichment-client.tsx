@@ -11,13 +11,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp } from "./actions"
+import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
 type Prospect = {
   id: string; first_name: string; last_name: string; full_name: string
   job_title: string; company_name: string; company_domain: string | null
   linkedin_url: string; email: string | null; email_status: string | null
-  email_provider: string | null; icp_score: number; icp_category: string | null; status: string
+  email_provider: string | null; icp_score: number; icp_category: string | null
+  os_score: number | null; status: string
+  accounts: { headcount_range: string | null }[] | null
 }
 
 type IcpCategory = "Communication" | "Experience" | "Onboarding" | "Helpdesk" | "Genérico"
@@ -50,14 +53,15 @@ const PROVIDER_COLS: { key: string; label: string }[] = [
 
 function exportCsv(prospects: Prospect[], campaignLabel: string) {
   const esc = (v: string | null | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`
-  const headers = ["Nombre", "Apellido", "Nombre completo", "Cargo", "Empresa", "Dominio", "LinkedIn", "Email", "ZB Status", ...PROVIDER_COLS.map((c) => c.label), "ICP Categoría", "ICP Score", "Estado"]
+  const headers = ["Nombre", "Apellido", "Nombre completo", "Cargo", "Empresa", "Tamaño", "Dominio", "LinkedIn", "Email", "ZB Status", ...PROVIDER_COLS.map((c) => c.label), "ICP Categoría", "ICP Score", "OS Score", "Estado"]
   const rows = prospects.map((p) => [
     esc(p.first_name), esc(p.last_name), esc(p.full_name),
-    esc(p.job_title), esc(p.company_name), esc(p.company_domain),
-    esc(p.linkedin_url), esc(p.email), esc(p.email_status),
+    esc(p.job_title), esc(p.company_name), esc(p.accounts?.[0]?.headcount_range),
+    esc(p.company_domain), esc(p.linkedin_url), esc(p.email), esc(p.email_status),
     ...PROVIDER_COLS.map((c) => p.email_provider === c.key ? "✓" : ""),
     esc(p.icp_category),
     p.icp_score > 0 ? p.icp_score : "",
+    getOsScore(p),
     esc(p.status),
   ].join(","))
   const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" })
@@ -67,6 +71,10 @@ function exportCsv(prospects: Prospect[], campaignLabel: string) {
   a.download = `enriquecimiento-${campaignLabel}-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function getOsScore(p: Prospect): number {
+  return p.os_score ?? calculateOsScore(p.job_title)
 }
 
 function hasValidEmail(p: Prospect) {
@@ -91,6 +99,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
   // Filter state
   const [search, setSearch] = useState("")
   const [scoreFilter, setScoreFilter] = useState<"all" | "gte5" | "eq10" | "eq0">("all")
+  const [osScoreFilter, setOsScoreFilter] = useState<"all" | "tier1" | "tier2" | "tier3" | "non_icp">("all")
   const [categoryFilter, setCategoryFilter] = useState<"all" | IcpCategory>("all")
   const [emailFilter, setEmailFilter] = useState<"all" | "pending" | "enriched">("all")
 
@@ -141,6 +150,10 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
     if (scoreFilter === "gte5" && (p.icp_score ?? 0) < 5) return false
     if (scoreFilter === "eq10" && p.icp_score !== 10) return false
     if (scoreFilter === "eq0" && p.icp_score !== 0) return false
+    if (osScoreFilter === "tier1" && getOsScore(p) < 10) return false
+    if (osScoreFilter === "tier2" && getOsScore(p) !== 7) return false
+    if (osScoreFilter === "tier3" && getOsScore(p) !== 4) return false
+    if (osScoreFilter === "non_icp" && getOsScore(p) > 3) return false
     if (categoryFilter !== "all" && p.icp_category !== categoryFilter) return false
     if (emailFilter === "pending" && hasValidEmail(p)) return false
     if (emailFilter === "enriched" && !hasValidEmail(p)) return false
@@ -212,7 +225,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
           setProspects((prev) =>
             prev.map((x) =>
               x.id === id
-                ? { ...x, email: result.email, email_status: result.zbStatus, email_provider: result.provider, icp_category: result.icpCategory, icp_score: result.icpScore, status: "enriched" }
+                ? { ...x, email: result.email, email_status: result.zbStatus, email_provider: result.provider, icp_category: result.icpCategory, icp_score: result.icpScore, os_score: result.osScore, status: "enriched" }
                 : x
             )
           )
@@ -403,6 +416,19 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
               </SelectContent>
             </Select>
 
+            <Select value={osScoreFilter} onValueChange={(v) => setOsScoreFilter(v as typeof osScoreFilter)}>
+              <SelectTrigger className="h-8 text-xs w-36">
+                <SelectValue placeholder="OS Score" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos OS Score</SelectItem>
+                <SelectItem value="tier1">Tier 1 (OS = 10)</SelectItem>
+                <SelectItem value="tier2">Tier 2 (OS = 7)</SelectItem>
+                <SelectItem value="tier3">Tier 3 (OS = 4)</SelectItem>
+                <SelectItem value="non_icp">No ICP (OS ≤ 3)</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as typeof categoryFilter)}>
               <SelectTrigger className="h-8 text-xs w-36">
                 <SelectValue placeholder="Categoría" />
@@ -464,8 +490,11 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Nombre</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Cargo</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Empresa</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tamaño</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">ICP</th>
-                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Score</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">Score</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">OS</th>
+                    <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">LI</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">ZB</th>
                     {PROVIDER_COLS.map((c) => (
@@ -500,6 +529,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                         </td>
                         <td className="px-3 py-2 text-muted-foreground max-w-[140px] truncate">{p.job_title || "—"}</td>
                         <td className="px-3 py-2 text-muted-foreground max-w-[120px] truncate">{p.company_name || "—"}</td>
+                        <td className="px-3 py-2 text-muted-foreground text-[10px] whitespace-nowrap">{p.accounts?.[0]?.headcount_range || "—"}</td>
                         <td className="px-3 py-2">
                           {icp ? (
                             <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${icp.cls}`}>
@@ -509,6 +539,25 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                         </td>
                         <td className="px-3 py-2 font-medium text-center">
                           {p.icp_score > 0 ? p.icp_score : p.icp_category ? "0" : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {(() => { const s = getOsScore(p); return (
+                            <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                              s === 10 ? "bg-emerald-50 text-emerald-700" :
+                              s === 7  ? "bg-blue-50 text-blue-700" :
+                              s >= 4   ? "bg-yellow-50 text-yellow-700" :
+                              s > 0    ? "bg-zinc-100 text-zinc-500" :
+                                         "bg-zinc-50 text-zinc-400"
+                            }`}>{s}</span>
+                          ); })()}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {p.linkedin_url ? (
+                            <a href={p.linkedin_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center justify-center size-5 rounded bg-[#0A66C2]/10 text-[#0A66C2] hover:bg-[#0A66C2]/20 transition-colors">
+                              <svg className="size-3" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                            </a>
+                          ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
                         </td>
                         <td className="px-3 py-2 max-w-[160px]">
                           {rowStatus.get(p.id) === "enriching" ? (

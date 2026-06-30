@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { enrichProspect } from "@/lib/enrichment"
 import { classifyIcp } from "@/lib/icp"
+import { calculateOsScore } from "@/lib/scoring"
 
 export async function getCampaigns() {
   const { data, error } = await supabase
@@ -17,7 +18,7 @@ export async function getCampaigns() {
 export async function getProspectsForEnrichment(campaignId: string) {
   const { data, error } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, status")
+    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, status, accounts(headcount_range)")
     .eq("campaign_id", campaignId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
@@ -30,6 +31,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   zbStatus: string | null
   icpCategory: string
   icpScore: number
+  osScore: number
 }> {
   const { data: p } = await supabase
     .from("prospects")
@@ -39,10 +41,13 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 
   if (!p) throw new Error("Prospecto no encontrado")
 
+  const osScore = calculateOsScore(p.job_title)
+
   // Skip if already has a valid email
   if (p.email && (p.email_status === "valid" || p.email_status === "catch-all")) {
     const { category, score } = classifyIcp(p.job_title ?? "")
-    return { email: p.email, provider: null, zbStatus: p.email_status, icpCategory: category, icpScore: score }
+    await supabaseAdmin.from("prospects").update({ os_score: osScore }).eq("id", prospectId)
+    return { email: p.email, provider: null, zbStatus: p.email_status, icpCategory: category, icpScore: score, osScore }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,6 +73,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
       email_provider: result.provider ?? null,
       icp_category: category,
       icp_score: score,
+      os_score: osScore,
       status: result.enriched ? "enriched" : "not_found",
     })
     .eq("id", prospectId)
@@ -81,6 +87,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
     zbStatus: result.zbStatus,
     icpCategory: category,
     icpScore: score,
+    osScore,
   }
 }
 
@@ -95,9 +102,10 @@ export async function classifyAllIcp(campaignId: string): Promise<number> {
   let updated = 0
   for (const p of data) {
     const { category, score } = classifyIcp(p.job_title ?? "")
+    const osScore = calculateOsScore(p.job_title)
     await supabaseAdmin
       .from("prospects")
-      .update({ icp_category: category, icp_score: score })
+      .update({ icp_category: category, icp_score: score, os_score: osScore })
       .eq("id", p.id)
     updated++
   }

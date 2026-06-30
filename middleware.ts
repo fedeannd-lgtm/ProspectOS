@@ -8,16 +8,20 @@ const isPublic = createRouteMatcher([
   "/api/debug/(.*)",
 ])
 
-export default clerkMiddleware(async (auth, req) => {
-  if (isPublic(req)) return NextResponse.next()
+const devBypass = process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY === "pk_test_xxx"
 
-  const { userId } = await auth()
-  if (!userId) {
-    const signInUrl = new URL("/sign-in", req.url)
-    signInUrl.searchParams.set("redirect_url", req.url)
-    return NextResponse.redirect(signInUrl)
-  }
-})
+export default devBypass
+  ? () => NextResponse.next()
+  : clerkMiddleware(async (auth, req) => {
+      if (isPublic(req)) return NextResponse.next()
+      const { userId } = await auth()
+      if (!userId) {
+        const signInUrl = new URL("/sign-in", req.url)
+        signInUrl.searchParams.set("redirect_url", req.url)
+        return NextResponse.redirect(signInUrl)
+      }
+    })
 
 export const config = {
   matcher: [
