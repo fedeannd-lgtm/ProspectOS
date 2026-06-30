@@ -58,6 +58,58 @@ export async function getRepConfigs() {
   })
 }
 
+export type ProviderUsage = {
+  provider: string
+  label: string
+  today: number
+  week: number
+  month: number
+  total: number
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  apollo: "Apollo",
+  findymail: "FindyEmail",
+  prospeo: "Prospeo",
+  hunter: "Hunter",
+  datagma: "Datagma",
+  pattern: "Patrón",
+}
+
+export async function getProviderUsage(): Promise<ProviderUsage[]> {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+  const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("email_provider, updated_at")
+    .not("email_provider", "is", null)
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, ProviderUsage>()
+
+  for (const row of data ?? []) {
+    const key = row.email_provider as string
+    if (!map.has(key)) {
+      map.set(key, { provider: key, label: PROVIDER_LABELS[key] ?? key, today: 0, week: 0, month: 0, total: 0 })
+    }
+    const entry = map.get(key)!
+    entry.total++
+    if (row.updated_at >= startOfMonth) entry.month++
+    if (row.updated_at >= startOfWeek) entry.week++
+    if (row.updated_at >= startOfToday) entry.today++
+  }
+
+  const ORDER = ["apollo", "findymail", "prospeo", "hunter", "datagma", "pattern"]
+  return Array.from(map.values()).sort((a, b) => {
+    const ia = ORDER.indexOf(a.provider)
+    const ib = ORDER.indexOf(b.provider)
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+  })
+}
+
 export async function upsertRepCookie(repName: string, cookie: string) {
   const { error } = await supabaseAdmin
     .from("rep_configs")

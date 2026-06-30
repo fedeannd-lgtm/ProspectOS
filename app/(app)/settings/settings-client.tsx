@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity } from "lucide-react"
 import type { ProviderStatus } from "./provider-status"
+import type { ProviderUsage } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -445,10 +446,11 @@ function ProviderRow({ p }: { p: ProviderStatus }) {
   )
 }
 
-export function SettingsClient({ configs, savedUrls, providerStatus }: {
+export function SettingsClient({ configs, savedUrls, providerStatus, providerUsage }: {
   configs: RepConfig[]
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
+  providerUsage: ProviderUsage[]
 }) {
   return (
     <div className="space-y-6">
@@ -468,6 +470,41 @@ export function SettingsClient({ configs, savedUrls, providerStatus }: {
           {providerStatus.map((p) => <ProviderRow key={p.name} p={p} />)}
         </CardContent>
       </Card>
+
+      {providerUsage.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Activity className="size-4" /> Consumo por provider
+            </CardTitle>
+            <CardDescription>Emails encontrados exitosamente por cada servicio.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-muted-foreground">
+                  <th className="pb-2 text-left font-medium">Provider</th>
+                  <th className="pb-2 text-right font-medium">Hoy</th>
+                  <th className="pb-2 text-right font-medium">7 días</th>
+                  <th className="pb-2 text-right font-medium">Este mes</th>
+                  <th className="pb-2 text-right font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {providerUsage.map((u) => (
+                  <tr key={u.provider}>
+                    <td className="py-2 font-medium">{u.label}</td>
+                    <td className="py-2 text-right tabular-nums">{u.today || "—"}</td>
+                    <td className="py-2 text-right tabular-nums">{u.week || "—"}</td>
+                    <td className="py-2 text-right tabular-nums">{u.month || "—"}</td>
+                    <td className="py-2 text-right tabular-nums font-medium">{u.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
