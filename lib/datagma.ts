@@ -51,20 +51,27 @@ export async function findPhoneDatagma(params: {
   }
 }
 
+function looksLikePhone(s: string | null | undefined): s is string {
+  if (!s || typeof s !== "string") return false
+  return (s.replace(/\D/g, "").length >= 6)
+}
+
 function extractPhoneFromDatagma(data: Record<string, unknown>): string | null {
   // /v1/search response: { data: [{ phones: [...] }] } or { phones: [...] }
   // /v2/full response:   { phones: [...] } or { phone: "..." }
-  if (data?.phone && typeof data.phone === "string") return data.phone as string
+  if (looksLikePhone(data?.phone as string)) return data.phone as string
 
   const phones = (data?.phones ?? (Array.isArray(data?.data) ? (data.data as Record<string, unknown>[])[0]?.phones : null)) as unknown
   if (Array.isArray(phones) && phones.length > 0) {
-    const first = phones[0]
-    if (typeof first === "string") return first
-    if (typeof first === "object" && first !== null) {
-      return (first as Record<string, unknown>).phoneNumber as string
-        ?? (first as Record<string, unknown>).number as string
-        ?? (first as Record<string, unknown>).phone as string
-        ?? null
+    for (const first of phones) {
+      if (looksLikePhone(first as string)) return first as string
+      if (typeof first === "object" && first !== null) {
+        const candidate =
+          (first as Record<string, unknown>).phoneNumber as string
+          ?? (first as Record<string, unknown>).number as string
+          ?? (first as Record<string, unknown>).phone as string
+        if (looksLikePhone(candidate)) return candidate
+      }
     }
   }
 

@@ -32,7 +32,9 @@ export async function findPhoneProspeo(params: {
     const json = await res.json()
     if (json?.error) return null
     const person = json?.person
-    return person?.mobile_international ?? person?.mobile ?? null
+    const phone = person?.mobile_international ?? person?.mobile ?? null
+    if (!phone || typeof phone !== "string" || phone.replace(/\D/g, "").length < 6) return null
+    return phone
   } catch {
     return null
   }
