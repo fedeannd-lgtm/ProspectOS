@@ -34,6 +34,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   icpCategory: string
   icpScore: number
   osScore: number
+  apolloId: string | null
 }> {
   const { data: p } = await supabase
     .from("prospects")
@@ -49,7 +50,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   if (p.email && (p.email_status === "valid" || p.email_status === "catch-all")) {
     const { category, score } = classifyIcp(p.job_title ?? "")
     await supabaseAdmin.from("prospects").update({ os_score: osScore }).eq("id", prospectId)
-    return { email: p.email, provider: null, zbStatus: p.email_status, icpCategory: category, icpScore: score, osScore }
+    return { email: p.email, provider: null, zbStatus: p.email_status, icpCategory: category, icpScore: score, osScore, apolloId: null }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -91,6 +92,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
     icpCategory: category,
     icpScore: score,
     osScore,
+    apolloId: result.apolloId ?? null,
   }
 }
 

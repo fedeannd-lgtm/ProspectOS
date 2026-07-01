@@ -305,18 +305,14 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
       setRowStatus((prev) => new Map(prev).set(id, "enriching"))
       try {
         const result = await enrichOneProspect(id)
-        if (result.email) {
-          setProspects((prev) =>
-            prev.map((x) =>
-              x.id === id
-                ? { ...x, email: result.email, email_status: result.zbStatus, email_provider: result.provider, icp_category: result.icpCategory, icp_score: result.icpScore, os_score: result.osScore, status: "enriched" }
-                : x
-            )
+        setProspects((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? { ...x, email: result.email, email_status: result.zbStatus, email_provider: result.provider, icp_category: result.icpCategory, icp_score: result.icpScore, os_score: result.osScore, apollo_id: result.apolloId ?? x.apollo_id, status: result.email ? "enriched" : "not_found" }
+              : x
           )
-          setRowStatus((prev) => new Map(prev).set(id, "found"))
-        } else {
-          setRowStatus((prev) => new Map(prev).set(id, "not_found"))
-        }
+        )
+        setRowStatus((prev) => new Map(prev).set(id, result.email ? "found" : "not_found"))
       } catch {
         setRowStatus((prev) => new Map(prev).set(id, "error"))
       }
