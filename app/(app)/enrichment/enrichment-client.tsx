@@ -329,10 +329,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
   const withoutPhone = prospects.filter((p) => !p.phone).length
 
   async function handleEnrichPhones() {
-    // If there's a selection, use it; otherwise enrich all without phone
-    const toEnrich = selectedIds.size > 0
-      ? [...selectedIds]
-      : prospects.filter((p) => !p.phone).map((p) => p.id)
+    const toEnrich = [...selectedIds]
     if (!toEnrich.length) return
     setEnrichingPhone(true)
     setError("")
@@ -491,25 +488,19 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                 variant="outline"
                 className="w-full"
                 onClick={handleEnrichPhones}
-                disabled={!campaignId || loadingProspects || enriching || enrichingPhone || classifying || (selectedIds.size === 0 && withoutPhone === 0)}
+                disabled={!campaignId || loadingProspects || enriching || enrichingPhone || classifying || selectedIds.size === 0}
               >
                 {enrichingPhone
                   ? <><Loader2 className="mr-2 size-4 animate-spin" />{phoneProgress.done}/{phoneProgress.total}</>
                   : <><svg className="mr-2 size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                  Enriquecer teléfonos
-                  {selectedIds.size > 0
-                    ? ` (${selectedIds.size} sel.)`
-                    : withoutPhone > 0 ? ` (${withoutPhone} sin tel.)` : ""
-                  }</>}
+                  Enriquecer teléfonos{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}</>}
               </Button>
               {enrichingPhone && (
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div className="h-full bg-blue-500 transition-all" style={{ width: `${phoneProgress.total ? (phoneProgress.done / phoneProgress.total) * 100 : 0}%` }} />
                 </div>
               )}
-              <p className="text-[11px] text-muted-foreground">
-                {selectedIds.size > 0 ? "Busca teléfono para los seleccionados." : "Sin selección, busca en todos los que no tienen teléfono."}
-              </p>
+              <p className="text-[11px] text-muted-foreground">Seleccioná prospectos antes de enriquecer teléfonos.</p>
             </CardContent>
           </Card>
 
