@@ -91,8 +91,11 @@ function waLinkFor(phone: string): string | null {
   return digits ? `https://wa.me/${digits}` : null
 }
 
-function FoundPhoneCell({ prospect }: { prospect: Prospect }) {
-  if (!prospect.phone) return <span className="text-muted-foreground/30 text-[10px]">—</span>
+function FoundPhoneCell({ prospect, notFound }: { prospect: Prospect; notFound: boolean }) {
+  if (!prospect.phone) {
+    if (notFound) return <span className="text-[10px] text-amber-600">No encontrado</span>
+    return <span className="text-muted-foreground/30 text-[10px]">—</span>
+  }
   return (
     <span className="inline-flex items-center gap-1">
       <CheckCircle2 className="size-3 text-green-600 shrink-0" />
@@ -188,6 +191,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
   // Phone enrichment state
   const [enrichingPhone, setEnrichingPhone] = useState(false)
   const [phoneProgress, setPhoneProgress] = useState({ done: 0, total: 0 })
+  const [phoneNotFoundIds, setPhoneNotFoundIds] = useState<Set<string>>(new Set())
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
@@ -338,6 +342,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
       try {
         const phone = await enrichPhoneForProspect(id)
         setProspects((prev) => prev.map((x) => x.id === id ? { ...x, phone, phone_wa: x.phone_wa || phone } : x))
+        if (!phone) setPhoneNotFoundIds((prev) => new Set(prev).add(id))
       } catch { /* continue */ }
       setPhoneProgress({ done: i + 1, total: toEnrich.length })
     }
@@ -713,7 +718,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                           ) : <span className="text-muted-foreground/30 text-[10px]">—</span>}
                         </td>
                         <td className="px-3 py-2">
-                          <FoundPhoneCell prospect={p} />
+                          <FoundPhoneCell prospect={p} notFound={phoneNotFoundIds.has(p.id)} />
                         </td>
                         <td className="px-3 py-2">
                           <WhatsappCell
