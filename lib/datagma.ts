@@ -139,10 +139,10 @@ async function datagmaFindEmail(params: {
   const data = await res.json()
 
   // Verified email (billed) — safe to send
-  if (data?.email) return data.email
+  if (data?.email && typeof data.email === "string" && data.email.includes("@")) return data.email
 
   // Most probable email (catchall, not billed) — treat as valid too
-  if (data?.mostProbableEmail) return data.mostProbableEmail
+  if (data?.mostProbableEmail && typeof data.mostProbableEmail === "string" && data.mostProbableEmail.includes("@")) return data.mostProbableEmail
 
   return null
 }
