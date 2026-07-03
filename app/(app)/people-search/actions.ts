@@ -52,13 +52,12 @@ export async function getPeopleSearchConfig(repName: string, industry: string) {
   const base_url_2 = savedUrls[1]?.url ?? null
 
   // List state from people_search_configs (may not exist yet — that's fine)
-  const { data: config, error: configError } = await supabase
+  const { data: config } = await supabase
     .from("people_search_configs")
     .select("list_id, list_name, prev_list_id, prev_list_name, last_result_count, last_count_checked_at, last_result_count_2, last_count_2_checked_at")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
-  if (configError) throw new Error(configError.message)
 
   return {
     base_url,
