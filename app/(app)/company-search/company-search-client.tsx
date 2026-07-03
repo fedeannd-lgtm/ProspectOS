@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
-import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, RefreshCw, Timer, ChevronsUpDown, Check, Trash2 } from "lucide-react"
+import { Search, Building2, Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, Link2, Timer, ChevronsUpDown, Check, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { getSearchConfig, upsertSearchConfig, triggerCompanySearch, getJobStatus, deleteSearchJobs } from "./actions"
+import { getSearchConfig, triggerCompanySearch, getJobStatus, deleteSearchJobs } from "./actions"
 
 type Campaign = {
   id: string
@@ -25,6 +24,7 @@ type SearchJob = {
   status: string
   sales_nav_url: string | null
   results_count: number
+  start_page: number | null
   created_at: string
   completed_at: string | null
   estimated_ready_at?: string | null
@@ -73,10 +73,21 @@ function formatCountdown(ms: number) {
   return min > 0 ? `~${min} min` : `${sec}s`
 }
 
+function pageRangeLabel(job: SearchJob): string | null {
+  if (job.start_page == null) return null
+  if (job.status === "completed") {
+    const pages = Math.max(1, Math.ceil(job.results_count / 25))
+    const end = job.start_page + pages - 1
+    return end > job.start_page ? `Págs. ${job.start_page}–${end}` : `Pág. ${job.start_page}`
+  }
+  return `Pág. ${job.start_page}+`
+}
+
 function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
+  const pageLabel = pageRangeLabel(job)
   return (
     <div className="rounded-lg border px-3 py-2.5 space-y-1.5">
       <div className="flex items-center justify-between">
@@ -94,6 +105,9 @@ function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
             )}
             {job.status === "completed" && (
               <span className="text-xs text-muted-foreground">{job.results_count} empresas</span>
+            )}
+            {pageLabel && (
+              <span className="text-xs text-muted-foreground font-mono">{pageLabel}</span>
             )}
           </div>
           {job.campaigns && (
@@ -134,13 +148,9 @@ export function CompanySearchClient({
   const [campaignId, setCampaignId] = useState("")
   const [config, setConfig] = useState<SearchConfig>(null)
   const [configLoading, setConfigLoading] = useState(false)
-  const [showUrlEdit, setShowUrlEdit] = useState(false)
-  const [urlInput, setUrlInput] = useState("")
-  const [pageInput, setPageInput] = useState(1)
   const [maxResults, setMaxResults] = useState(50)
   const [comboOpen, setComboOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const [isSavingConfig, startSavingConfig] = useTransition()
   const [isDeleting, startDeleting] = useTransition()
   const [error, setError] = useState("")
 
@@ -160,26 +170,12 @@ export function CompanySearchClient({
   useEffect(() => {
     if (!selectedCampaign) {
       setConfig(null)
-      setShowUrlEdit(false)
       return
     }
     setConfigLoading(true)
     setError("")
-    const campaignHasJobs = jobs.some((j) => j.campaign_id === selectedCampaign.id)
     getSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry)
-      .then((cfg) => {
-        setConfig(cfg)
-        if (cfg) {
-          setUrlInput(cfg.base_url)
-          // Nueva campaña sin runs previos → página 1 siempre
-          setPageInput(campaignHasJobs ? cfg.next_page : 1)
-          setShowUrlEdit(false)
-        } else {
-          setUrlInput("")
-          setPageInput(1)
-          setShowUrlEdit(true)
-        }
-      })
+      .then((cfg) => setConfig(cfg))
       .catch(() => setError("Error cargando configuración"))
       .finally(() => setConfigLoading(false))
   }, [selectedCampaign?.id, selectedCampaign?.rep_name, selectedCampaign?.industry])
@@ -207,22 +203,6 @@ export function CompanySearchClient({
     return () => clearInterval(interval)
   }, [jobs])
 
-  function handleSaveConfig() {
-    if (!selectedCampaign) return
-    if (!urlInput.includes("linkedin.com")) { setError("URL de Sales Navigator inválida"); return }
-    setError("")
-
-    startSavingConfig(async () => {
-      try {
-        await upsertSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry, urlInput, pageInput)
-        setConfig({ base_url: urlInput, next_page: pageInput })
-        setShowUrlEdit(false)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Error guardando configuración")
-      }
-    })
-  }
-
   function handleTrigger() {
     setError("")
     if (!campaignId || !selectedCampaign) { setError("Seleccioná una campaña"); return }
@@ -246,6 +226,7 @@ export function CompanySearchClient({
         status: "running",
         sales_nav_url: config.base_url,
         results_count: 0,
+        start_page: config.next_page,
         created_at: new Date().toISOString(),
         completed_at: null,
         estimated_ready_at: estimatedReadyAt,
@@ -321,73 +302,43 @@ export function CompanySearchClient({
             </div>
 
             {selectedCampaign && (
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                 {configLoading ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="size-3.5 animate-spin" />
                     Cargando configuración…
                   </div>
-                ) : config && !showUrlEdit ? (
+                ) : config ? (
                   <>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm">
-                        <CheckCircle2 className="size-4 text-green-600" />
-                        <span className="font-medium">URL configurada</span>
-                        <span className="text-muted-foreground">·</span>
-                        <span className="text-muted-foreground">
-                          Próxima pág: <strong className="text-foreground">{config.next_page}</strong>
-                        </span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url); setPageInput(config.next_page) }}
-                      >
-                        <RefreshCw className="mr-1 size-3" />
-                        Actualizar URL
-                      </Button>
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle2 className="size-4 text-green-600 shrink-0" />
+                      <span className="font-medium">URL del repositorio</span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-muted-foreground">
+                        Próxima pág: <strong className="text-foreground">{config.next_page}</strong>
+                        {config.next_page > 1 && (
+                          <span className="ml-1 text-xs">(págs. 1–{config.next_page - 1} ya scrapeadas)</span>
+                        )}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Link2 className="size-3 shrink-0" />
                       <span className="truncate font-mono">{config.base_url.slice(0, 60)}…</span>
+                      <Link href="/settings" className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                        Cambiar en Settings ↗
+                      </Link>
                     </div>
                   </>
                 ) : (
-                  <>
-                    <div className="flex items-center gap-2 text-sm text-amber-600">
-                      <AlertTriangle className="size-4" />
-                      <span className="font-medium">
-                        {config ? "Actualizar URL de búsqueda" : "Sin URL configurada"}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      <Input
-                        value={urlInput}
-                        onChange={(e) => setUrlInput(e.target.value)}
-                        placeholder="https://www.linkedin.com/sales/search/company#page=1&query=..."
-                        className="font-mono text-xs"
-                      />
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-muted-foreground whitespace-nowrap">Empezar desde página:</label>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={pageInput}
-                          onChange={(e) => setPageInput(Math.max(1, parseInt(e.target.value) || 1))}
-                          className="h-8 w-20 text-sm"
-                        />
-                        <Button size="sm" className="h-8" onClick={handleSaveConfig} disabled={isSavingConfig}>
-                          {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
-                        </Button>
-                        {config && (
-                          <Button variant="ghost" size="sm" className="h-8" onClick={() => setShowUrlEdit(false)}>
-                            Cancelar
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </>
+                  <div className="flex items-center gap-2 text-sm text-amber-600">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    <span>
+                      Sin URL de Company Search para <strong>{selectedCampaign.rep_name} / {selectedCampaign.industry}</strong>.{" "}
+                      <Link href="/settings" className="underline underline-offset-2 hover:text-amber-800">
+                        Configurala en Settings →
+                      </Link>
+                    </span>
+                  </div>
                 )}
               </div>
             )}

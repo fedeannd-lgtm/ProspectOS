@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { supabaseAdmin } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
 import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
+import { incrementSavedUrlUsage } from "@/app/(app)/settings/actions"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
@@ -35,23 +36,42 @@ export async function getPeopleSearchJobs() {
 }
 
 export async function getPeopleSearchConfig(repName: string, industry: string) {
-  const { data, error } = await supabase
+  // URLs come from the saved_urls repository (people_search type, ordered by creation)
+  const { data: savedUrls, error: urlsError } = await supabase
+    .from("saved_urls")
+    .select("url")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .eq("url_type", "people_search")
+    .order("created_at", { ascending: true })
+  if (urlsError) throw new Error(urlsError.message)
+
+  if (!savedUrls || savedUrls.length === 0) return null
+
+  const base_url = savedUrls[0].url
+  const base_url_2 = savedUrls[1]?.url ?? null
+
+  // List state from people_search_configs (may not exist yet — that's fine)
+  const { data: config, error: configError } = await supabase
     .from("people_search_configs")
-    .select("base_url, base_url_2, list_id, list_name, last_result_count, last_count_checked_at, last_result_count_2, last_count_2_checked_at")
+    .select("list_id, list_name, prev_list_id, prev_list_name, last_result_count, last_count_checked_at, last_result_count_2, last_count_2_checked_at")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
-  if (error) throw new Error(error.message)
-  return data as {
-    base_url: string
-    base_url_2: string | null
-    list_id: string | null
-    list_name: string | null
-    last_result_count: number | null
-    last_count_checked_at: string | null
-    last_result_count_2: number | null
-    last_count_2_checked_at: string | null
-  } | null
+  if (configError) throw new Error(configError.message)
+
+  return {
+    base_url,
+    base_url_2,
+    list_id: config?.list_id ?? null,
+    list_name: config?.list_name ?? null,
+    prev_list_id: config?.prev_list_id ?? null,
+    prev_list_name: config?.prev_list_name ?? null,
+    last_result_count: config?.last_result_count ?? null,
+    last_count_checked_at: config?.last_count_checked_at ?? null,
+    last_result_count_2: config?.last_result_count_2 ?? null,
+    last_count_2_checked_at: config?.last_count_2_checked_at ?? null,
+  }
 }
 
 export async function generatePeopleSearchUrl(
@@ -82,10 +102,23 @@ export async function updateActiveList(
   listId: string,
   listName: string
 ) {
-  // Only save list metadata — do NOT modify base_url (SDR owns the URL)
+  // Fetch current list before overwriting so we can track it as prev
+  const { data: current } = await supabase
+    .from("people_search_configs")
+    .select("list_id, list_name")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .maybeSingle()
+
   const { error } = await supabaseAdmin
     .from("people_search_configs")
-    .update({ list_id: listId, list_name: listName, updated_at: new Date().toISOString() })
+    .update({
+      list_id: listId,
+      list_name: listName,
+      prev_list_id: current?.list_id ?? null,
+      prev_list_name: current?.list_name ?? null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("rep_name", repName)
     .eq("industry", industry)
 
@@ -176,6 +209,12 @@ export async function triggerPeopleSearch(
     }, webhookUrl)
 
     await supabase.from("search_jobs").update({ apify_run_id: runId }).eq("id", job.id)
+
+    // Increment usage counter on the matching saved URL
+    const config = await getPeopleSearchConfig(repName, industry)
+    if (config?.base_url) {
+      incrementSavedUrlUsage(repName, industry, "people_search", config.base_url).catch(() => {/* non-critical */})
+    }
 
     revalidatePath("/people-search")
     return { jobId: job.id, estimatedReadyAt }

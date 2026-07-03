@@ -10,7 +10,25 @@ export type SavedUrl = {
   url_type: "company_search" | "people_search"
   url: string
   label: string | null
+  times_used: number  // DB default 0; optional when creating
   created_at: string
+}
+
+export async function incrementSavedUrlUsage(repName: string, industry: string, urlType: "company_search" | "people_search", url: string): Promise<void> {
+  const { data } = await supabaseAdmin
+    .from("saved_urls")
+    .select("id, times_used")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .eq("url_type", urlType)
+    .eq("url", url)
+    .maybeSingle()
+  if (data) {
+    await supabaseAdmin
+      .from("saved_urls")
+      .update({ times_used: (data.times_used ?? 0) + 1 })
+      .eq("id", data.id)
+  }
 }
 
 export async function getSavedUrls(): Promise<SavedUrl[]> {
@@ -25,7 +43,7 @@ export async function getSavedUrls(): Promise<SavedUrl[]> {
   return (data ?? []) as SavedUrl[]
 }
 
-export async function createSavedUrl(payload: Omit<SavedUrl, "id" | "created_at">): Promise<SavedUrl> {
+export async function createSavedUrl(payload: Omit<SavedUrl, "id" | "created_at" | "times_used">): Promise<SavedUrl> {
   const { data, error } = await supabaseAdmin.from("saved_urls").insert(payload).select().single()
   if (error) throw new Error(error.message)
   revalidatePath("/settings")

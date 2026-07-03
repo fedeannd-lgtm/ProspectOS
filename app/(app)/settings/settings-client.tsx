@@ -175,6 +175,9 @@ function UrlRow({ url, onDelete }: { url: SavedUrl; onDelete: () => void }) {
             {URL_TYPE_LABELS[url.url_type]}
           </Badge>
           {url.label && <span className="text-xs text-muted-foreground">— {url.label}</span>}
+          {url.url_type === "people_search" && url.times_used > 0 && (
+            <span className="text-xs text-muted-foreground">· {url.times_used}× usada</span>
+          )}
         </div>
         <p className="text-xs text-muted-foreground font-mono truncate">{url.url}</p>
       </div>

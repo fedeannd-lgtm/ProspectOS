@@ -33,30 +33,45 @@ export async function getCompanySearchJobs() {
 }
 
 export async function getSearchConfig(repName: string, industry: string) {
-  const { data, error } = await supabase
+  // URL must come from the saved_urls repository
+  const { data: savedUrl } = await supabase
+    .from("saved_urls")
+    .select("url")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .eq("url_type", "company_search")
+    .order("created_at", { ascending: false })
+    .maybeSingle()
+
+  if (!savedUrl) return null
+
+  // Get page tracking from search_configs
+  const { data: config } = await supabase
     .from("search_configs")
     .select("base_url, next_page")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
-  if (error) throw new Error(error.message)
-  return data as { base_url: string; next_page: number } | null
-}
 
-export async function upsertSearchConfig(
-  repName: string,
-  industry: string,
-  baseUrl: string,
-  nextPage: number
-) {
-  const { error } = await supabase
-    .from("search_configs")
-    .upsert(
-      { rep_name: repName, industry, base_url: baseUrl, next_page: nextPage, updated_at: new Date().toISOString() },
+  if (!config) {
+    // Auto-create tracking record from saved URL, starting at page 1
+    await supabaseAdmin.from("search_configs").upsert(
+      { rep_name: repName, industry, base_url: savedUrl.url, next_page: 1, updated_at: new Date().toISOString() },
       { onConflict: "rep_name,industry" }
     )
-  if (error) throw new Error(error.message)
-  revalidatePath("/company-search")
+    return { base_url: savedUrl.url, next_page: 1 }
+  }
+
+  if (config.base_url !== savedUrl.url) {
+    // URL changed in repositorio → reset page counter
+    await supabaseAdmin.from("search_configs")
+      .update({ base_url: savedUrl.url, next_page: 1, updated_at: new Date().toISOString() })
+      .eq("rep_name", repName)
+      .eq("industry", industry)
+    return { base_url: savedUrl.url, next_page: 1 }
+  }
+
+  return { base_url: config.base_url, next_page: config.next_page }
 }
 
 export async function triggerCompanySearch(
@@ -87,6 +102,7 @@ export async function triggerCompanySearch(
         status: "running",
         max_results: maxResults,
         estimated_ready_at: estimatedReadyAt,
+        start_page: config.next_page,
       })
       .select()
       .single()

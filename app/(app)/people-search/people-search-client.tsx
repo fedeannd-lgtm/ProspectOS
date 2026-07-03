@@ -27,14 +27,12 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import {
   getPeopleSearchConfig,
-  upsertPeopleSearchConfig,
-  upsertPeopleSearchConfig2,
   triggerPeopleSearch,
   getJobStatus,
   getProspectsForCampaign,
   deleteSearchJobs,
 } from "./actions"
-import { updateAccountListInUrl, stripCompanyFiltersFromUrl } from "@/lib/sales-nav-lists"
+import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 
 type Campaign = {
   id: string
@@ -63,6 +61,8 @@ type PeopleSearchConfig = {
   base_url_2: string | null
   list_id: string | null
   list_name: string | null
+  prev_list_id: string | null
+  prev_list_name: string | null
   last_result_count: number | null
   last_count_checked_at: string | null
   last_result_count_2: number | null
@@ -242,11 +242,8 @@ export function PeopleSearchClient({
   const [comboOpen, setComboOpen] = useState(false)
   const [config, setConfig] = useState<PeopleSearchConfig>(null)
   const [configLoading, setConfigLoading] = useState(false)
-  const [showUrlEdit, setShowUrlEdit] = useState(false)
-  const [urlInput, setUrlInput] = useState("")
   const [maxResults, setMaxResults] = useState(100)
   const [isPending, startTransition] = useTransition()
-  const [isSavingConfig, startSavingConfig] = useTransition()
   const [isDeleting, startDeleting] = useTransition()
   const [error, setError] = useState("")
   const [pickedListId, setPickedListId] = useState("")
@@ -256,10 +253,6 @@ export function PeopleSearchClient({
   const [selectedUrlIndex, setSelectedUrlIndex] = useState<1 | 2>(1)
   const [generatedUrl2, setGeneratedUrl2] = useState<string | null>(null)
   const [generatedUrl2List, setGeneratedUrl2List] = useState<string | null>(null)
-  const [urlInput2, setUrlInput2] = useState("")
-  const [showUrlEdit2, setShowUrlEdit2] = useState(false)
-  const [isSavingConfig2, startSavingConfig2] = useTransition()
-
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
   const availableLists = selectedCampaign
@@ -275,11 +268,9 @@ export function PeopleSearchClient({
   useEffect(() => {
     if (!selectedCampaign) {
       setConfig(null)
-      setShowUrlEdit(false)
       setGeneratedUrl(null)
       return
     }
-    // Pre-select this campaign's list
     setPickedListId(selectedCampaign.list_id ?? "")
     setPickedListName(selectedCampaign.list_name ?? "")
     setGeneratedUrl(null)
@@ -292,27 +283,19 @@ export function PeopleSearchClient({
       .then((cfg) => {
         setConfig(cfg)
         if (cfg) {
-          setUrlInput(cfg.base_url)
-          setUrlInput2(cfg.base_url_2 ?? "")
-          setShowUrlEdit(false)
-          setShowUrlEdit2(false)
           const listId = selectedCampaign!.list_id
           const listName = selectedCampaign!.list_name
           if (listId && listName) {
-            setGeneratedUrl(updateAccountListInUrl(cfg.base_url, listId, listName, cfg.list_id))
+            setGeneratedUrl(updateAccountListInUrl(cfg.base_url, listId, listName, cfg.prev_list_id))
             setGeneratedUrlList(listName)
             if (cfg.base_url_2) {
-              setGeneratedUrl2(updateAccountListInUrl(cfg.base_url_2, listId, listName, cfg.list_id))
+              setGeneratedUrl2(updateAccountListInUrl(cfg.base_url_2, listId, listName, cfg.prev_list_id))
               setGeneratedUrl2List(listName)
             }
           }
-        } else {
-          setUrlInput("")
-          setUrlInput2("")
-          setShowUrlEdit(true)
         }
       })
-      .catch(() => setError("Error cargando configuración"))
+      .catch((e) => setError(e instanceof Error ? e.message : "Error cargando configuración"))
       .finally(() => setConfigLoading(false))
   }, [selectedCampaign?.id, selectedCampaign?.rep_name, selectedCampaign?.industry])
 
@@ -338,22 +321,6 @@ export function PeopleSearchClient({
 
     return () => clearInterval(interval)
   }, [jobs])
-
-  function handleSaveConfig() {
-    if (!selectedCampaign) return
-    if (!urlInput.includes("linkedin.com")) { setError("URL de Sales Navigator inválida"); return }
-    setError("")
-
-    startSavingConfig(async () => {
-      try {
-        await upsertPeopleSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry, urlInput)
-        setConfig((prev) => ({ base_url: urlInput, base_url_2: prev?.base_url_2 ?? null, list_id: prev?.list_id ?? null, list_name: prev?.list_name ?? null, last_result_count: prev?.last_result_count ?? null, last_count_checked_at: prev?.last_count_checked_at ?? null, last_result_count_2: prev?.last_result_count_2 ?? null, last_count_2_checked_at: prev?.last_count_2_checked_at ?? null }))
-        setShowUrlEdit(false)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Error guardando configuración")
-      }
-    })
-  }
 
   const activeGeneratedUrl = selectedUrlIndex === 1 ? generatedUrl : generatedUrl2
 
@@ -503,10 +470,10 @@ export function PeopleSearchClient({
                           setPickedListId(v)
                           setPickedListName(name)
                           if (config) {
-                            setGeneratedUrl(updateAccountListInUrl(config.base_url, v, name, config.list_id))
+                            setGeneratedUrl(updateAccountListInUrl(config.base_url, v, name, config.prev_list_id))
                             setGeneratedUrlList(name)
                             if (config.base_url_2) {
-                              setGeneratedUrl2(updateAccountListInUrl(config.base_url_2, v, name, config.list_id))
+                              setGeneratedUrl2(updateAccountListInUrl(config.base_url_2, v, name, config.prev_list_id))
                               setGeneratedUrl2List(name)
                             } else {
                               setGeneratedUrl2(null)
@@ -544,30 +511,13 @@ export function PeopleSearchClient({
                     <Loader2 className="size-3 animate-spin" /> Cargando configuración…
                   </div>
                 ) : !config ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                     <div className="flex items-center gap-2 text-sm text-amber-700">
                       <AlertTriangle className="size-4 shrink-0" />
-                      <span className="font-medium">Configurá la URL base de People Search</span>
+                      <span>Sin URL de People Search para {selectedCampaign.rep_name}/{selectedCampaign.industry} —{" "}
+                        <Link href="/settings" className="underline underline-offset-2">configurala en Settings</Link>
+                      </span>
                     </div>
-                    <p className="text-xs text-amber-600">URL de búsqueda en Sales Navigator con filtros base. Se guarda una vez por rep + industria.</p>
-                    {showUrlEdit ? (
-                      <div className="space-y-2">
-                        <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
-                          placeholder="https://www.linkedin.com/sales/search/people#query=..."
-                          className="font-mono text-xs" />
-                        <div className="flex gap-2 flex-wrap">
-                          <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
-                            {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setUrlInput(stripCompanyFiltersFromUrl(urlInput))}>
-                            Limpiar filtros empresa
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => setShowUrlEdit(true)}>Configurar URL base</Button>
-                    )}
                   </div>
                 ) : (
                   <div className={`grid gap-3 ${config.base_url_2 ? "grid-cols-2" : "grid-cols-1"}`}>
@@ -589,31 +539,13 @@ export function PeopleSearchClient({
                         )}
                       </div>
 
-                      {showUrlEdit ? (
-                        <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-                          <Input value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
-                            placeholder="https://www.linkedin.com/sales/search/people#query=..."
-                            className="font-mono text-xs" />
-                          <div className="flex gap-1.5 flex-wrap">
-                            <Button size="sm" onClick={handleSaveConfig} disabled={isSavingConfig}>
-                              {isSavingConfig ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => setUrlInput(stripCompanyFiltersFromUrl(urlInput))}>
-                              Limpiar filtros empresa
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit(false)}>Cancelar</Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-                          <Link2 className="size-3 shrink-0 opacity-60" />
-                          <span className="truncate font-mono text-[11px]">{config.base_url.slice(0, 34)}…</span>
-                          <Button variant="ghost" size="sm" className="h-5 px-1 text-[11px] ml-auto shrink-0"
-                            onClick={() => { setShowUrlEdit(true); setUrlInput(config.base_url) }}>
-                            editar
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                        <Link2 className="size-3 shrink-0 opacity-60" />
+                        <span className="truncate font-mono text-[11px]">{config.base_url.slice(0, 34)}…</span>
+                        <Link href="/settings" className="ml-auto shrink-0 text-[11px] text-muted-foreground hover:text-foreground">
+                          Cambiar en Settings ↗
+                        </Link>
+                      </div>
 
                       {generatedUrl && (
                         <div className="rounded-md border border-green-200 bg-green-50 px-2.5 py-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
@@ -653,47 +585,18 @@ export function PeopleSearchClient({
                         )}
                       </div>
 
-                      {!config.base_url_2 && !showUrlEdit2 ? (
-                        <Button size="sm" variant="ghost" className="text-xs text-muted-foreground px-0"
-                          onClick={(e) => { e.stopPropagation(); setShowUrlEdit2(true) }}>
-                          + Agregar URL base 2
-                        </Button>
-                      ) : showUrlEdit2 ? (
-                        <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-                          <Input value={urlInput2} onChange={(e) => setUrlInput2(e.target.value)}
-                            placeholder="https://www.linkedin.com/sales/search/people#query=..."
-                            className="font-mono text-xs" />
-                          <div className="flex gap-1.5 flex-wrap">
-                            <Button size="sm" disabled={isSavingConfig2}
-                              onClick={() => {
-                                if (!selectedCampaign) return
-                                startSavingConfig2(async () => {
-                                  try {
-                                    await upsertPeopleSearchConfig2(selectedCampaign.rep_name, selectedCampaign.industry, urlInput2)
-                                    setConfig((prev) => prev ? { ...prev, base_url_2: urlInput2 } : prev)
-                                    setShowUrlEdit2(false)
-                                  } catch (e) {
-                                    setError(e instanceof Error ? e.message : "Error guardando URL 2")
-                                  }
-                                })
-                              }}>
-                              {isSavingConfig2 ? <Loader2 className="size-3.5 animate-spin" /> : "Guardar"}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => setUrlInput2(stripCompanyFiltersFromUrl(urlInput2))}>
-                              Limpiar filtros empresa
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setShowUrlEdit2(false)}>Cancelar</Button>
-                          </div>
-                        </div>
+                      {!config.base_url_2 ? (
+                        <Link href="/settings" className="text-xs text-muted-foreground hover:text-foreground">
+                          + Agregar en Settings ↗
+                        </Link>
                       ) : (
                         <>
                           <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
                             <Link2 className="size-3 shrink-0 opacity-60" />
                             <span className="truncate font-mono text-[11px]">{config.base_url_2!.slice(0, 34)}…</span>
-                            <Button variant="ghost" size="sm" className="h-5 px-1 text-[11px] ml-auto shrink-0"
-                              onClick={() => { setShowUrlEdit2(true); setUrlInput2(config.base_url_2!) }}>
-                              editar
-                            </Button>
+                            <Link href="/settings" className="ml-auto shrink-0 text-[11px] text-muted-foreground hover:text-foreground">
+                              Cambiar en Settings ↗
+                            </Link>
                           </div>
 
                           {generatedUrl2 && (
