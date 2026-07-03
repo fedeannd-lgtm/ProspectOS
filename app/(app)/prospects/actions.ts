@@ -4,13 +4,22 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 
 export async function getAllProspects() {
-  const { data, error } = await supabaseAdmin
-    .from("prospects")
-    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, connection_degree, location, email, icp_score, is_premium, status, started_role_months, highlights, created_at, campaign_id, campaigns(week_label, rep_name, industry)")
-    .order("created_at", { ascending: false })
-    .limit(50000)
-  if (error) throw new Error(error.message)
-  return (data ?? []) as unknown as {
+  const SELECT = "id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, connection_degree, location, email, icp_score, is_premium, status, started_role_months, highlights, created_at, campaign_id, campaigns(week_label, rep_name, industry)"
+  const PAGE = 1000
+  const allData: unknown[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from("prospects")
+      .select(SELECT)
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    if (data) allData.push(...data)
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return (allData ?? []) as unknown as {
     id: string; first_name: string; last_name: string; full_name: string
     job_title: string; company_name: string
     company_domain: string | null; linkedin_url: string; connection_degree: string
