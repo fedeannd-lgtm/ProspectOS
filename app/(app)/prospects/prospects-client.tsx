@@ -84,10 +84,7 @@ export function ProspectsClient({ prospects: initialProspects }: { prospects: Pr
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
 
-  const reps = useMemo(() => {
-    const set = new Set(prospects.map((p) => p.campaigns?.rep_name).filter(Boolean) as string[])
-    return Array.from(set).sort()
-  }, [prospects])
+  const reps = ["Alu", "Fede", "Guido", "Jess", "Suva"]
 
   const industries = useMemo(() => {
     const set = new Set(prospects.map((p) => p.campaigns?.industry).filter(Boolean) as string[])
