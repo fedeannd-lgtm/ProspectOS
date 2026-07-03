@@ -17,6 +17,10 @@ create table if not exists public.people_search_configs (
 
 alter table public.people_search_configs enable row level security;
 
-create policy if not exists "public read" on public.people_search_configs for select using (true);
-create policy if not exists "public insert" on public.people_search_configs for insert with check (true);
-create policy if not exists "public update" on public.people_search_configs for update using (true);
+drop policy if exists "public read" on public.people_search_configs;
+drop policy if exists "public insert" on public.people_search_configs;
+drop policy if exists "public update" on public.people_search_configs;
+
+create policy "public read" on public.people_search_configs for select using (true);
+create policy "public insert" on public.people_search_configs for insert with check (true);
+create policy "public update" on public.people_search_configs for update using (true);
