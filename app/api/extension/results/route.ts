@@ -47,17 +47,18 @@ export async function POST(req: NextRequest) {
       // así que acumulamos en DB y cerramos el job cuando done=true
       const { data: existing } = await supabaseAdmin
         .from("search_jobs")
-        .select("results_count")
+        .select("status, results_count")
         .eq("id", jobId)
         .single()
+
+      // Mark as running on first batch
+      if (existing?.status === "pending") {
+        await supabaseAdmin.from("search_jobs").update({ status: "running" }).eq("id", jobId)
+      }
 
       // Insertar prospects parciales (sin cerrar job)
       const people = body.items as RawPerson[]
       if (people.length > 0) {
-        const { data: accounts } = await supabaseAdmin
-          .from("accounts")
-          .select("id, company_name, domain, campaign_id")
-
         const prospects = people.map((p) => ({
           campaign_id: job.campaign_id,
           first_name: p.firstName ?? "",
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
         }))
         await supabaseAdmin.from("prospects").insert(prospects)
 
-        const prev = existing?.results_count ?? 0
+        const prev = (existing as { results_count?: number } | null)?.results_count ?? 0
         await supabaseAdmin
           .from("search_jobs")
           .update({ results_count: prev + people.length })
