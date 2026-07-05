@@ -178,7 +178,7 @@ export async function triggerPeopleSearch(
     // Sales Nav reads only "query=" from the hash and ignores unknown params.
     const callbackUrl = encodeURIComponent(`${APP_URL}/api/extension/results`)
     const hashSep = salesNavUrl.includes('#') ? '&' : '#'
-    const extensionUrl = `${salesNavUrl}${hashSep}_mode=people_scrape&_job=${job.id}&_cb=${callbackUrl}`
+    const extensionUrl = `${salesNavUrl}${hashSep}_mode=people_scrape&_job=${job.id}&_max=${maxResults}&_cb=${callbackUrl}`
 
     // Increment usage counter
     const config = await getPeopleSearchConfig(repName, industry)

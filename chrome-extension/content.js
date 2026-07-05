@@ -82,10 +82,11 @@
   const scrapeCb = hashParams.get('_cb');
 
   const decodedCb = scrapeCb ? decodeURIComponent(scrapeCb) : scrapeCb;
-  console.log('[ProspectOS] scrape params:', { mode, jobId, scrapeCb, decodedCb });
+  const maxResults = parseInt(hashParams.get('_max') || '500', 10);
+  console.log('[ProspectOS] scrape params:', { mode, jobId, maxResults, decodedCb });
 
   if (mode === 'people_scrape' && jobId && scrapeCb) {
-    await runPeopleScrape(jobId, decodedCb);
+    await runPeopleScrape(jobId, decodedCb, maxResults);
     return;
   }
 
@@ -313,7 +314,7 @@ async function checkAndRunPendingJob() {
 
 // ── People Scrape ────────────────────────────────────────────────────────────
 
-async function runPeopleScrape(jobId, callbackUrl) {
+async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
   const overlay = createOverlay();
   const { setStatus, setProgress } = overlay;
 
@@ -334,13 +335,17 @@ async function runPeopleScrape(jobId, callbackUrl) {
       // Wait for profile links — stable anchor in Sales Nav DOM
       await waitForSelector('a[href*="/sales/lead/"]', 45000);
 
+      // Scroll through the page to trigger lazy-loading of all result cards
+      await scrollPageToLoadAll();
+
       const people = scrapePeopleFromPage();
       setProgress(`Página ${page}: ${people.length} personas encontradas (total: ${totalScraped + people.length})`);
 
       if (people.length === 0) break;
 
       // Send batch
-      const done = !hasNextPage() || page >= MAX_PAGES;
+      const reachedMax = totalScraped + people.length >= maxResults;
+      const done = reachedMax || !hasNextPage() || page >= MAX_PAGES;
       const fetchUrl = `${callbackUrl}?jobId=${jobId}`;
       console.log('[ProspectOS] posting to:', fetchUrl);
       try {
@@ -375,6 +380,29 @@ async function runPeopleScrape(jobId, callbackUrl) {
     setProgress('Cerrá esta pestaña y volvé a intentar desde ProspectOS.');
     console.error('[ProspectOS]', err);
   }
+}
+
+async function scrollPageToLoadAll() {
+  const distance = 400;
+  const delay = 300;
+  let lastCount = 0;
+  let stableRounds = 0;
+
+  // Scroll down incrementally until no new cards appear
+  while (stableRounds < 3) {
+    window.scrollBy(0, distance);
+    await new Promise(r => setTimeout(r, delay));
+    const count = document.querySelectorAll('a[href*="/sales/lead/"]').length;
+    if (count === lastCount) {
+      stableRounds++;
+    } else {
+      stableRounds = 0;
+      lastCount = count;
+    }
+  }
+  // Scroll back to top so pagination button is visible
+  window.scrollTo(0, 0);
+  await new Promise(r => setTimeout(r, 500));
 }
 
 function scrapePeopleFromPage() {
