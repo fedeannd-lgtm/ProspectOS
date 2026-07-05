@@ -156,67 +156,37 @@ export async function triggerPeopleSearch(
   industry: string,
   maxResults: number,
   salesNavUrl: string
-): Promise<{ jobId: string; estimatedReadyAt: string } | { error: string }> {
+): Promise<{ jobId: string; extensionUrl: string } | { error: string }> {
   try {
     if (!salesNavUrl) return { error: "No hay URL configurada para esta búsqueda" }
-    const searchUrl = salesNavUrl
-
-    const { data: repConfig } = await supabase
-      .from("rep_configs")
-      .select("linkedin_cookie")
-      .eq("rep_name", repName)
-      .maybeSingle()
-    if (!repConfig?.linkedin_cookie) return { error: `Cookie no configurada para ${repName}. Actualizala en Settings.` }
-
-    const estimatedReadyAt = new Date(
-      Date.now() + estimatedMinutes(maxResults) * 60 * 1000
-    ).toISOString()
 
     const { data: job, error } = await supabase
       .from("search_jobs")
       .insert({
         campaign_id: campaignId,
         job_type: "people_search",
-        sales_nav_url: searchUrl,
+        sales_nav_url: salesNavUrl,
         status: "running",
         max_results: maxResults,
-        estimated_ready_at: estimatedReadyAt,
       })
       .select()
       .single()
 
     if (error) return { error: error.message }
 
-    let cookieParsed: unknown
-    try {
-      cookieParsed = JSON.parse(repConfig.linkedin_cookie)
-    } catch {
-      return { error: `La cookie de ${repName} no es JSON válido. Exportala desde Cookie-Editor como JSON y pegala de nuevo en Settings.` }
-    }
+    // Build the URL that triggers the extension's people_scrape mode
+    const callbackUrl = encodeURIComponent(`${APP_URL}/api/extension/results`)
+    const hash = `_mode=people_scrape&_job=${job.id}&_cb=${callbackUrl}`
+    const extensionUrl = `${salesNavUrl}#${hash}`
 
-    const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
-    const runId = await startSalesNavRun({
-      cookie: cookieParsed,
-      searchUrl,
-      count: maxResults,
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-      deepScrape: false,
-      stopOnRateLimit: true,
-      startPage: 1,
-      minDelay: 15,
-      maxDelay: 30,
-    }, webhookUrl)
-
-    await supabase.from("search_jobs").update({ apify_run_id: runId }).eq("id", job.id)
-
-    // Increment usage counter on the matching saved URL
+    // Increment usage counter
     const config = await getPeopleSearchConfig(repName, industry)
     if (config?.base_url) {
-      incrementSavedUrlUsage(repName, industry, "people_search", config.base_url).catch(() => {/* non-critical */})
+      incrementSavedUrlUsage(repName, industry, "people_search", config.base_url).catch(() => {})
     }
 
     revalidatePath("/people-search")
-    return { jobId: job.id, estimatedReadyAt }
+    return { jobId: job.id, extensionUrl }
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Error al iniciar la búsqueda" }
   }

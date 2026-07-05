@@ -1,0 +1,81 @@
+import { NextRequest, NextResponse } from "next/server"
+import { supabaseAdmin } from "@/lib/supabase"
+import { processCompanySearch, processPeopleSearch, type RawCompany, type RawPerson } from "@/lib/process-search-results"
+
+export async function POST(req: NextRequest) {
+  const jobId = req.nextUrl.searchParams.get("jobId")
+  if (!jobId) return NextResponse.json({ error: "jobId requerido" }, { status: 400 })
+
+  const body = await req.json() as {
+    items: RawCompany[] | RawPerson[]
+    done?: boolean
+  }
+
+  const { data: job } = await supabaseAdmin
+    .from("search_jobs")
+    .select("job_type, campaign_id, campaigns(rep_name, industry)")
+    .eq("id", jobId)
+    .single()
+
+  if (!job) return NextResponse.json({ error: "Job no encontrado" }, { status: 404 })
+
+  if (job.job_type === "company_search") {
+    if (body.done) {
+      await processCompanySearch(jobId, job, body.items as RawCompany[])
+    } else {
+      // Batch parcial — insertar sin cerrar el job
+      const accounts = (body.items as RawCompany[]).map((c) => ({
+        campaign_id: job.campaign_id,
+        company_name: c.companyName ?? "",
+        domain: c.website ?? "",
+        sales_nav_id: c.id ?? "",
+      }))
+      if (accounts.length > 0) await supabaseAdmin.from("accounts").insert(accounts)
+    }
+  } else {
+    if (body.done) {
+      await processPeopleSearch(jobId, job, body.items as RawPerson[])
+    } else {
+      // Batch parcial — insertar sin cerrar el job
+      // Reutilizar processPeopleSearch con done=false sería complejo,
+      // así que acumulamos en DB y cerramos el job cuando done=true
+      const { data: existing } = await supabaseAdmin
+        .from("search_jobs")
+        .select("results_count")
+        .eq("id", jobId)
+        .single()
+
+      // Insertar prospects parciales (sin cerrar job)
+      const people = body.items as RawPerson[]
+      if (people.length > 0) {
+        const { data: accounts } = await supabaseAdmin
+          .from("accounts")
+          .select("id, company_name, domain, campaign_id")
+
+        const prospects = people.map((p) => ({
+          campaign_id: job.campaign_id,
+          first_name: p.firstName ?? "",
+          last_name: p.lastName ?? "",
+          full_name: p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
+          job_title: p.jobTitle ?? p.currentPositions?.[0]?.title ?? p.headline ?? "",
+          linkedin_url: p.profileUrl ?? "",
+          company_name: p.companyName ?? "",
+          is_premium: p.premium ?? false,
+          connection_degree: p.connectionType === 1 ? "FIRST" : p.connectionType === 2 ? "SECOND" : p.connectionType === 3 ? "THIRD" : "",
+          location: p.location ?? "",
+          started_role_months: p.currentPositions?.[0]?.startedOn?.month ?? null,
+          highlights: p.highlights?.map((h) => h.name || h.description || "").filter(Boolean).join(", ") || null,
+        }))
+        await supabaseAdmin.from("prospects").insert(prospects)
+
+        const prev = existing?.results_count ?? 0
+        await supabaseAdmin
+          .from("search_jobs")
+          .update({ results_count: prev + people.length })
+          .eq("id", jobId)
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true, received: body.items.length, done: body.done ?? false })
+}

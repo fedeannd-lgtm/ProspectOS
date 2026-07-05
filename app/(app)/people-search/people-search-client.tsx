@@ -353,7 +353,9 @@ export function PeopleSearchClient({
         setError(result.error)
         return
       }
-      const { jobId, estimatedReadyAt } = result
+      const { jobId, extensionUrl } = result
+      // Open Sales Navigator with extension params in a new tab
+      window.open(extensionUrl, "_blank")
       const newJob: SearchJob = {
         id: jobId,
         campaign_id: campaignId,
@@ -362,7 +364,7 @@ export function PeopleSearchClient({
         results_count: 0,
         created_at: new Date().toISOString(),
         completed_at: null,
-        estimated_ready_at: estimatedReadyAt,
+        estimated_ready_at: null,
         campaigns: {
           week_label: selectedCampaign.week_label,
           rep_name: selectedCampaign.rep_name,
