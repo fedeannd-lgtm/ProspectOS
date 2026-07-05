@@ -81,10 +81,11 @@
   const jobId = hashParams.get('_job');
   const scrapeCb = hashParams.get('_cb');
 
-  console.log('[ProspectOS] scrape params:', { mode, jobId });
+  const decodedCb = scrapeCb ? decodeURIComponent(scrapeCb) : scrapeCb;
+  console.log('[ProspectOS] scrape params:', { mode, jobId, scrapeCb, decodedCb });
 
   if (mode === 'people_scrape' && jobId && scrapeCb) {
-    await runPeopleScrape(jobId, scrapeCb);
+    await runPeopleScrape(jobId, decodedCb);
     return;
   }
 
@@ -340,11 +341,18 @@ async function runPeopleScrape(jobId, callbackUrl) {
 
       // Send batch
       const done = !hasNextPage() || page >= MAX_PAGES;
-      await fetch(`${callbackUrl}?jobId=${jobId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: people, done }),
-      });
+      const fetchUrl = `${callbackUrl}?jobId=${jobId}`;
+      console.log('[ProspectOS] posting to:', fetchUrl);
+      try {
+        const res = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: people, done }),
+        });
+        console.log('[ProspectOS] response status:', res.status);
+      } catch (fetchErr) {
+        throw new Error(`Fetch falló → ${fetchUrl}\n${fetchErr.message}`);
+      }
 
       totalScraped += people.length;
 

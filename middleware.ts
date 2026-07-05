@@ -6,6 +6,7 @@ const isPublic = createRouteMatcher([
   "/sign-up(.*)",
   "/api/webhooks/(.*)",
   "/api/debug/(.*)",
+  "/api/extension/(.*)",
 ])
 
 const devBypass = process.env.NODE_ENV === "development" &&
