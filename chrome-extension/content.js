@@ -381,10 +381,44 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
   }
 }
 
+function findScrollContainer() {
+  // Walk up from a result card to find the real scrollable ancestor
+  const link = document.querySelector('a[href*="/sales/lead/"]');
+  if (!link) return null;
+  let el = link.parentElement;
+  while (el && el !== document.body) {
+    const style = window.getComputedStyle(el);
+    if (/auto|scroll/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 10) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
 async function scrapeWhileScrolling(globalSeen) {
   const results = [];
   let stableRounds = 0;
   let lastCount = 0;
+
+  const container = findScrollContainer();
+  console.log('[ProspectOS] scroll container:', container?.tagName, container?.className?.slice(0, 60));
+
+  function scrollDown(px) {
+    if (container) {
+      container.scrollBy(0, px);
+    } else {
+      window.scrollBy(0, px);
+    }
+  }
+
+  function scrollToTop() {
+    if (container) {
+      container.scrollTo(0, 0);
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }
 
   function collectVisible() {
     document.querySelectorAll('a[href*="/sales/lead/"]').forEach((nameLink) => {
@@ -429,8 +463,8 @@ async function scrapeWhileScrolling(globalSeen) {
     });
   }
 
-  // Scroll & collect until no new people appear for 4 consecutive steps
-  while (stableRounds < 4) {
+  // Scroll & collect until no new people appear for 5 consecutive steps
+  while (stableRounds < 5) {
     collectVisible();
     const newCount = results.length;
     if (newCount === lastCount) {
@@ -439,13 +473,12 @@ async function scrapeWhileScrolling(globalSeen) {
       stableRounds = 0;
       lastCount = newCount;
     }
-    window.scrollBy(0, 350);
-    await new Promise(r => setTimeout(r, 400));
+    scrollDown(350);
+    await new Promise(r => setTimeout(r, 500));
   }
 
-  // Scroll back to top so the Next button is reachable
-  window.scrollTo(0, 0);
-  await new Promise(r => setTimeout(r, 600));
+  scrollToTop();
+  await new Promise(r => setTimeout(r, 700));
   return results;
 }
 
