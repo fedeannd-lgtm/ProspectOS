@@ -10,18 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { upsertRepCookie, createSavedUrl, deleteSavedUrl, type SavedUrl } from "./actions"
-
-const REPS = ["Alu", "Fede", "Guido", "Suva", "Jess"]
-const INDUSTRIES = [
-  "Retail & Comercio",
-  "Manufactura",
-  "Finance & Insurance",
-  "Agro & Energy",
-  "Construcción",
-  "BPO & Professional Services",
-  "Health & Entertainment",
-  "Consulting & Telco",
-]
+import { REPS, INDUSTRIES } from "@/lib/reps"
 const URL_TYPE_LABELS: Record<string, string> = {
   company_search: "Company Search",
   people_search: "People Search",

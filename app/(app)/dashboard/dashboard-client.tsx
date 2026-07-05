@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
+import { REPS as BASE_REPS, INDUSTRIES } from "@/lib/reps"
+const REPS = ["Todos", ...BASE_REPS]
+const REP_OPTIONS = BASE_REPS
 import { Plus, Pencil, Trash2, Building2, Users, Send, Zap, LayoutList, CalendarDays, CalendarIcon, BarChart3 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import Link from "next/link"
@@ -58,19 +61,6 @@ type FormData = {
   industry: string
   notes: string
 }
-
-const REPS = ["Todos", "Alu", "Fede", "Guido", "Suva", "Jess"]
-const REP_OPTIONS = ["Alu", "Fede", "Guido", "Suva", "Jess"]
-const INDUSTRIES = [
-  "Retail & Comercio",
-  "Manufactura",
-  "Finance & Insurance",
-  "Agro & Energy",
-  "Construcción",
-  "BPO & Professional Services",
-  "Health & Entertainment",
-  "Consulting & Telco",
-]
 
 const STATUS_LABELS: Record<CampaignStatus, string> = {
   pending: "Pendiente",

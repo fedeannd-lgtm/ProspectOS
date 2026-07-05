@@ -6,12 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Users, ExternalLink, Search, Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
 import { getFilteredProspects, getCampaignsForFilter, getAllFilteredProspects, deleteProspects, type ProspectRow } from "./actions"
-
-const REPS = ["Alu", "Fede", "Guido", "Jess", "Suva"]
-const INDUSTRIES = [
-  "Retail & Comercio", "Manufactura", "Finance & Insurance", "Agro & Energy",
-  "Construcción", "BPO & Professional Services", "Health & Entertainment", "Consulting & Telco",
-]
+import { REPS, INDUSTRIES } from "@/lib/reps"
 
 const STATUS_LABELS: Record<string, { label: string; class: string }> = {
   scraped:   { label: "Scrapeado",   class: "bg-zinc-100 text-zinc-600" },

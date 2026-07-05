@@ -56,7 +56,7 @@ export async function deleteSavedUrl(id: string) {
   revalidatePath("/settings")
 }
 
-const REPS = ["Alu", "Fede", "Guido", "Suva", "Jess"]
+import { REPS } from "@/lib/reps"
 
 export async function getRepConfigs() {
   const { data, error } = await supabase
