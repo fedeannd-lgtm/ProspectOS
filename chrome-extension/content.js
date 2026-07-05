@@ -327,6 +327,7 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
     let page = 1;
     let totalScraped = 0;
     const MAX_PAGES = 40; // 25 results/page × 40 = 1000 max
+    const globalSeen = new Set(); // dedup across all pages
 
     while (page <= MAX_PAGES) {
       setStatus(`Leyendo página ${page}…`);
@@ -338,8 +339,8 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
       // Scroll through the page to trigger lazy-loading of all result cards
       await scrollPageToLoadAll();
 
-      const people = scrapePeopleFromPage();
-      setProgress(`Página ${page}: ${people.length} personas encontradas (total: ${totalScraped + people.length})`);
+      const people = scrapePeopleFromPage(globalSeen);
+      setProgress(`Página ${page}: ${people.length} personas nuevas (total: ${totalScraped + people.length})`);
 
       if (people.length === 0) break;
 
@@ -405,13 +406,12 @@ async function scrollPageToLoadAll() {
   await new Promise(r => setTimeout(r, 500));
 }
 
-function scrapePeopleFromPage() {
+function scrapePeopleFromPage(seen = new Set()) {
   const results = [];
 
   // Find all profile links — the stable anchor in Sales Nav DOM.
   // Walk up to the containing <li> to get the full card context.
   const profileLinks = document.querySelectorAll('a[href*="/sales/lead/"]');
-  const seen = new Set();
 
   profileLinks.forEach((nameLink) => {
     try {
