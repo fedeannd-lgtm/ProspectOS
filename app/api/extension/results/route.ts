@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
 import { processCompanySearch, processPeopleSearch, type RawCompany, type RawPerson } from "@/lib/process-search-results"
 
+const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" }
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS })
+}
+
 export async function POST(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get("jobId")
   if (!jobId) return NextResponse.json({ error: "jobId requerido" }, { status: 400 })
@@ -77,5 +83,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, received: body.items.length, done: body.done ?? false })
+  return NextResponse.json({ ok: true, received: body.items.length, done: body.done ?? false }, { headers: CORS })
 }

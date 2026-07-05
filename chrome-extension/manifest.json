@@ -3,8 +3,12 @@
   "name": "ProspectOS",
   "version": "1.0.0",
   "description": "Crea listas de cuentas en Sales Navigator desde ProspectOS",
-  "permissions": [],
-  "host_permissions": ["https://www.linkedin.com/*"],
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "http://localhost:3000/*",
+    "https://*.vercel.app/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/sales/*"],

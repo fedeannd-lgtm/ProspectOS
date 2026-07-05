@@ -166,7 +166,7 @@ export async function triggerPeopleSearch(
         campaign_id: campaignId,
         job_type: "people_search",
         sales_nav_url: salesNavUrl,
-        status: "running",
+        status: "pending",
         max_results: maxResults,
       })
       .select()
@@ -174,10 +174,11 @@ export async function triggerPeopleSearch(
 
     if (error) return { error: error.message }
 
-    // Build the URL that triggers the extension's people_scrape mode
+    // Append our params to the existing hash (avoids double-# which breaks Sales Nav).
+    // Sales Nav reads only "query=" from the hash and ignores unknown params.
     const callbackUrl = encodeURIComponent(`${APP_URL}/api/extension/results`)
-    const hash = `_mode=people_scrape&_job=${job.id}&_cb=${callbackUrl}`
-    const extensionUrl = `${salesNavUrl}#${hash}`
+    const hashSep = salesNavUrl.includes('#') ? '&' : '#'
+    const extensionUrl = `${salesNavUrl}${hashSep}_mode=people_scrape&_job=${job.id}&_cb=${callbackUrl}`
 
     // Increment usage counter
     const config = await getPeopleSearchConfig(repName, industry)

@@ -1,6 +1,10 @@
 (async () => {
+  console.log('[ProspectOS] content.js loaded', window.location.href);
+
   const params = new URLSearchParams(window.location.search);
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
+
+  console.log('[ProspectOS] hash:', window.location.hash);
 
   // ── Mode: count results ──────────────────────────────────────────────────────
   if (window.location.pathname.startsWith('/sales/search/people')) {
@@ -72,18 +76,15 @@
   }
 
   // ── Mode: people_scrape ──────────────────────────────────────────────────────
+  // Params are appended to the existing Sales Nav hash (e.g. #query=(...)&_mode=people_scrape&_job=xxx)
   const mode = hashParams.get('_mode');
   const jobId = hashParams.get('_job');
-  const cb = hashParams.get('_cb');
+  const scrapeCb = hashParams.get('_cb');
 
-  if (mode === 'people_scrape' && jobId && cb) {
-    await runPeopleScrape(jobId, decodeURIComponent(cb));
-    return;
-  }
+  console.log('[ProspectOS] scrape params:', { mode, jobId });
 
-  // ── Mode: company_scrape ─────────────────────────────────────────────────────
-  if (mode === 'company_scrape' && jobId && cb) {
-    await runCompanyScrape(jobId, decodeURIComponent(cb));
+  if (mode === 'people_scrape' && jobId && scrapeCb) {
+    await runPeopleScrape(jobId, scrapeCb);
     return;
   }
 
@@ -274,6 +275,41 @@
   }
 })();
 
+// ── Pending Job Check ────────────────────────────────────────────────────────
+
+async function checkAndRunPendingJob() {
+  // Get ProspectOS base URL from storage (set once by user), fallback to localhost
+  let baseUrl = 'http://localhost:3000';
+  try {
+    const stored = await chrome.storage.local.get('prospectosUrl');
+    if (stored.prospectosUrl) baseUrl = stored.prospectosUrl;
+  } catch {}
+
+  console.log('[ProspectOS] checking for pending job at', baseUrl);
+
+  let job = null;
+  try {
+    const res = await fetch(`${baseUrl}/api/extension/pending-job`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.jobId) job = { jobId: data.jobId, callbackUrl: `${baseUrl}/api/extension/results` };
+    }
+  } catch (e) {
+    console.log('[ProspectOS] no pending job found:', e.message);
+    return;
+  }
+
+  if (!job) {
+    console.log('[ProspectOS] no pending job');
+    return;
+  }
+
+  console.log('[ProspectOS] found pending job:', job.jobId);
+  await runPeopleScrape(job.jobId, job.callbackUrl);
+}
+
 // ── People Scrape ────────────────────────────────────────────────────────────
 
 async function runPeopleScrape(jobId, callbackUrl) {
@@ -281,15 +317,21 @@ async function runPeopleScrape(jobId, callbackUrl) {
   const { setStatus, setProgress } = overlay;
 
   try {
+    // Give Sales Nav's SPA time to initialize and load the search results
+    setStatus('Esperando que Sales Nav cargue los resultados…');
+    setProgress('Esto puede tardar hasta 30 segundos en una pestaña nueva.');
+    await new Promise(r => setTimeout(r, 5000));
+
     let page = 1;
     let totalScraped = 0;
     const MAX_PAGES = 40; // 25 results/page × 40 = 1000 max
 
     while (page <= MAX_PAGES) {
       setStatus(`Leyendo página ${page}…`);
+      setProgress('Buscando resultados en el DOM…');
 
-      // Wait for results to load
-      await waitForSelector('[data-x-search-result]', 15000);
+      // Wait for profile links — stable anchor in Sales Nav DOM
+      await waitForSelector('a[href*="/sales/lead/"]', 45000);
 
       const people = scrapePeopleFromPage();
       setProgress(`Página ${page}: ${people.length} personas encontradas (total: ${totalScraped + people.length})`);
@@ -330,61 +372,60 @@ async function runPeopleScrape(jobId, callbackUrl) {
 function scrapePeopleFromPage() {
   const results = [];
 
-  // Sales Nav search result cards — try multiple selectors
-  const cards = document.querySelectorAll(
-    '[data-x-search-result], .search-results__result-item, li.artdeco-list__item'
-  );
+  // Find all profile links — the stable anchor in Sales Nav DOM.
+  // Walk up to the containing <li> to get the full card context.
+  const profileLinks = document.querySelectorAll('a[href*="/sales/lead/"]');
+  const seen = new Set();
 
-  cards.forEach((card) => {
+  profileLinks.forEach((nameLink) => {
     try {
-      // Profile URL + name
-      const nameLink = card.querySelector(
-        'a[href*="/sales/lead/"], a[href*="linkedin.com/in/"]'
-      );
-      const profileUrl = nameLink?.href || '';
-      const fullName = nameLink?.textContent?.trim() || '';
-      const nameParts = fullName.split(' ');
+      const profileUrl = nameLink.href || '';
+      if (seen.has(profileUrl)) return;
+      seen.add(profileUrl);
+
+      const fullName = nameLink.textContent?.trim() || '';
+      const nameParts = fullName.split(/\s+/);
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      // Job title
-      const titleEl = card.querySelector(
-        '[data-anonymize="job-title"], .result-lockup__highlight-keyword, .artdeco-entity-lockup__subtitle span'
+      // Walk up to the closest <li> which is the card root
+      const card = nameLink.closest('li') || nameLink.parentElement;
+
+      // Job title — Sales Nav uses data-anonymize="job-title" or aria-label on spans
+      const titleEl = card?.querySelector(
+        '[data-anonymize="job-title"], .artdeco-entity-lockup__subtitle span, .result-lockup__highlight-keyword'
       );
       const jobTitle = titleEl?.textContent?.trim() || '';
 
       // Company
-      const companyEl = card.querySelector(
+      const companyEl = card?.querySelector(
         '[data-anonymize="company-name"], a[href*="/sales/company/"]'
       );
       const companyName = companyEl?.textContent?.trim() || '';
 
-      // Location
-      const locationEl = card.querySelector(
-        '[data-anonymize="location"], .result-lockup__misc-item:first-child'
+      // Location — often third line in the lockup
+      const locationEl = card?.querySelector(
+        '[data-anonymize="location"], .artdeco-entity-lockup__caption span, .result-lockup__misc-item'
       );
       const location = locationEl?.textContent?.trim() || '';
 
       // Premium badge
-      const premium = !!card.querySelector(
-        '.premium-icon, [data-test-icon="linkedin-bug-color-medium"], .artdeco-entity-lockup__degree-connection--premium'
-      );
+      const premium = !!(card?.querySelector(
+        '.premium-icon, [data-test-icon="linkedin-bug-color-medium"], [aria-label*="Premium"], [aria-label*="premium"]'
+      ));
 
-      // Connection degree
+      // Connection degree — look for "1st", "2nd", "3rd" / "1er", "2do", "3er"
       let connectionType = 0;
-      const degreeEl = card.querySelector(
-        '.dist-value, [data-anonymize="connection-degree"]'
-      );
-      const degreeText = degreeEl?.textContent?.trim() || '';
-      if (degreeText.includes('1') || degreeText.includes('1er') || degreeText.toLowerCase().includes('1st')) connectionType = 1;
-      else if (degreeText.includes('2') || degreeText.includes('2do') || degreeText.toLowerCase().includes('2nd')) connectionType = 2;
-      else if (degreeText.includes('3') || degreeText.includes('3er') || degreeText.toLowerCase().includes('3rd')) connectionType = 3;
+      const cardText = card?.textContent || '';
+      if (/\b1(st|er|°)\b/i.test(cardText)) connectionType = 1;
+      else if (/\b2(nd|do|°)\b/i.test(cardText)) connectionType = 2;
+      else if (/\b3(rd|er|°)\b/i.test(cardText)) connectionType = 3;
 
       // Highlights
-      const highlightEls = card.querySelectorAll('.result-highlights__highlight, [data-test-highlight]');
+      const highlightEls = card?.querySelectorAll('.result-highlights__highlight, [data-test-highlight]') || [];
       const highlights = Array.from(highlightEls).map(el => ({ name: el.textContent?.trim() || '' }));
 
-      if (!profileUrl && !fullName) return; // skip empty cards
+      console.log('[ProspectOS] scraped:', { fullName, jobTitle, companyName, profileUrl });
 
       results.push({
         firstName,
