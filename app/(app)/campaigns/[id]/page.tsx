@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { getCampaignWithAccounts } from "./actions"
 import { AccountsClient } from "./accounts-client"
 import { notFound } from "next/navigation"

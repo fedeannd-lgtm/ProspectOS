@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { getCampaigns } from "./actions"
 import { getProviderStatus } from "../settings/provider-status"
 import { EnrichmentClient } from "./enrichment-client"

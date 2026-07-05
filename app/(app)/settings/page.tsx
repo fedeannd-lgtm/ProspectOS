@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { getRepConfigs, getSavedUrls, getProviderUsage } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { SettingsClient } from "./settings-client"

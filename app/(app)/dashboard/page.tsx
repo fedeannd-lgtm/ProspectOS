@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { getCampaigns, getIcpStats, getIcpCategoryStats } from "./actions"
 import { DashboardClient } from "./dashboard-client"
 
