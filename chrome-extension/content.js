@@ -336,10 +336,8 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
       // Wait for profile links — stable anchor in Sales Nav DOM
       await waitForSelector('a[href*="/sales/lead/"]', 45000);
 
-      // Scroll through the page to trigger lazy-loading of all result cards
-      await scrollPageToLoadAll();
-
-      const people = scrapePeopleFromPage(globalSeen);
+      // Scrape while scrolling to handle Sales Nav's virtual scroll
+      const people = await scrapeWhileScrolling(globalSeen);
       setProgress(`Página ${page}: ${people.length} personas nuevas (total: ${totalScraped + people.length})`);
 
       if (people.length === 0) break;
@@ -383,27 +381,72 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
   }
 }
 
-async function scrollPageToLoadAll() {
-  const distance = 400;
-  const delay = 300;
-  let lastCount = 0;
+async function scrapeWhileScrolling(globalSeen) {
+  const results = [];
   let stableRounds = 0;
+  let lastCount = 0;
 
-  // Scroll down incrementally until no new cards appear
-  while (stableRounds < 3) {
-    window.scrollBy(0, distance);
-    await new Promise(r => setTimeout(r, delay));
-    const count = document.querySelectorAll('a[href*="/sales/lead/"]').length;
-    if (count === lastCount) {
+  function collectVisible() {
+    document.querySelectorAll('a[href*="/sales/lead/"]').forEach((nameLink) => {
+      try {
+        const profileUrl = nameLink.href || '';
+        if (!profileUrl || globalSeen.has(profileUrl)) return;
+        globalSeen.add(profileUrl);
+
+        const fullName = nameLink.textContent?.trim() || '';
+        const nameParts = fullName.split(/\s+/);
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        const card = nameLink.closest('li') || nameLink.parentElement;
+
+        const titleEl = card?.querySelector('[data-anonymize="job-title"], .artdeco-entity-lockup__subtitle span, .result-lockup__highlight-keyword');
+        const companyEl = card?.querySelector('[data-anonymize="company-name"], a[href*="/sales/company/"]');
+        const locationEl = card?.querySelector('[data-anonymize="location"], .artdeco-entity-lockup__caption span, .result-lockup__misc-item');
+        const premium = !!(card?.querySelector('.premium-icon, [data-test-icon="linkedin-bug-color-medium"], [aria-label*="Premium"], [aria-label*="premium"]'));
+
+        let connectionType = 0;
+        const cardText = card?.textContent || '';
+        if (/\b1(st|er|°)\b/i.test(cardText)) connectionType = 1;
+        else if (/\b2(nd|do|°)\b/i.test(cardText)) connectionType = 2;
+        else if (/\b3(rd|er|°)\b/i.test(cardText)) connectionType = 3;
+
+        const highlightEls = card?.querySelectorAll('.result-highlights__highlight, [data-test-highlight]') || [];
+        const highlights = Array.from(highlightEls).map(el => ({ name: el.textContent?.trim() || '' }));
+
+        results.push({
+          firstName, lastName, fullName,
+          jobTitle: titleEl?.textContent?.trim() || '',
+          companyName: companyEl?.textContent?.trim() || '',
+          location: locationEl?.textContent?.trim() || '',
+          premium,
+          connectionType: connectionType || undefined,
+          profileUrl,
+          highlights: highlights.length ? highlights : undefined,
+        });
+      } catch (e) {
+        console.warn('[ProspectOS] Error scraping card:', e);
+      }
+    });
+  }
+
+  // Scroll & collect until no new people appear for 4 consecutive steps
+  while (stableRounds < 4) {
+    collectVisible();
+    const newCount = results.length;
+    if (newCount === lastCount) {
       stableRounds++;
     } else {
       stableRounds = 0;
-      lastCount = count;
+      lastCount = newCount;
     }
+    window.scrollBy(0, 350);
+    await new Promise(r => setTimeout(r, 400));
   }
-  // Scroll back to top so pagination button is visible
+
+  // Scroll back to top so the Next button is reachable
   window.scrollTo(0, 0);
-  await new Promise(r => setTimeout(r, 500));
+  await new Promise(r => setTimeout(r, 600));
+  return results;
 }
 
 function scrapePeopleFromPage(seen = new Set()) {
