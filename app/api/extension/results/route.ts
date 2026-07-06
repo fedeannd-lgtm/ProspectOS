@@ -29,7 +29,15 @@ export async function POST(req: NextRequest) {
     if (body.done) {
       await processCompanySearch(jobId, job, body.items as RawCompany[])
     } else {
-      // Batch parcial — insertar sin cerrar el job
+      // Partial batch — mark running, insert without closing job
+      const { data: existing } = await supabaseAdmin
+        .from("search_jobs")
+        .select("status")
+        .eq("id", jobId)
+        .single()
+      if (existing?.status === "pending") {
+        await supabaseAdmin.from("search_jobs").update({ status: "running" }).eq("id", jobId)
+      }
       const accounts = (body.items as RawCompany[]).map((c) => ({
         campaign_id: job.campaign_id,
         company_name: c.companyName ?? "",

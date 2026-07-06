@@ -33,7 +33,6 @@ type SearchJob = {
 
 type SearchConfig = {
   base_url: string
-  next_page: number
 } | null
 
 const MAX_OPTIONS = [1, 25, 50, 100, 200]
@@ -219,17 +218,18 @@ export function CompanySearchClient({
         setError(result.error)
         return
       }
-      const { jobId, estimatedReadyAt } = result
+      const { jobId, extensionUrl } = result
+      window.open(extensionUrl, '_blank')
       const newJob: SearchJob = {
         id: jobId,
         campaign_id: campaignId,
-        status: "running",
+        status: "pending",
         sales_nav_url: config.base_url,
         results_count: 0,
-        start_page: config.next_page,
+        start_page: null,
         created_at: new Date().toISOString(),
         completed_at: null,
-        estimated_ready_at: estimatedReadyAt,
+        estimated_ready_at: null,
         campaigns: {
           week_label: selectedCampaign.week_label,
           rep_name: selectedCampaign.rep_name,
@@ -237,8 +237,6 @@ export function CompanySearchClient({
         },
       }
       setJobs((prev) => [newJob, ...prev])
-      const pagesConsumed = Math.max(1, Math.ceil(maxResults / 25))
-      setConfig((prev) => prev ? { ...prev, next_page: prev.next_page + pagesConsumed } : prev)
     })
   }
 
@@ -312,14 +310,7 @@ export function CompanySearchClient({
                   <>
                     <div className="flex items-center gap-2 text-sm">
                       <CheckCircle2 className="size-4 text-green-600 shrink-0" />
-                      <span className="font-medium">URL del repositorio</span>
-                      <span className="text-muted-foreground">·</span>
-                      <span className="text-muted-foreground">
-                        Próxima pág: <strong className="text-foreground">{config.next_page}</strong>
-                        {config.next_page > 1 && (
-                          <span className="ml-1 text-xs">(págs. 1–{config.next_page - 1} ya scrapeadas)</span>
-                        )}
-                      </span>
+                      <span className="font-medium">URL configurada</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Link2 className="size-3 shrink-0" />
@@ -360,7 +351,7 @@ export function CompanySearchClient({
               </div>
               {selectedCampaign && config && (
                 <p className="text-xs text-muted-foreground">
-                  Páginas {config.next_page}–{config.next_page + Math.ceil(maxResults / 25) - 1} · listo en ~{Math.ceil((maxResults / 50) * 20)} min
+                  La extensión visita cada perfil · listo en ~{Math.max(1, Math.ceil(maxResults * 2.5 / 60))} min
                 </p>
               )}
             </div>

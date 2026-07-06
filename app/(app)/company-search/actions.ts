@@ -2,15 +2,9 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
-import { startSalesNavRun } from "@/lib/apify"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-
-// 50 empresas ≈ 20 min
-function estimatedMinutes(maxResults: number) {
-  return Math.ceil((maxResults / 50) * 20)
-}
 
 export async function getCampaigns() {
   const { data, error } = await supabase
@@ -33,7 +27,6 @@ export async function getCompanySearchJobs() {
 }
 
 export async function getSearchConfig(repName: string, industry: string) {
-  // URL must come from the saved_urls repository
   const { data: savedUrl } = await supabase
     .from("saved_urls")
     .select("url")
@@ -44,34 +37,7 @@ export async function getSearchConfig(repName: string, industry: string) {
     .maybeSingle()
 
   if (!savedUrl) return null
-
-  // Get page tracking from search_configs
-  const { data: config } = await supabase
-    .from("search_configs")
-    .select("base_url, next_page")
-    .eq("rep_name", repName)
-    .eq("industry", industry)
-    .maybeSingle()
-
-  if (!config) {
-    // Auto-create tracking record from saved URL, starting at page 1
-    await supabaseAdmin.from("search_configs").upsert(
-      { rep_name: repName, industry, base_url: savedUrl.url, next_page: 1, updated_at: new Date().toISOString() },
-      { onConflict: "rep_name,industry" }
-    )
-    return { base_url: savedUrl.url, next_page: 1 }
-  }
-
-  if (config.base_url !== savedUrl.url) {
-    // URL changed in repositorio → reset page counter
-    await supabaseAdmin.from("search_configs")
-      .update({ base_url: savedUrl.url, next_page: 1, updated_at: new Date().toISOString() })
-      .eq("rep_name", repName)
-      .eq("industry", industry)
-    return { base_url: savedUrl.url, next_page: 1 }
-  }
-
-  return { base_url: config.base_url, next_page: config.next_page }
+  return { base_url: savedUrl.url }
 }
 
 export async function triggerCompanySearch(
@@ -79,19 +45,10 @@ export async function triggerCompanySearch(
   repName: string,
   industry: string,
   maxResults: number
-): Promise<{ jobId: string; estimatedReadyAt: string } | { error: string }> {
+): Promise<{ jobId: string; extensionUrl: string } | { error: string }> {
   try {
     const config = await getSearchConfig(repName, industry)
-    if (!config) return { error: "No hay URL configurada para este rep+industria" }
-
-    const { data: repConfig } = await supabase
-      .from("rep_configs")
-      .select("linkedin_cookie")
-      .eq("rep_name", repName)
-      .maybeSingle()
-    if (!repConfig?.linkedin_cookie) return { error: `Cookie no configurada para ${repName}. Actualizala en Settings.` }
-
-    const estimatedReadyAt = new Date(Date.now() + estimatedMinutes(maxResults) * 60 * 1000).toISOString()
+    if (!config) return { error: "No hay URL configurada para este rep+industria. Configurala en Settings." }
 
     const { data: job, error } = await supabase
       .from("search_jobs")
@@ -99,62 +56,31 @@ export async function triggerCompanySearch(
         campaign_id: campaignId,
         job_type: "company_search",
         sales_nav_url: config.base_url,
-        status: "running",
+        status: "pending",
         max_results: maxResults,
-        estimated_ready_at: estimatedReadyAt,
-        start_page: config.next_page,
       })
       .select()
       .single()
 
     if (error) return { error: error.message }
 
-    let cookieParsed: unknown
-    try {
-      cookieParsed = JSON.parse(repConfig.linkedin_cookie)
-    } catch {
-      return { error: `La cookie de ${repName} no es JSON válido. Exportala desde Cookie-Editor como JSON y pegala de nuevo en Settings.` }
-    }
-
-    const webhookUrl = `${APP_URL}/api/webhooks/apify/run-complete?jobId=${job.id}`
-    const runId = await startSalesNavRun({
-      cookie: cookieParsed,
-      searchUrl: config.base_url,
-      count: maxResults,
-      startPage: config.next_page,
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-      deepScrape: true,
-      stopOnRateLimit: true,
-      minDelay: 5,
-      maxDelay: 30,
-    }, webhookUrl)
-
-    await supabase.from("search_jobs").update({ apify_run_id: runId }).eq("id", job.id)
+    const callbackUrl = encodeURIComponent(`${APP_URL}/api/extension/results`)
+    const hashSep = config.base_url.includes('#') ? '&' : '#'
+    const extensionUrl = `${config.base_url}${hashSep}_mode=company_scrape&_job=${job.id}&_max=${maxResults}&_cb=${callbackUrl}`
 
     revalidatePath("/company-search")
-    return { jobId: job.id, estimatedReadyAt }
+    return { jobId: job.id, extensionUrl }
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Error al iniciar la búsqueda" }
   }
 }
 
+// No-op: pagination is handled entirely by the extension in a single session
 export async function advanceSearchPage(
-  repName: string,
-  industry: string,
-  resultsCount: number
-) {
-  const config = await getSearchConfig(repName, industry)
-  if (!config) return
-
-  const pagesConsumed = Math.max(1, Math.ceil(resultsCount / 25))
-  const { error } = await supabaseAdmin
-    .from("search_configs")
-    .update({ next_page: config.next_page + pagesConsumed, updated_at: new Date().toISOString() })
-    .eq("rep_name", repName)
-    .eq("industry", industry)
-  if (error) throw new Error(error.message)
-}
-
+  _repName: string,
+  _industry: string,
+  _resultsCount: number
+) {}
 
 export async function deleteSearchJobs(ids: string[]): Promise<void> {
   if (!ids.length) return

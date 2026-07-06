@@ -6,6 +6,17 @@
 
   console.log('[ProspectOS] hash:', window.location.hash);
 
+  // ── Mode: company profile visit (phase 2 of company scrape) ─────────────────
+  // sessionStorage persists across navigations within the same tab.
+  const profileVisitState = (() => {
+    try { return JSON.parse(sessionStorage.getItem('prospectOS_company_visit') || 'null'); }
+    catch { return null; }
+  })();
+  if (profileVisitState && window.location.pathname.startsWith('/sales/company/')) {
+    await runCompanyProfileVisit(profileVisitState);
+    return;
+  }
+
   // ── Mode: count results ──────────────────────────────────────────────────────
   if (window.location.pathname.startsWith('/sales/search/people')) {
     const pos = hashParams.get('_pos');
@@ -87,6 +98,11 @@
 
   if (mode === 'people_scrape' && jobId && scrapeCb) {
     await runPeopleScrape(jobId, decodedCb, maxResults);
+    return;
+  }
+
+  if (mode === 'company_scrape' && jobId && scrapeCb) {
+    await runCompanyScrape(jobId, decodedCb, maxResults);
     return;
   }
 
@@ -597,33 +613,29 @@ function scrapePeopleFromPage(seen = new Set()) {
 
 // ── Company Scrape ───────────────────────────────────────────────────────────
 
-async function runCompanyScrape(jobId, callbackUrl) {
+async function runCompanyScrape(jobId, callbackUrl, maxResults = 50) {
   const overlay = createOverlay();
   const { setStatus, setProgress } = overlay;
 
   try {
+    setStatus('Esperando que Sales Nav cargue…');
+    await new Promise(r => setTimeout(r, 4000));
+
+    const allCompanies = [];
+    const globalSeen = new Set();
     let page = 1;
-    let totalScraped = 0;
-    const MAX_PAGES = 10; // ~50 companies max (5 per page approx)
+    const MAX_PAGES = Math.ceil(maxResults / 25) + 2;
 
-    while (page <= MAX_PAGES) {
+    while (page <= MAX_PAGES && allCompanies.length < maxResults) {
       setStatus(`Leyendo página ${page}…`);
-      await waitForSelector('[data-x-search-result], .search-results__result-item', 15000);
+      await waitForSelector('a[href*="/sales/company/"]', 30000);
 
-      const companies = scrapeCompaniesFromPage();
-      setProgress(`Página ${page}: ${companies.length} empresas (total: ${totalScraped + companies.length})`);
+      const pageCompanies = await scrapeCompaniesWhileScrolling(globalSeen);
+      allCompanies.push(...pageCompanies);
+      setProgress(`Página ${page}: ${pageCompanies.length} empresas (total: ${allCompanies.length})`);
 
-      if (companies.length === 0) break;
-
-      const done = !hasNextPage() || page >= MAX_PAGES;
-      await fetch(`${callbackUrl}?jobId=${jobId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: companies, done }),
-      });
-
-      totalScraped += companies.length;
-      if (done) break;
+      if (pageCompanies.length === 0) break;
+      if (allCompanies.length >= maxResults) break;
 
       const nextBtn = findNextButton();
       if (!nextBtn) break;
@@ -632,9 +644,30 @@ async function runCompanyScrape(jobId, callbackUrl) {
       await new Promise(r => setTimeout(r, 3000));
     }
 
-    setStatus(`✅ Listo — ${totalScraped} empresas enviadas a ProspectOS`);
-    setProgress('Podés cerrar esta pestaña.');
-    setTimeout(() => window.close(), 3000);
+    if (allCompanies.length === 0) {
+      await fetch(`${callbackUrl}?jobId=${jobId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [], done: true }),
+      });
+      setStatus('No se encontraron empresas.');
+      setTimeout(() => window.close(), 3000);
+      return;
+    }
+
+    // Phase 2: visit each company profile to extract website
+    setStatus(`${allCompanies.length} empresas encontradas. Iniciando extracción de websites…`);
+    setProgress('Navegando a los perfiles de empresa…');
+    await new Promise(r => setTimeout(r, 1500));
+
+    sessionStorage.setItem('prospectOS_company_visit', JSON.stringify({
+      jobId,
+      callbackUrl,
+      companies: allCompanies.slice(0, maxResults),
+      currentIndex: 0,
+    }));
+
+    window.location.href = `https://www.linkedin.com/sales/company/${allCompanies[0].id}/overview`;
 
   } catch (err) {
     setStatus('❌ Error: ' + err.message);
@@ -643,34 +676,144 @@ async function runCompanyScrape(jobId, callbackUrl) {
   }
 }
 
-function scrapeCompaniesFromPage() {
-  const results = [];
-  const cards = document.querySelectorAll(
-    '[data-x-search-result], .search-results__result-item, li.artdeco-list__item'
-  );
-
-  cards.forEach((card) => {
-    try {
-      const companyLink = card.querySelector('a[href*="/sales/company/"]');
-      const companyName = companyLink?.textContent?.trim() || '';
-      const href = companyLink?.href || '';
-
-      // Extract Sales Nav company ID from URL: /sales/company/12345678/
-      const idMatch = href.match(/\/sales\/company\/([^/?]+)/);
-      const id = idMatch?.[1] || '';
-
-      // Website — sometimes visible in card subtitle
-      const websiteEl = card.querySelector('[data-anonymize="company-url"], .company-url');
-      const website = websiteEl?.textContent?.trim() || '';
-
-      if (!companyName && !id) return;
-      results.push({ companyName, id, website });
-    } catch (e) {
-      console.warn('[ProspectOS] Error scraping company card:', e);
+function findCompanyScrollContainer() {
+  const link = document.querySelector('a[href*="/sales/company/"]');
+  if (!link) return null;
+  let el = link.parentElement;
+  while (el && el !== document.body) {
+    const style = window.getComputedStyle(el);
+    if (/auto|scroll/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 10) {
+      return el;
     }
-  });
+    el = el.parentElement;
+  }
+  return null;
+}
 
+async function scrapeCompaniesWhileScrolling(globalSeen) {
+  const results = [];
+  let stableRounds = 0;
+  let lastCount = 0;
+
+  const container = findCompanyScrollContainer();
+
+  function scrollDown(px) {
+    if (container) container.scrollBy(0, px);
+    else window.scrollBy(0, px);
+  }
+
+  function scrollToTop() {
+    if (container) container.scrollTo(0, 0);
+    else window.scrollTo(0, 0);
+  }
+
+  function collectVisible() {
+    document.querySelectorAll('a[href*="/sales/company/"]').forEach((link) => {
+      try {
+        const href = link.href || '';
+        const idMatch = href.match(/\/sales\/company\/([^/?#]+)/);
+        const id = idMatch?.[1] || '';
+        if (!id || globalSeen.has(id)) return;
+
+        // Skip navigation/sidebar links — only count links inside search result cards
+        const card = link.closest('li') || link.closest('[data-x-search-result]');
+        if (!card) return;
+
+        globalSeen.add(id);
+
+        const nameEl = link.querySelector('[data-anonymize="company-name"]') || link;
+        const companyName = nameEl.textContent?.trim() || '';
+
+        results.push({ companyName, id, website: '' });
+      } catch (e) {
+        console.warn('[ProspectOS] Error scraping company card:', e);
+      }
+    });
+  }
+
+  while (stableRounds < 5) {
+    collectVisible();
+    const newCount = results.length;
+    if (newCount === lastCount) stableRounds++;
+    else { stableRounds = 0; lastCount = newCount; }
+    scrollDown(350);
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  scrollToTop();
+  await new Promise(r => setTimeout(r, 500));
   return results;
+}
+
+async function runCompanyProfileVisit(state) {
+  const { jobId, callbackUrl, companies, currentIndex } = state;
+  const overlay = createOverlay();
+  const { setStatus, setProgress } = overlay;
+
+  try {
+    setStatus(`Extrayendo website (${currentIndex + 1}/${companies.length})…`);
+    setProgress(companies[currentIndex]?.companyName || '');
+
+    // Wait for the company profile page to load
+    await new Promise(r => setTimeout(r, 2500));
+
+    const website = extractWebsiteFromProfile();
+    companies[currentIndex].website = website;
+    console.log('[ProspectOS] company profile:', companies[currentIndex].companyName, '→', website || '(no website)');
+
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex < companies.length) {
+      sessionStorage.setItem('prospectOS_company_visit', JSON.stringify({
+        ...state,
+        companies,
+        currentIndex: nextIndex,
+      }));
+      window.location.href = `https://www.linkedin.com/sales/company/${companies[nextIndex].id}/overview`;
+    } else {
+      // All profiles visited — send complete data and finish
+      sessionStorage.removeItem('prospectOS_company_visit');
+      setStatus(`Enviando ${companies.length} empresas a ProspectOS…`);
+      setProgress('');
+
+      await fetch(`${callbackUrl}?jobId=${jobId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: companies, done: true }),
+      });
+
+      setStatus(`✅ Listo — ${companies.length} empresas enviadas`);
+      setProgress('Podés cerrar esta pestaña.');
+      setTimeout(() => window.close(), 3000);
+    }
+
+  } catch (err) {
+    sessionStorage.removeItem('prospectOS_company_visit');
+    setStatus('❌ Error: ' + err.message);
+    setProgress('Cerrá esta pestaña y volvé a intentar desde ProspectOS.');
+    console.error('[ProspectOS]', err);
+  }
+}
+
+function extractWebsiteFromProfile() {
+  const selectors = [
+    'a[data-control-name="view_company_website"]',
+    '[data-anonymize="company-url"] a',
+    '[data-anonymize="company-url"]',
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    const href = el?.getAttribute('href') || el?.textContent?.trim() || '';
+    if (href && !href.includes('linkedin.com')) return href;
+  }
+  // Fallback: first external link inside any artdeco-card on the page
+  for (const link of document.querySelectorAll('.artdeco-card a[href]')) {
+    const href = link.getAttribute('href') || '';
+    if (href.startsWith('http') && !href.includes('linkedin.com') && !href.includes('l.linkedin')) {
+      return href;
+    }
+  }
+  return '';
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
