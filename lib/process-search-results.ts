@@ -18,6 +18,7 @@ export type RawPerson = {
   location?: string
   premium?: boolean
   connectionType?: number
+  startedRoleMonths?: number | null
   currentPositions?: Array<{ title?: string; startedOn?: { month?: number; year?: number } }>
   highlights?: Array<{ name?: string; description?: string }>
 }

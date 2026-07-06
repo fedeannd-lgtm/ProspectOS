@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
           is_premium: p.premium ?? false,
           connection_degree: p.connectionType === 1 ? "FIRST" : p.connectionType === 2 ? "SECOND" : p.connectionType === 3 ? "THIRD" : "",
           location: p.location ?? "",
-          started_role_months: p.currentPositions?.[0]?.startedOn?.month ?? null,
+          started_role_months: p.startedRoleMonths ?? p.currentPositions?.[0]?.startedOn?.month ?? null,
           highlights: p.highlights?.map((h) => h.name || h.description || "").filter(Boolean).join(", ") || null,
         }))
         await supabaseAdmin.from("prospects").insert(prospects)

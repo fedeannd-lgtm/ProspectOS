@@ -438,14 +438,34 @@ async function scrapeWhileScrolling(globalSeen) {
         const locationEl = card?.querySelector('[data-anonymize="location"], .artdeco-entity-lockup__caption span, .result-lockup__misc-item');
         const premium = !!(card?.querySelector('.premium-icon, [data-test-icon="linkedin-bug-color-medium"], [aria-label*="Premium"], [aria-label*="premium"]'));
 
-        let connectionType = 0;
         const cardText = card?.textContent || '';
+
+        let connectionType = 0;
         if (/\b1(st|er|°)\b/i.test(cardText)) connectionType = 1;
         else if (/\b2(nd|do|°)\b/i.test(cardText)) connectionType = 2;
         else if (/\b3(rd|er|°)\b/i.test(cardText)) connectionType = 3;
 
-        const highlightEls = card?.querySelectorAll('.result-highlights__highlight, [data-test-highlight]') || [];
-        const highlights = Array.from(highlightEls).map(el => ({ name: el.textContent?.trim() || '' }));
+        // Parse tenure duration → start month (1-12)
+        let startedRoleMonths = null;
+        const tenureYM = cardText.match(/(\d+)\s+años?\s+(\d+)\s+meses?\s+en el cargo/i);
+        const tenureY  = cardText.match(/(\d+)\s+años?\s+en el cargo/i);
+        const tenureM  = cardText.match(/(\d+)\s+meses?\s+en el cargo/i);
+        let totalMonths = null;
+        if (tenureYM)      totalMonths = parseInt(tenureYM[1]) * 12 + parseInt(tenureYM[2]);
+        else if (tenureY)  totalMonths = parseInt(tenureY[1]) * 12;
+        else if (tenureM)  totalMonths = parseInt(tenureM[1]);
+        if (totalMonths !== null) {
+          const now = new Date();
+          startedRoleMonths = new Date(now.getFullYear(), now.getMonth() - totalMonths).getMonth() + 1;
+        }
+
+        // Highlights — try multiple selectors for Sales Nav's highlight chips
+        const highlightEls = card?.querySelectorAll(
+          '.result-highlights__highlight, .result-highlights__text, [data-test-highlight-type], [class*="result-highlights"]'
+        ) || [];
+        const highlights = Array.from(highlightEls)
+          .map(el => ({ name: el.textContent?.trim() || '' }))
+          .filter(h => h.name);
 
         results.push({
           firstName, lastName, fullName,
@@ -455,6 +475,7 @@ async function scrapeWhileScrolling(globalSeen) {
           premium,
           connectionType: connectionType || undefined,
           profileUrl,
+          startedRoleMonths,
           highlights: highlights.length ? highlights : undefined,
         });
       } catch (e) {
