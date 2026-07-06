@@ -719,11 +719,14 @@ async function scrapeCompaniesWhileScrolling(globalSeen) {
         const card = link.closest('li') || link.closest('[data-x-search-result]');
         if (!card) return;
 
+        // Try data-anonymize first, then the link's own text
+        const nameEl = card.querySelector('[data-anonymize="company-name"]');
+        const companyName = nameEl?.textContent?.trim() || link.textContent?.trim() || '';
+
+        // Skip logo/icon links that have no text — the name link will appear separately
+        if (!companyName) return;
+
         globalSeen.add(id);
-
-        const nameEl = link.querySelector('[data-anonymize="company-name"]') || link;
-        const companyName = nameEl.textContent?.trim() || '';
-
         results.push({ companyName, id, website: '' });
       } catch (e) {
         console.warn('[ProspectOS] Error scraping company card:', e);
