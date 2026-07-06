@@ -427,7 +427,11 @@ async function scrapeWhileScrolling(globalSeen) {
         if (!profileUrl || globalSeen.has(profileUrl)) return;
         globalSeen.add(profileUrl);
 
-        const fullName = nameLink.textContent?.trim() || '';
+        // Try data-anonymize="person-name" first; fallback to link text stripping status badges
+        const nameEl = nameLink.querySelector('[data-anonymize="person-name"]') || nameLink;
+        const fullName = (nameEl.textContent?.trim() || '')
+          .replace(/\s+(está disponible|is available|open to work|abierto? a trabajar)$/i, '')
+          .trim();
         const nameParts = fullName.split(/\s+/);
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
@@ -459,13 +463,24 @@ async function scrapeWhileScrolling(globalSeen) {
           startedRoleMonths = new Date(now.getFullYear(), now.getMonth() - totalMonths).getMonth() + 1;
         }
 
-        // Highlights — try multiple selectors for Sales Nav's highlight chips
-        const highlightEls = card?.querySelectorAll(
-          '.result-highlights__highlight, .result-highlights__text, [data-test-highlight-type], [class*="result-highlights"]'
-        ) || [];
-        const highlights = Array.from(highlightEls)
-          .map(el => ({ name: el.textContent?.trim() || '' }))
-          .filter(h => h.name);
+        // Highlights — extract from card text via regex (CSS selectors don't match current Sales Nav DOM)
+        const highlightPatterns = [
+          /\d+\s+contactos?\s+en\s+común/gi,
+          /Antiguo\s+compañero\s+de\s+trabajo(?:\s+\(\d+\))?/gi,
+          /Ha\s+publicado\s+recientemente/gi,
+          /Sigue\s+a\s+tu\s+empresa/gi,
+          /Ha\s+visto\s+tu\s+perfil\s+recientemente/gi,
+          /Experiencias?\s+en\s+común(?:\s+\(\d+\))?/gi,
+          /Contactos?\s+de\s+contactos?(?:\s+\(\d+\))?/gi,
+          /Cambio\s+de\s+empleo/gi,
+        ];
+        const highlightTexts = [];
+        for (const pattern of highlightPatterns) {
+          const match = cardText.match(pattern);
+          if (match) highlightTexts.push(...match.map(m => m.trim()));
+        }
+        const highlights = [...new Set(highlightTexts)].map(name => ({ name }));
+
 
         results.push({
           firstName, lastName, fullName,
