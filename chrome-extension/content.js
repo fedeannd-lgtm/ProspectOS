@@ -799,6 +799,13 @@ async function runCompanyProfileVisit(state) {
 }
 
 function extractWebsiteFromProfile() {
+  // Primary: link with exact text "Ir al sitio web" (Sales Nav ES)
+  const byText = Array.from(document.querySelectorAll('a')).find(
+    (a) => /ir al sitio web|go to website/i.test(a.textContent.trim())
+  );
+  if (byText?.href && !byText.href.includes('linkedin.com')) return byText.href;
+
+  // Fallback: known data-anonymize selectors
   const selectors = [
     'a[data-control-name="view_company_website"]',
     '[data-anonymize="company-url"] a',
@@ -808,13 +815,6 @@ function extractWebsiteFromProfile() {
     const el = document.querySelector(sel);
     const href = el?.getAttribute('href') || el?.textContent?.trim() || '';
     if (href && !href.includes('linkedin.com')) return href;
-  }
-  // Fallback: first external link inside any artdeco-card on the page
-  for (const link of document.querySelectorAll('.artdeco-card a[href]')) {
-    const href = link.getAttribute('href') || '';
-    if (href.startsWith('http') && !href.includes('linkedin.com') && !href.includes('l.linkedin')) {
-      return href;
-    }
   }
   return '';
 }
