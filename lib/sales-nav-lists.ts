@@ -12,7 +12,25 @@ export function updateAccountListInUrl(
 ): string {
   const ACCOUNT_LIST_MARKER = "type%3AACCOUNT_LIST"
   const markerIdx = currentUrl.indexOf(ACCOUNT_LIST_MARKER)
-  if (markerIdx === -1) return currentUrl
+
+  const encodedName = encodeURIComponent(newListName)
+    .replace(/%20/g, "%2520")
+    .replace(/%2C/g, "%252C")
+    .replace(/%3A/g, "%253A")
+  const newEntry = `(id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist)`
+  const newFilterBlock = `(type%3AACCOUNT_LIST%2Cvalues%3AList(${newEntry}))`
+
+  // No ACCOUNT_LIST in URL yet — inject it into the filters:List(...)
+  if (markerIdx === -1) {
+    const filtersMarker = "filters%3AList("
+    const fIdx = currentUrl.indexOf(filtersMarker)
+    if (fIdx === -1) return currentUrl
+    const insertAt = fIdx + filtersMarker.length
+    // If filters list is non-empty, prepend a comma separator
+    const nextChar = currentUrl[insertAt]
+    const sep = nextChar === ")" ? "" : "%2C"
+    return currentUrl.slice(0, insertAt) + newFilterBlock + sep + currentUrl.slice(insertAt)
+  }
 
   // Find the opening ( of the type:ACCOUNT_LIST group
   const openIdx = currentUrl.lastIndexOf("(", markerIdx)
@@ -61,14 +79,7 @@ export function updateAccountListInUrl(
     return true
   })
 
-  const encodedName = encodeURIComponent(newListName)
-    .replace(/%20/g, "%2520")
-    .replace(/%2C/g, "%252C")
-    .replace(/%3A/g, "%253A")
-
-  filtered.push(
-    `(id%3A${newListId}%2Ctext%3A${encodedName}%2CselectionType%3AINCLUDED%2Cicon%3Alist)`
-  )
+  filtered.push(newEntry)
 
   const beforeEntries = block.slice(0, entriesStartIdx)
   const afterEntries = block.slice(vCloseIdx) // starts with )
