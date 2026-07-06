@@ -7,12 +7,11 @@
   console.log('[ProspectOS] hash:', window.location.hash);
 
   // ── Mode: company profile visit (phase 2 of company scrape) ─────────────────
-  // sessionStorage persists across navigations within the same tab.
   const profileVisitState = (() => {
     try { return JSON.parse(sessionStorage.getItem('prospectOS_company_visit') || 'null'); }
     catch { return null; }
   })();
-  if (profileVisitState && window.location.pathname.startsWith('/sales/company/')) {
+  if (profileVisitState && !window.location.pathname.startsWith('/sales/search/')) {
     await runCompanyProfileVisit(profileVisitState);
     return;
   }
@@ -621,6 +620,7 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50) {
     setStatus('Esperando que Sales Nav cargue…');
     await new Promise(r => setTimeout(r, 4000));
 
+    // ── Phase 1: scroll + paginate through search results ────────────────────
     const allCompanies = [];
     const globalSeen = new Set();
     let page = 1;
@@ -655,19 +655,20 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50) {
       return;
     }
 
-    // Phase 2: visit each company profile to extract website
-    setStatus(`${allCompanies.length} empresas encontradas. Iniciando extracción de websites…`);
-    setProgress('Navegando a los perfiles de empresa…');
-    await new Promise(r => setTimeout(r, 1500));
+    const companies = allCompanies.slice(0, maxResults);
+
+    // ── Phase 2: visit each company profile to extract website ───────────────
+    setStatus(`${companies.length} empresas encontradas. Extrayendo websites…`);
+    await new Promise(r => setTimeout(r, 1000));
 
     sessionStorage.setItem('prospectOS_company_visit', JSON.stringify({
       jobId,
       callbackUrl,
-      companies: allCompanies.slice(0, maxResults),
+      companies,
       currentIndex: 0,
     }));
 
-    window.location.href = `https://www.linkedin.com/sales/company/${allCompanies[0].id}/overview`;
+    window.location.href = `https://www.linkedin.com/sales/company/${companies[0].id}`;
 
   } catch (err) {
     setStatus('❌ Error: ' + err.message);
@@ -708,22 +709,24 @@ async function scrapeCompaniesWhileScrolling(globalSeen) {
   }
 
   function collectVisible() {
-    document.querySelectorAll('a[href*="/sales/company/"]').forEach((link) => {
+    const allLinks = document.querySelectorAll('a[href*="/sales/company/"]');
+    console.log('[ProspectOS] company links total:', allLinks.length);
+    allLinks.forEach((link) => {
       try {
         const href = link.href || '';
+        if (href.includes('aiqSection') || href.includes('anchor=aiq')) return;
+
         const idMatch = href.match(/\/sales\/company\/([^/?#]+)/);
         const id = idMatch?.[1] || '';
         if (!id || globalSeen.has(id)) return;
 
-        // Skip navigation/sidebar links — only count links inside search result cards
         const card = link.closest('li') || link.closest('[data-x-search-result]');
-        if (!card) return;
+        if (!card) { console.log('[ProspectOS] no card for id:', id, href); return; }
 
-        // Try data-anonymize first, then the link's own text
         const nameEl = card.querySelector('[data-anonymize="company-name"]');
         const companyName = nameEl?.textContent?.trim() || link.textContent?.trim() || '';
+        console.log('[ProspectOS] candidate id:', id, 'name:', companyName || '(empty)', 'href:', href.slice(0, 80));
 
-        // Skip logo/icon links that have no text — the name link will appear separately
         if (!companyName) return;
 
         globalSeen.add(id);
@@ -757,8 +760,18 @@ async function runCompanyProfileVisit(state) {
     setStatus(`Extrayendo website (${currentIndex + 1}/${companies.length})…`);
     setProgress(companies[currentIndex]?.companyName || '');
 
-    // Wait for the company profile page to load
-    await new Promise(r => setTimeout(r, 2500));
+    // Wait for the company profile page to fully render (max 8s)
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      // Stop early if 404 page detected
+      if (/no hemos podido encontrar|page not found|página no encontrada/i.test(document.body?.innerText || '')) break;
+      const ready = Array.from(document.querySelectorAll('a')).some(
+        (a) => /ir al sitio web|go to website/i.test(a.textContent.trim())
+      ) || document.querySelector('[class*="company-overview"], [class*="company-detail"]');
+      if (ready) break;
+      await new Promise(r => setTimeout(r, 600));
+    }
+    await new Promise(r => setTimeout(r, 500));
 
     const website = extractWebsiteFromProfile();
     companies[currentIndex].website = website;
@@ -772,7 +785,7 @@ async function runCompanyProfileVisit(state) {
         companies,
         currentIndex: nextIndex,
       }));
-      window.location.href = `https://www.linkedin.com/sales/company/${companies[nextIndex].id}/overview`;
+      window.location.href = `https://www.linkedin.com/sales/company/${companies[nextIndex].id}`;
     } else {
       // All profiles visited — send complete data and finish
       sessionStorage.removeItem('prospectOS_company_visit');
@@ -799,10 +812,14 @@ async function runCompanyProfileVisit(state) {
 }
 
 function extractWebsiteFromProfile() {
-  // Primary: link with exact text "Ir al sitio web" (Sales Nav ES)
-  const byText = Array.from(document.querySelectorAll('a')).find(
+  // Primary: link with text "Ir al sitio web" (Sales Nav ES) or "Go to website" (EN)
+  const allLinks = Array.from(document.querySelectorAll('a'));
+  console.log('[ProspectOS] extractWebsite: total links on page:', allLinks.length);
+
+  const byText = allLinks.find(
     (a) => /ir al sitio web|go to website/i.test(a.textContent.trim())
   );
+  console.log('[ProspectOS] extractWebsite: byText found:', byText?.href || 'none');
   if (byText?.href && !byText.href.includes('linkedin.com')) return byText.href;
 
   // Fallback: known data-anonymize selectors
@@ -814,8 +831,13 @@ function extractWebsiteFromProfile() {
   for (const sel of selectors) {
     const el = document.querySelector(sel);
     const href = el?.getAttribute('href') || el?.textContent?.trim() || '';
+    console.log('[ProspectOS] extractWebsite selector', sel, '→', href || 'none');
     if (href && !href.includes('linkedin.com')) return href;
   }
+
+  // Log all external links as last resort debug
+  const external = allLinks.map(a => a.href).filter(h => h.startsWith('http') && !h.includes('linkedin.com')).slice(0, 5);
+  console.log('[ProspectOS] extractWebsite: external links sample:', external);
   return '';
 }
 
