@@ -29,7 +29,7 @@ export async function getCompanySearchJobs() {
 export async function getSearchConfig(repName: string, industry: string) {
   const { data: savedUrl } = await supabase
     .from("saved_urls")
-    .select("url")
+    .select("id, url, current_page")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .eq("url_type", "company_search")
@@ -37,18 +37,21 @@ export async function getSearchConfig(repName: string, industry: string) {
     .maybeSingle()
 
   if (!savedUrl) return null
-  return { base_url: savedUrl.url }
+  return { base_url: savedUrl.url, current_page: (savedUrl.current_page as number) ?? 1 }
 }
 
 export async function triggerCompanySearch(
   campaignId: string,
   repName: string,
   industry: string,
-  maxResults: number
+  maxResults: number,
+  startPageOverride?: number
 ): Promise<{ jobId: string; extensionUrl: string } | { error: string }> {
   try {
     const config = await getSearchConfig(repName, industry)
     if (!config) return { error: "No hay URL configurada para este rep+industria. Configurala en Settings." }
+
+    const startPage = startPageOverride ?? config.current_page
 
     const { data: job, error } = await supabase
       .from("search_jobs")
@@ -58,6 +61,7 @@ export async function triggerCompanySearch(
         sales_nav_url: config.base_url,
         status: "pending",
         max_results: maxResults,
+        start_page: startPage,
       })
       .select()
       .single()
@@ -65,8 +69,13 @@ export async function triggerCompanySearch(
     if (error) return { error: error.message }
 
     const callbackUrl = encodeURIComponent(`${APP_URL}/api/extension/results`)
-    const hashSep = config.base_url.includes('#') ? '&' : '#'
-    const extensionUrl = `${config.base_url}${hashSep}_mode=company_scrape&_job=${job.id}&_max=${maxResults}&_cb=${callbackUrl}`
+    let urlToOpen = config.base_url
+    if (startPage > 1) {
+      const pageSep = urlToOpen.includes('#') ? '&' : '#'
+      urlToOpen += `${pageSep}page=${startPage}`
+    }
+    const hashSep = urlToOpen.includes('#') ? '&' : '#'
+    const extensionUrl = `${urlToOpen}${hashSep}_mode=company_scrape&_job=${job.id}&_max=${maxResults}&_cb=${callbackUrl}`
 
     revalidatePath("/company-search")
     return { jobId: job.id, extensionUrl }
@@ -75,12 +84,26 @@ export async function triggerCompanySearch(
   }
 }
 
-// No-op: pagination is handled entirely by the extension in a single session
 export async function advanceSearchPage(
-  _repName: string,
-  _industry: string,
-  _resultsCount: number
-) {}
+  repName: string,
+  industry: string,
+  resultsCount: number
+) {
+  const pagesConsumed = Math.max(1, Math.ceil(resultsCount / 25))
+  const { data: savedUrl } = await supabaseAdmin
+    .from("saved_urls")
+    .select("id, current_page")
+    .eq("rep_name", repName)
+    .eq("industry", industry)
+    .eq("url_type", "company_search")
+    .order("created_at", { ascending: false })
+    .maybeSingle()
+  if (!savedUrl) return
+  await supabaseAdmin
+    .from("saved_urls")
+    .update({ current_page: ((savedUrl.current_page as number) ?? 1) + pagesConsumed })
+    .eq("id", savedUrl.id)
+}
 
 export async function deleteSearchJobs(ids: string[]): Promise<void> {
   if (!ids.length) return

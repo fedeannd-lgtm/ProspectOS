@@ -33,6 +33,7 @@ type SearchJob = {
 
 type SearchConfig = {
   base_url: string
+  current_page: number
 } | null
 
 const MAX_OPTIONS = [1, 25, 50, 100, 200]
@@ -102,7 +103,7 @@ function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
                 {formatCountdown(remaining)}
               </span>
             )}
-            {job.status === "completed" && (
+            {(job.status === "running" || job.status === "completed") && job.results_count > 0 && (
               <span className="text-xs text-muted-foreground">{job.results_count} empresas</span>
             )}
             {pageLabel && (
@@ -148,6 +149,7 @@ export function CompanySearchClient({
   const [config, setConfig] = useState<SearchConfig>(null)
   const [configLoading, setConfigLoading] = useState(false)
   const [maxResults, setMaxResults] = useState(50)
+  const [startPage, setStartPage] = useState(1)
   const [comboOpen, setComboOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [isDeleting, startDeleting] = useTransition()
@@ -174,7 +176,7 @@ export function CompanySearchClient({
     setConfigLoading(true)
     setError("")
     getSearchConfig(selectedCampaign.rep_name, selectedCampaign.industry)
-      .then((cfg) => setConfig(cfg))
+      .then((cfg) => { setConfig(cfg); if (cfg) setStartPage(cfg.current_page) })
       .catch(() => setError("Error cargando configuración"))
       .finally(() => setConfigLoading(false))
   }, [selectedCampaign?.id, selectedCampaign?.rep_name, selectedCampaign?.industry])
@@ -212,7 +214,8 @@ export function CompanySearchClient({
         campaignId,
         selectedCampaign.rep_name,
         selectedCampaign.industry,
-        maxResults
+        maxResults,
+        startPage
       )
       if ("error" in result) {
         setError(result.error)
@@ -318,6 +321,25 @@ export function CompanySearchClient({
                       <Link href="/settings" className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors">
                         Cambiar en Settings ↗
                       </Link>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground">Página de inicio:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={startPage}
+                        onChange={(e) => setStartPage(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-16 rounded border border-input bg-background px-2 py-0.5 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      {startPage !== config.current_page && (
+                        <button
+                          type="button"
+                          onClick={() => setStartPage(config.current_page)}
+                          className="text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                        >
+                          Restaurar ({config.current_page})
+                        </button>
+                      )}
                     </div>
                   </>
                 ) : (
