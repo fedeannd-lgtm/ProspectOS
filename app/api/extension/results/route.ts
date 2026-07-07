@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
         sales_nav_id: c.id ?? "",
       }))
       if (accounts.length > 0) await supabaseAdmin.from("accounts").insert(accounts)
+      const prev = (existing as { results_count?: number } | null)?.results_count ?? 0
+      await supabaseAdmin.from("search_jobs").update({ results_count: prev + accounts.length }).eq("id", jobId)
     }
   } else {
     if (body.done) {

@@ -62,14 +62,21 @@ export async function processCompanySearch(
 
   if (accounts.length > 0) await supabaseAdmin.from("accounts").insert(accounts)
 
+  // Count total accounts for this campaign (includes prior partial batches)
+  const { count: totalCount } = await supabaseAdmin
+    .from("accounts")
+    .select("*", { count: "exact", head: true })
+    .eq("campaign_id", job.campaign_id)
+  const finalCount = totalCount ?? accounts.length
+
   await supabaseAdmin
     .from("search_jobs")
-    .update({ status: "completed", results_count: accounts.length, completed_at: new Date().toISOString() })
+    .update({ status: "completed", results_count: finalCount, completed_at: new Date().toISOString() })
     .eq("id", jobId)
 
   await supabaseAdmin
     .from("campaigns")
-    .update({ accounts_found: accounts.length })
+    .update({ accounts_found: finalCount })
     .eq("id", job.campaign_id)
 
   const campaign = job.campaigns as { rep_name: string; industry: string } | null
