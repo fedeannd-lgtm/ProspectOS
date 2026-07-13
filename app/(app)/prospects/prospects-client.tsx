@@ -220,6 +220,7 @@ export function ProspectsClient() {
                       <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Ubicación</th>
                       <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Email</th>
                       <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Grado</th>
+                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Premium</th>
                       <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Mes inicio</th>
                       <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Highlights</th>
                       <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">ICP</th>
@@ -259,6 +260,11 @@ export function ProspectsClient() {
                           <td className="px-4 py-2.5 text-muted-foreground">{p.location || "—"}</td>
                           <td className="px-4 py-2.5 text-muted-foreground font-mono text-xs">{p.email || "—"}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{p.connection_degree || "—"}</td>
+                          <td className="px-4 py-2.5">
+                            {p.is_premium
+                              ? <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 leading-none">PRO</span>
+                              : <span className="text-muted-foreground">—</span>}
+                          </td>
                           <td className="px-4 py-2.5 text-muted-foreground">{p.started_role_months ?? "—"}</td>
                           <td className="px-4 py-2.5 text-muted-foreground max-w-[200px] truncate" title={p.highlights ?? ""}>{p.highlights || "—"}</td>
                           <td className="px-4 py-2.5">
