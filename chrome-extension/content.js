@@ -348,8 +348,8 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
       setStatus(`Leyendo página ${page}…`);
       setProgress('Buscando resultados en el DOM…');
 
-      // Wait for profile links — stable anchor in Sales Nav DOM
-      await waitForSelector('a[href*="/sales/lead/"]', 45000);
+      // Wait for profile links — try both URL formats Sales Nav has used
+      await waitForSelector('a[href*="/sales/lead/"], a[href*="/sales/people/"]', 90000);
 
       // Scrape while scrolling to handle Sales Nav's virtual scroll
       const people = await scrapeWhileScrolling(globalSeen);
@@ -398,7 +398,7 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
 
 function findScrollContainer() {
   // Walk up from a result card to find the real scrollable ancestor
-  const link = document.querySelector('a[href*="/sales/lead/"]');
+  const link = queryAllDocs('a[href*="/sales/lead/"], a[href*="/sales/people/"]')[0];
   if (!link) return null;
   let el = link.parentElement;
   while (el && el !== document.body) {
@@ -436,7 +436,7 @@ async function scrapeWhileScrolling(globalSeen) {
   }
 
   function collectVisible() {
-    document.querySelectorAll('a[href*="/sales/lead/"]').forEach((nameLink) => {
+    queryAllDocs('a[href*="/sales/lead/"], a[href*="/sales/people/"]').forEach((nameLink) => {
       try {
         const profileUrl = nameLink.href || '';
         if (!profileUrl || globalSeen.has(profileUrl)) return;
@@ -538,7 +538,7 @@ function scrapePeopleFromPage(seen = new Set()) {
 
   // Find all profile links — the stable anchor in Sales Nav DOM.
   // Walk up to the containing <li> to get the full card context.
-  const profileLinks = document.querySelectorAll('a[href*="/sales/lead/"]');
+  const profileLinks = queryAllDocs('a[href*="/sales/lead/"], a[href*="/sales/people/"]');
 
   profileLinks.forEach((nameLink) => {
     try {
@@ -657,9 +657,9 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50) {
 
     const companies = allCompanies.slice(0, maxResults);
 
-    // ── Phase 2: visit each company profile to extract website ───────────────
+    // ── Phase 2: visit each company profile — interceptor.js captures website ──
     setStatus(`${companies.length} empresas encontradas. Extrayendo websites…`);
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 500));
 
     sessionStorage.setItem('prospectOS_company_visit', JSON.stringify({
       jobId,
@@ -751,31 +751,86 @@ async function scrapeCompaniesWhileScrolling(globalSeen) {
   return results;
 }
 
+function extractWebsiteFromDOM() {
+  const SKIP = /linkedin\.com|google\.com|bing\.com|microsoft\.com|twitter\.com|facebook\.com|instagram\.com|youtube\.com|t\.co\//i;
+
+  // Strategy 1: deep shadow DOM traversal — finds <a> inside shadow roots
+  function collectLinks(root, links = []) {
+    root.querySelectorAll('a[href]').forEach(a => links.push(a));
+    root.querySelectorAll('*').forEach(el => {
+      if (el.shadowRoot) collectLinks(el.shadowRoot, links);
+    });
+    return links;
+  }
+
+  const links = collectLinks(document);
+  console.log('[ProspectOS] shadow DOM total links:', links.length);
+
+  for (const link of links) {
+    const href = link.href || link.getAttribute('href') || '';
+    if (!href.startsWith('http')) continue;
+    if (SKIP.test(href)) continue;
+
+    const text = (link.textContent || '').trim().toLowerCase();
+    const ariaLabel = (link.getAttribute('aria-label') || '').toLowerCase();
+    const title = (link.getAttribute('title') || '').toLowerCase();
+    const parentAria = (link.closest('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
+
+    if (text.includes('sitio web') || text.includes('website') ||
+        ariaLabel.includes('sitio') || ariaLabel.includes('website') ||
+        title.includes('sitio') || title.includes('website') ||
+        parentAria.includes('sitio') || parentAria.includes('website')) {
+      console.log('[ProspectOS] strategy 1 → website:', href);
+      return href;
+    }
+  }
+
+  // Strategy 2: scan document.body.innerText for URLs near "sitio web" / "website"
+  // LinkedIn shows the URL as visible text in the company info section
+  try {
+    const fullText = document.body.innerText || '';
+    const siteIdx = fullText.search(/ir al sitio web|go to website|website\s*[:：]/i);
+    if (siteIdx >= 0) {
+      const chunk = fullText.slice(Math.max(0, siteIdx - 20), siteIdx + 300);
+      const urlMatch = chunk.match(/https?:\/\/(?!(?:www\.)?linkedin\.com)[^\s\n,;)>]+/);
+      if (urlMatch) {
+        const url = urlMatch[0].replace(/[.,;)>]+$/, '');
+        console.log('[ProspectOS] strategy 2 (innerText) → website:', url);
+        return url;
+      }
+    }
+  } catch (e) {}
+
+  return '';
+}
+
 async function runCompanyProfileVisit(state) {
   const { jobId, callbackUrl, companies, currentIndex } = state;
   const overlay = createOverlay();
   const { setStatus, setProgress } = overlay;
 
   try {
-    setStatus(`Extrayendo website (${currentIndex + 1}/${companies.length})…`);
-    setProgress(companies[currentIndex]?.companyName || '');
+    const company = companies[currentIndex];
+    setStatus(`Capturando website (${currentIndex + 1}/${companies.length})…`);
+    setProgress(company.companyName);
 
-    // Wait for the company profile page to fully render (max 8s)
+    const numericId = company.id.match(/(\d+)$/)?.[1] || company.id;
+    const storageKey = `__pos_w_${numericId}`;
     const deadline = Date.now() + 8000;
+    let website = '';
     while (Date.now() < deadline) {
-      // Stop early if 404 page detected
-      if (/no hemos podido encontrar|page not found|página no encontrada/i.test(document.body?.innerText || '')) break;
-      const ready = Array.from(document.querySelectorAll('a')).some(
-        (a) => /ir al sitio web|go to website/i.test(a.textContent.trim())
-      ) || document.querySelector('[class*="company-overview"], [class*="company-detail"]');
-      if (ready) break;
+      // 1. Try interceptor sessionStorage (world: MAIN)
+      website = sessionStorage.getItem(storageKey) || '';
+      // 2. Fallback: deep shadow DOM traversal
+      if (!website) website = extractWebsiteFromDOM();
+      if (website) break;
+      if (/no hemos podido encontrar|page not found/i.test(document.body?.innerText || '')) break;
       await new Promise(r => setTimeout(r, 600));
     }
-    await new Promise(r => setTimeout(r, 500));
 
-    const website = extractWebsiteFromProfile();
+    sessionStorage.removeItem(storageKey);
     companies[currentIndex].website = website;
-    console.log('[ProspectOS] company profile:', companies[currentIndex].companyName, '→', website || '(no website)');
+    console.log('[ProspectOS]', company.companyName, '→', website || '(no website)');
 
     const nextIndex = currentIndex + 1;
 
@@ -787,7 +842,6 @@ async function runCompanyProfileVisit(state) {
       }));
       window.location.href = `https://www.linkedin.com/sales/company/${companies[nextIndex].id}`;
     } else {
-      // All profiles visited — send complete data and finish
       sessionStorage.removeItem('prospectOS_company_visit');
       setStatus(`Enviando ${companies.length} empresas a ProspectOS…`);
       setProgress('');
@@ -798,9 +852,10 @@ async function runCompanyProfileVisit(state) {
         body: JSON.stringify({ items: companies, done: true }),
       });
 
-      setStatus(`✅ Listo — ${companies.length} empresas enviadas`);
+      const withWebsite = companies.filter(c => c.website).length;
+      setStatus(`✅ Listo — ${companies.length} empresas enviadas (${withWebsite} con website)`);
       setProgress('Podés cerrar esta pestaña.');
-      setTimeout(() => window.close(), 3000);
+      setTimeout(() => window.close(), 4000);
     }
 
   } catch (err) {
@@ -809,36 +864,6 @@ async function runCompanyProfileVisit(state) {
     setProgress('Cerrá esta pestaña y volvé a intentar desde ProspectOS.');
     console.error('[ProspectOS]', err);
   }
-}
-
-function extractWebsiteFromProfile() {
-  // Primary: link with text "Ir al sitio web" (Sales Nav ES) or "Go to website" (EN)
-  const allLinks = Array.from(document.querySelectorAll('a'));
-  console.log('[ProspectOS] extractWebsite: total links on page:', allLinks.length);
-
-  const byText = allLinks.find(
-    (a) => /ir al sitio web|go to website/i.test(a.textContent.trim())
-  );
-  console.log('[ProspectOS] extractWebsite: byText found:', byText?.href || 'none');
-  if (byText?.href && !byText.href.includes('linkedin.com')) return byText.href;
-
-  // Fallback: known data-anonymize selectors
-  const selectors = [
-    'a[data-control-name="view_company_website"]',
-    '[data-anonymize="company-url"] a',
-    '[data-anonymize="company-url"]',
-  ];
-  for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    const href = el?.getAttribute('href') || el?.textContent?.trim() || '';
-    console.log('[ProspectOS] extractWebsite selector', sel, '→', href || 'none');
-    if (href && !href.includes('linkedin.com')) return href;
-  }
-
-  // Log all external links as last resort debug
-  const external = allLinks.map(a => a.href).filter(h => h.startsWith('http') && !h.includes('linkedin.com')).slice(0, 5);
-  console.log('[ProspectOS] extractWebsite: external links sample:', external);
-  return '';
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -867,10 +892,27 @@ function createOverlay() {
   };
 }
 
+// Returns all accessible documents: main frame + same-origin iframes
+function getAllDocs() {
+  const docs = [document];
+  document.querySelectorAll('iframe').forEach(iframe => {
+    try { if (iframe.contentDocument) docs.push(iframe.contentDocument); } catch (e) {}
+  });
+  return docs;
+}
+
+function queryAllDocs(selector) {
+  const results = [];
+  getAllDocs().forEach(doc => {
+    try { results.push(...doc.querySelectorAll(selector)); } catch (e) {}
+  });
+  return results;
+}
+
 async function waitForSelector(selector, timeout = 10000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    if (document.querySelector(selector)) return;
+    if (queryAllDocs(selector).length > 0) return;
     await new Promise(r => setTimeout(r, 500));
   }
   throw new Error(`Timeout esperando selector: ${selector}`);
@@ -881,7 +923,6 @@ function hasNextPage() {
 }
 
 function findNextButton() {
-  // Try multiple selectors for the "Next" pagination button
   const selectors = [
     'button[aria-label="Next"]',
     'button[aria-label="Siguiente"]',
@@ -889,8 +930,9 @@ function findNextButton() {
     'button.search-results__pagination-next-btn:not([disabled])',
   ];
   for (const sel of selectors) {
-    const btn = document.querySelector(sel);
-    if (btn && !btn.disabled) return btn;
+    const results = queryAllDocs(sel);
+    const btn = results.find(b => !b.disabled);
+    if (btn) return btn;
   }
   return null;
 }
