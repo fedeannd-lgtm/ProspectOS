@@ -455,7 +455,7 @@ async function scrapeWhileScrolling(globalSeen) {
         const titleEl = card?.querySelector('[data-anonymize="job-title"], .artdeco-entity-lockup__subtitle span, .result-lockup__highlight-keyword');
         const companyEl = card?.querySelector('[data-anonymize="company-name"], a[href*="/sales/company/"]');
         const locationEl = card?.querySelector('[data-anonymize="location"], .artdeco-entity-lockup__caption span, .result-lockup__misc-item');
-        const premium = !!(card?.querySelector('.premium-icon, [data-test-icon="linkedin-bug-color-medium"], [aria-label*="Premium"], [aria-label*="premium"]'));
+        const premium = deepHasPremium(card);
 
         const cardText = card?.textContent || '';
 
@@ -573,9 +573,7 @@ function scrapePeopleFromPage(seen = new Set()) {
       const location = locationEl?.textContent?.trim() || '';
 
       // Premium badge
-      const premium = !!(card?.querySelector(
-        '.premium-icon, [data-test-icon="linkedin-bug-color-medium"], [aria-label*="Premium"], [aria-label*="premium"]'
-      ));
+      const premium = deepHasPremium(card);
 
       // Connection degree — look for "1st", "2nd", "3rd" / "1er", "2do", "3er"
       let connectionType = 0;
@@ -749,6 +747,16 @@ async function scrapeCompaniesWhileScrolling(globalSeen) {
   scrollToTop();
   await new Promise(r => setTimeout(r, 500));
   return results;
+}
+
+function deepHasPremium(root) {
+  if (!root) return false;
+  const PREMIUM_SELECTOR = '.premium-icon, [data-test-icon="linkedin-bug-color-medium"], [aria-label*="Premium"], [aria-label*="premium"], li-icon[type*="premium"], li-icon[type*="linkedin-bug"]';
+  if (root.querySelector(PREMIUM_SELECTOR)) return true;
+  for (const el of root.querySelectorAll('*')) {
+    if (el.shadowRoot && el.shadowRoot.querySelector(PREMIUM_SELECTOR)) return true;
+  }
+  return false;
 }
 
 function extractWebsiteFromDOM() {
