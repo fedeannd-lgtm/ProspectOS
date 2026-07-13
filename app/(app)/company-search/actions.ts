@@ -27,7 +27,7 @@ export async function getCompanySearchJobs() {
 }
 
 export async function getSearchConfig(repName: string, industry: string) {
-  const { data: savedUrl, error } = await supabase
+  const { data: savedUrl } = await supabase
     .from("saved_urls")
     .select("id, url, current_page")
     .eq("rep_name", repName)
@@ -35,8 +35,6 @@ export async function getSearchConfig(repName: string, industry: string) {
     .eq("url_type", "company_search")
     .order("created_at", { ascending: false })
     .maybeSingle()
-
-  console.log("[getSearchConfig]", { repName, industry, savedUrl, error })
 
   if (!savedUrl) return null
   return { base_url: savedUrl.url, current_page: (savedUrl.current_page as number) ?? 1 }
