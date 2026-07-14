@@ -471,7 +471,7 @@ async function scrapeWhileScrolling(globalSeen) {
         // Try data-anonymize="person-name" first; fallback to link text stripping status badges
         const nameEl = nameLink.querySelector('[data-anonymize="person-name"]') || nameLink;
         const fullName = (nameEl.textContent?.trim() || '')
-          .replace(/\s+(está disponible|is available|open to work|abierto? a trabajar)$/i, '')
+          .replace(/\s+(está disponible|is available|is reachable|open to work|abierto? a trabajar)$/i, '')
           .trim();
         const nameParts = fullName.split(/\s+/);
         const firstName = nameParts[0] || '';
