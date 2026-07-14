@@ -349,7 +349,31 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
       setProgress('Buscando resultados en el DOM…');
 
       // Wait for profile links — try both URL formats Sales Nav has used
-      await waitForSelector('a[href*="/sales/lead/"], a[href*="/sales/people/"]', 90000);
+      // On timeout, wait 20s and retry once before giving up (handles Sales Nav throttling)
+      let loaded = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await waitForSelector('a[href*="/sales/lead/"], a[href*="/sales/people/"]', 150000);
+          loaded = true;
+          break;
+        } catch (_) {
+          if (attempt === 1) {
+            setProgress(`Sales Nav está lento en página ${page}, esperando 20s antes de reintentar…`);
+            await new Promise(r => setTimeout(r, 20000));
+          }
+        }
+      }
+      if (!loaded) {
+        setStatus(`⚠️ Timeout en página ${page} — cerrando job con ${totalScraped} personas scrapeadas.`);
+        setProgress('Podés cerrar esta pestaña.');
+        await fetch(`${callbackUrl}?jobId=${jobId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: [], done: true }),
+        }).catch(() => {});
+        setTimeout(() => window.close(), 4000);
+        return;
+      }
 
       // Scrape while scrolling to handle Sales Nav's virtual scroll
       const people = await scrapeWhileScrolling(globalSeen);
@@ -382,7 +406,9 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
       if (!nextBtn) break;
       nextBtn.click();
       page++;
-      await new Promise(r => setTimeout(r, 3000)); // wait for page load
+      // Progressive delay: more breathing room on later pages to avoid Sales Nav throttling
+      const pageDelay = page > 20 ? 10000 : page > 15 ? 6000 : 3000;
+      await new Promise(r => setTimeout(r, pageDelay));
     }
 
     setStatus(`✅ Listo — ${totalScraped} personas enviadas a ProspectOS`);
