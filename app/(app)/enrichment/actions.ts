@@ -38,7 +38,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 }> {
   const { data: p } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, job_title, email, email_status, accounts(linkedin_url)")
+    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, job_title, email, email_status, icp_score, accounts(linkedin_url)")
     .eq("id", prospectId)
     .single()
 
@@ -67,19 +67,33 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 
   const { category, score } = classifyIcp(p.job_title ?? "")
 
+  const updatePayload: Record<string, unknown> = {
+    email: result.email ?? null,
+    email_status: result.zbStatus ?? null,
+    email_validated: result.enriched,
+    email_provider: result.provider ?? null,
+    icp_category: category,
+    icp_score: score,
+    os_score: osScore,
+    apollo_id: result.apolloId ?? null,
+    status: result.enriched ? "enriched" : "not_found",
+  }
+  // Backfill canonical LinkedIn URL from Apollo if we didn't already have one
+  if (result.apolloLinkedInUrl && !p.linkedin_url?.includes("linkedin.com/in/")) {
+    updatePayload.linkedin_url = result.apolloLinkedInUrl
+  }
+  // Backfill company domain from email if missing (e.g. victoria.salmeron@cvdirecto.mx → cvdirecto.mx)
+  if (!p.company_domain && result.email) {
+    const emailDomain = result.email.split("@")[1]
+    const GENERIC = /^(gmail|hotmail|outlook|yahoo|icloud|live|proton|zoho)\./i
+    if (emailDomain && !GENERIC.test(emailDomain)) {
+      updatePayload.company_domain = emailDomain
+    }
+  }
+
   await supabaseAdmin
     .from("prospects")
-    .update({
-      email: result.email ?? null,
-      email_status: result.zbStatus ?? null,
-      email_validated: result.enriched,
-      email_provider: result.provider ?? null,
-      icp_category: category,
-      icp_score: score,
-      os_score: osScore,
-      apollo_id: result.apolloId ?? null,
-      status: result.enriched ? "enriched" : "not_found",
-    })
+    .update(updatePayload)
     .eq("id", prospectId)
 
   revalidatePath("/enrichment")

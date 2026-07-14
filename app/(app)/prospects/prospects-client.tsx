@@ -47,6 +47,7 @@ export function ProspectsClient() {
   const [industryFilter, setIndustryFilter] = useState("all")
   const [campaignFilter, setCampaignFilter] = useState("all")
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [page, setPage] = useState(1)
 
   const [prospects, setProspects] = useState<ProspectRow[]>([])
@@ -59,6 +60,12 @@ export function ProspectsClient() {
 
   const hasFilter = repFilter !== "all" || industryFilter !== "all" || campaignFilter !== "all"
 
+  // Debounce search — wait 400ms after last keystroke before hitting the server
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1) }, 400)
+    return () => clearTimeout(t)
+  }, [search])
+
   // Load campaigns list when rep/industry changes
   useEffect(() => {
     getCampaignsForFilter(repFilter, industryFilter).then(setCampaigns).catch(() => setCampaigns([]))
@@ -66,30 +73,20 @@ export function ProspectsClient() {
     setPage(1)
   }, [repFilter, industryFilter])
 
-  // Load prospects when any filter or page changes, but only if a filter is active
+  // Load prospects when any filter, page or search changes, but only if a filter is active
   useEffect(() => {
     if (!hasFilter) { setProspects([]); setTotal(0); return }
     setLoading(true)
     setSelected(new Set())
-    getFilteredProspects(repFilter, industryFilter, campaignFilter, page)
+    getFilteredProspects(repFilter, industryFilter, campaignFilter, page, debouncedSearch)
       .then(({ data, total }) => { setProspects(data); setTotal(total) })
       .catch(() => { setProspects([]); setTotal(0) })
       .finally(() => setLoading(false))
-  }, [repFilter, industryFilter, campaignFilter, page, hasFilter])
+  }, [repFilter, industryFilter, campaignFilter, page, debouncedSearch, hasFilter])
 
   const totalPages = Math.max(1, Math.ceil(total / 100))
 
-  // Client-side search within the current page
-  const displayed = useMemo(() => {
-    if (!search) return prospects
-    const q = search.toLowerCase()
-    return prospects.filter((p) =>
-      p.full_name?.toLowerCase().includes(q) ||
-      p.job_title?.toLowerCase().includes(q) ||
-      p.company_name?.toLowerCase().includes(q) ||
-      p.email?.toLowerCase().includes(q)
-    )
-  }, [prospects, search])
+  const displayed = prospects
 
   const allSelected = displayed.length > 0 && displayed.every((p) => selected.has(p.id))
 
@@ -154,7 +151,7 @@ export function ProspectsClient() {
           <div className="flex flex-col gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-              <Input placeholder="Buscar en esta página…" value={search}
+              <Input placeholder="Buscar por nombre, cargo, empresa o email…" value={search}
                 onChange={(e) => setSearch(e.target.value)} className="pl-8" />
             </div>
             <div className="flex flex-wrap gap-2">

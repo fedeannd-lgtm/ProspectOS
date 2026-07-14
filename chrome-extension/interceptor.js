@@ -34,6 +34,10 @@
   }
 
   function tryCapture(url, data) {
+    // Temporary: log ALL intercepted URLs on people search pages
+    if (url && (window.location.pathname.includes('/sales/search/people') || window.location.pathname.includes('/sales/lists/people'))) {
+      console.log('[ProspectOS interceptor] URL intercepted:', url.split('?')[0]);
+    }
     const isSalesApi = url.includes('/sales-api/') || url.includes('/voyager/api/');
     if (!isSalesApi) return;
     if (!data || typeof data !== 'object') return;
@@ -41,6 +45,16 @@
     // Log ALL sales-api responses on company profile pages so we can see the fields
     if (window.location.pathname.includes('/sales/company/')) {
       console.log('[ProspectOS interceptor] sales-api response for', url.split('?')[0], JSON.stringify(data).slice(0, 500));
+    }
+
+    // Log people search API responses to find the canonical URL field
+    if (window.location.pathname.includes('/sales/search/people') ||
+        window.location.pathname.includes('/sales/lists/people')) {
+      const elements = Array.isArray(data) ? data : (data.elements || data.results || data.items || []);
+      if (elements.length > 0) {
+        console.log('[ProspectOS interceptor] PEOPLE SEARCH element[0] keys:', Object.keys(elements[0]));
+        console.log('[ProspectOS interceptor] PEOPLE SEARCH element[0]:', JSON.stringify(elements[0]).slice(0, 1000));
+      }
     }
 
     function capture(obj) {

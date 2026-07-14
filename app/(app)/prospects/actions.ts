@@ -20,7 +20,8 @@ export async function getFilteredProspects(
   rep: string,
   industry: string,
   campaignId: string,
-  page: number
+  page: number,
+  search?: string
 ): Promise<{ data: ProspectRow[]; total: number }> {
   const PAGE_SIZE = 100
   let query = supabaseAdmin
@@ -45,6 +46,10 @@ export async function getFilteredProspects(
   }
   if (campaignId !== "all") {
     query = query.eq("campaign_id", campaignId)
+  }
+  if (search?.trim()) {
+    const q = `%${search.trim()}%`
+    query = query.or(`full_name.ilike.${q},job_title.ilike.${q},company_name.ilike.${q},email.ilike.${q}`)
   }
 
   const from = (page - 1) * PAGE_SIZE
