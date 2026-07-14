@@ -629,6 +629,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Nombre</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Cargo</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Empresa</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Dominio</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tamaño</th>
                     <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">ICP</th>
                     <th className="px-3 py-2.5 text-center font-medium text-muted-foreground">Score</th>
@@ -671,6 +672,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                         </td>
                         <td className="px-3 py-2 text-muted-foreground max-w-[140px] truncate">{p.job_title || "—"}</td>
                         <td className="px-3 py-2 text-muted-foreground max-w-[120px] truncate">{p.company_name || "—"}</td>
+                        <td className="px-3 py-2 text-muted-foreground text-[11px] max-w-[120px] truncate">{p.company_domain || "—"}</td>
                         <td className="px-3 py-2 text-muted-foreground text-[10px] whitespace-nowrap">{p.accounts?.[0]?.headcount_range || "—"}</td>
                         <td className="px-3 py-2">
                           {icp ? (

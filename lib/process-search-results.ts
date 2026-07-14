@@ -23,7 +23,7 @@ export type RawPerson = {
   highlights?: Array<{ name?: string; description?: string }>
 }
 
-function extractDomain(raw: string): string {
+export function extractDomain(raw: string): string {
   if (!raw) return ""
   try {
     const url = raw.startsWith("http") ? raw : `https://${raw}`

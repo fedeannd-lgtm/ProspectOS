@@ -38,7 +38,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 }> {
   const { data: p } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, job_title, email, email_status, icp_score, accounts(linkedin_url)")
+    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, job_title, email, email_status, icp_score, accounts(linkedin_url, domain)")
     .eq("id", prospectId)
     .single()
 
@@ -55,12 +55,20 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const accountLinkedIn = (p as any).accounts?.linkedin_url ?? null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const accountDomain = (p as any).accounts?.domain ?? null
+
+  // Use account domain as fallback when prospect has no company_domain; strip protocol/www
+  const cleanAccountDomain = accountDomain
+    ? accountDomain.replace(/^https?:\/\/(www\.)?/, "").replace(/\/.*$/, "").toLowerCase()
+    : null
+  const effectiveDomain = p.company_domain || cleanAccountDomain
 
   const result = await enrichProspect({
     first_name: p.first_name ?? "",
     last_name: p.last_name ?? "",
     company_name: p.company_name ?? "",
-    company_domain: p.company_domain,
+    company_domain: effectiveDomain,
     linkedin_url: p.linkedin_url ?? "",
     company_linkedin_url: accountLinkedIn,
   })
@@ -82,12 +90,16 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   if (result.apolloLinkedInUrl && !p.linkedin_url?.includes("linkedin.com/in/")) {
     updatePayload.linkedin_url = result.apolloLinkedInUrl
   }
-  // Backfill company domain from email if missing (e.g. victoria.salmeron@cvdirecto.mx → cvdirecto.mx)
-  if (!p.company_domain && result.email) {
-    const emailDomain = result.email.split("@")[1]
-    const GENERIC = /^(gmail|hotmail|outlook|yahoo|icloud|live|proton|zoho)\./i
-    if (emailDomain && !GENERIC.test(emailDomain)) {
-      updatePayload.company_domain = emailDomain
+  // Backfill company_domain: prefer account domain, then extract from found email
+  if (!p.company_domain) {
+    if (cleanAccountDomain) {
+      updatePayload.company_domain = cleanAccountDomain
+    } else if (result.email) {
+      const emailDomain = result.email.split("@")[1]
+      const GENERIC = /^(gmail|hotmail|outlook|yahoo|icloud|live|proton|zoho)\./i
+      if (emailDomain && !GENERIC.test(emailDomain)) {
+        updatePayload.company_domain = emailDomain
+      }
     }
   }
 

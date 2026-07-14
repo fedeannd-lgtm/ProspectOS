@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
-import { processCompanySearch, processPeopleSearch, type RawCompany, type RawPerson } from "@/lib/process-search-results"
+import { processCompanySearch, processPeopleSearch, extractDomain, type RawCompany, type RawPerson } from "@/lib/process-search-results"
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Private-Network": "true" }
 
@@ -69,20 +69,37 @@ export async function POST(req: NextRequest) {
       // Insertar prospects parciales (sin cerrar job)
       const people = body.items as RawPerson[]
       if (people.length > 0) {
-        const prospects = people.map((p) => ({
-          campaign_id: job.campaign_id,
-          first_name: p.firstName ?? "",
-          last_name: p.lastName ?? "",
-          full_name: p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
-          job_title: p.jobTitle ?? p.currentPositions?.[0]?.title ?? p.headline ?? "",
-          linkedin_url: p.profileUrl ?? "",
-          company_name: p.companyName ?? "",
-          is_premium: p.premium ?? false,
-          connection_degree: p.connectionType === 1 ? "FIRST" : p.connectionType === 2 ? "SECOND" : p.connectionType === 3 ? "THIRD" : "",
-          location: p.location ?? "",
-          started_role_months: p.startedRoleMonths ?? p.currentPositions?.[0]?.startedOn?.month ?? null,
-          highlights: p.highlights?.map((h) => h.name || h.description || "").filter(Boolean).join(", ") || null,
-        }))
+        // Look up accounts for this campaign to resolve account_id and company_domain
+        const { data: campaignAccounts } = await supabaseAdmin
+          .from("accounts")
+          .select("id, company_name, domain")
+          .eq("campaign_id", job.campaign_id)
+
+        const accountByName = new Map<string, { id: string; domain: string }>()
+        for (const a of campaignAccounts ?? []) {
+          if (a.company_name) accountByName.set(a.company_name.toLowerCase().trim(), { id: a.id, domain: a.domain ?? "" })
+        }
+
+        const degreeLabel: Record<number, string> = { 1: "FIRST", 2: "SECOND", 3: "THIRD" }
+        const prospects = people.map((p) => {
+          const matched = accountByName.get((p.companyName ?? "").toLowerCase().trim()) ?? null
+          return {
+            campaign_id: job.campaign_id,
+            account_id: matched?.id ?? null,
+            first_name: p.firstName ?? "",
+            last_name: p.lastName ?? "",
+            full_name: p.fullName ?? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
+            job_title: p.jobTitle ?? p.currentPositions?.[0]?.title ?? p.headline ?? "",
+            linkedin_url: p.profileUrl ?? "",
+            company_name: p.companyName ?? "",
+            company_domain: matched?.domain ? extractDomain(matched.domain) : "",
+            is_premium: p.premium ?? false,
+            connection_degree: p.connectionType ? (degreeLabel[p.connectionType] ?? String(p.connectionType)) : "",
+            location: p.location ?? "",
+            started_role_months: p.startedRoleMonths ?? p.currentPositions?.[0]?.startedOn?.month ?? null,
+            highlights: p.highlights?.map((h) => h.name || h.description || "").filter(Boolean).join(", ") || null,
+          }
+        })
         await supabaseAdmin.from("prospects").insert(prospects)
 
         const prev = (existing as { results_count?: number } | null)?.results_count ?? 0
