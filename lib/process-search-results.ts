@@ -102,7 +102,12 @@ export async function processPeopleSearch(
   sorted.forEach((a) => {
     if (a.company_name) {
       const norm = normalizeCompanyName(a.company_name)
-      nameToAccount.set(norm, { id: a.id, domain: extractDomain(a.domain ?? ""), norm })
+      const val = { id: a.id, domain: extractDomain(a.domain ?? ""), norm }
+      const existing = nameToAccount.get(norm)
+      // Prefer accounts with domain over those without
+      if (!existing || (!existing.domain && val.domain)) {
+        nameToAccount.set(norm, val)
+      }
     }
   })
 

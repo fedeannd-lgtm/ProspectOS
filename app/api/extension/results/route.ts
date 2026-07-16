@@ -77,7 +77,14 @@ export async function POST(req: NextRequest) {
 
         const accountByName = new Map<string, { id: string; domain: string }>()
         for (const a of campaignAccounts ?? []) {
-          if (a.company_name) accountByName.set(a.company_name.toLowerCase().trim(), { id: a.id, domain: a.domain ?? "" })
+          if (a.company_name) {
+            const key = a.company_name.toLowerCase().trim()
+            const existing = accountByName.get(key)
+            // Prefer accounts with domain over those without
+            if (!existing || (!existing.domain && a.domain)) {
+              accountByName.set(key, { id: a.id, domain: a.domain ?? "" })
+            }
+          }
         }
 
         const degreeLabel: Record<number, string> = { 1: "FIRST", 2: "SECOND", 3: "THIRD" }
