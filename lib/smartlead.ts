@@ -16,11 +16,10 @@ export async function addLeadsToSmartlead(
 ): Promise<{ success: number; failed: number; error?: string }> {
   if (!leads.length) return { success: 0, failed: 0 }
   try {
-    const res = await fetch(`${BASE}/campaigns/${campaignId}/leads`, {
+    const res = await fetch(`${BASE}/campaigns/${campaignId}/leads?api_key=${API_KEY}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": API_KEY,
       },
       body: JSON.stringify({ leads, settings: { ignore_global_block_list: false, ignore_unsubscribe_list: false } }),
     })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { Plus, Play, Copy, Trash2, ChevronUp, ChevronDown, X, Loader2, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import type { DistributionTemplate, DistributionRoute, Condition, DistributionRun, RunResults } from "./actions"
-import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsForTemplate, previewDistribution } from "./actions"
+import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsForTemplate, previewDistribution, getTemplates } from "./actions"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -417,11 +417,18 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
     })
   }
 
+  useEffect(() => {
+    if (!template?.id) return
+    startLoadRuns(async () => {
+      const r = await getRunsForTemplate(template.id)
+      setRuns(r)
+    })
+  }, [template?.id])
+
   function handleLoadRuns() {
     if (!template?.id) return
     startLoadRuns(async () => {
-      const { getRunsForTemplate: getRuns } = await import("./actions")
-      const r = await getRuns(template.id)
+      const r = await getRunsForTemplate(template.id)
       setRuns(r)
     })
   }
@@ -541,14 +548,21 @@ export function DistributionClient({ templates: initialTemplates, campaigns }: {
   const [deleting, startDelete] = useTransition()
 
   function handleSaved(id: string) {
-    // Reload templates from server
-    window.location.reload()
+    startClone(async () => {
+      const updated = await getTemplates()
+      setTemplates(updated)
+      const saved = updated.find((t) => t.id === id) ?? null
+      setSelected(saved)
+    })
   }
 
   function handleClone(templateId: string) {
     startClone(async () => {
-      await cloneTemplate(templateId)
-      window.location.reload()
+      const newId = await cloneTemplate(templateId)
+      const updated = await getTemplates()
+      setTemplates(updated)
+      const cloned = updated.find((t) => t.id === newId) ?? null
+      setSelected(cloned)
     })
   }
 
