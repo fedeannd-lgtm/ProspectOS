@@ -47,11 +47,29 @@ function checkKey(name: string, label: string, envVar: string): ProviderStatus {
   return { name, label, status: "ok", detail: "Configurado" }
 }
 
+async function checkFindymail(): Promise<ProviderStatus> {
+  const key = process.env.FINDYMAIL_API_KEY
+  if (!key) return { name: "findymail", label: "FindyEmail", status: "unconfigured", detail: "API key no configurada" }
+  try {
+    const res = await fetch("https://app.findymail.com/api/credits", {
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+    })
+    if (!res.ok) return { name: "findymail", label: "FindyEmail", status: "error", detail: `HTTP ${res.status}` }
+    const data = await res.json()
+    const credits = data?.credits ?? data?.remaining ?? null
+    if (credits === 0) return { name: "findymail", label: "FindyEmail", status: "out", credits: 0, detail: "Sin créditos" }
+    if (credits !== null && credits < 10) return { name: "findymail", label: "FindyEmail", status: "low", credits, detail: `${credits} créditos restantes` }
+    return { name: "findymail", label: "FindyEmail", status: "ok", credits, detail: credits !== null ? `${credits} créditos` : "Configurado" }
+  } catch {
+    return { name: "findymail", label: "FindyEmail", status: "error", detail: "Error al consultar" }
+  }
+}
+
 export async function getProviderStatus(): Promise<ProviderStatus[]> {
-  const [zb, hunter] = await Promise.all([checkZeroBounce(), checkHunter()])
+  const [zb, hunter, findymail] = await Promise.all([checkZeroBounce(), checkHunter(), checkFindymail()])
   return [
     checkKey("apollo", "Apollo", "APOLLO_API_KEY"),
-    checkKey("findymail", "FindyEmail", "FINDYMAIL_API_KEY"),
+    findymail,
     checkKey("prospeo", "Prospeo", "PROSPEO_API_KEY"),
     hunter,
     checkKey("datagma", "Datagma", "DATAGMA_API_KEY"),
