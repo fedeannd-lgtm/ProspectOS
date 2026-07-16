@@ -402,11 +402,13 @@ export async function runDistribution(
       .update({ status: "done", results })
       .eq("id", run.id)
 
-    // Update campaign counter
-    await supabaseAdmin.rpc("increment_prospects_sent", {
-      campaign_id: sourceCampaignId,
-      amount: totalSent,
-    }).catch(() => {}) // best effort
+    // Update campaign counter (best effort)
+    try {
+      await supabaseAdmin.rpc("increment_prospects_sent", {
+        campaign_id: sourceCampaignId,
+        amount: totalSent,
+      })
+    } catch { /* ignore */ }
 
   } catch (e) {
     await supabaseAdmin
