@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { upsertRepCookie, createSavedUrl, deleteSavedUrl, type SavedUrl } from "./actions"
+import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
 const URL_TYPE_LABELS: Record<string, string> = {
   company_search: "Company Search",
@@ -438,12 +439,22 @@ function ProviderRow({ p }: { p: ProviderStatus }) {
   )
 }
 
-export function SettingsClient({ configs, savedUrls, providerStatus, providerUsage }: {
+export function SettingsClient({ configs, savedUrls, providerStatus: initialProviderStatus, providerUsage }: {
   configs: RepConfig[]
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
   providerUsage: ProviderUsage[]
 }) {
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus[]>(initialProviderStatus)
+  const [refreshing, startRefresh] = useTransition()
+
+  function handleRefreshProviders() {
+    startRefresh(async () => {
+      const fresh = await getProviderStatus()
+      setProviderStatus(fresh)
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -454,9 +465,15 @@ export function SettingsClient({ configs, savedUrls, providerStatus, providerUsa
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Estado de providers</CardTitle>
-          <CardDescription>Créditos disponibles por servicio de enriquecimiento.</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Estado de providers</CardTitle>
+            <CardDescription>Créditos disponibles por servicio de enriquecimiento.</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleRefreshProviders} disabled={refreshing}>
+            {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
+            <span className="ml-1.5">{refreshing ? "Actualizando…" : "Actualizar"}</span>
+          </Button>
         </CardHeader>
         <CardContent className="divide-y">
           {providerStatus.map((p) => <ProviderRow key={p.name} p={p} />)}
