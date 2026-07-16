@@ -78,7 +78,8 @@ function ConditionRow({ cond, onChange, onRemove }: {
   const operators = OPERATORS_FOR_FIELD[cond.field] ?? [{ value: "eq", label: "=" }]
   const valueOptions = VALUES_FOR_FIELD[cond.field]
 
-  function handleFieldChange(field: string) {
+  function handleFieldChange(field: string | null) {
+    if (!field) return
     const ops = OPERATORS_FOR_FIELD[field] ?? [{ value: "eq", label: "=" }]
     const vals = VALUES_FOR_FIELD[field]
     onChange({ field, operator: ops[0].value, value: vals ? vals[0].value : "" })
@@ -97,7 +98,7 @@ function ConditionRow({ cond, onChange, onRemove }: {
         </SelectContent>
       </Select>
 
-      <Select value={cond.operator} onValueChange={(v) => onChange({ ...cond, operator: v })}>
+      <Select value={cond.operator} onValueChange={(v) => v && onChange({ ...cond, operator: v })}>
         <SelectTrigger className="h-7 text-xs w-16">
           <SelectValue />
         </SelectTrigger>
@@ -109,7 +110,7 @@ function ConditionRow({ cond, onChange, onRemove }: {
       </Select>
 
       {valueOptions ? (
-        <Select value={cond.value} onValueChange={(v) => onChange({ ...cond, value: v })}>
+        <Select value={cond.value} onValueChange={(v) => v && onChange({ ...cond, value: v })}>
           <SelectTrigger className="h-7 text-xs w-32">
             <SelectValue />
           </SelectTrigger>
@@ -234,7 +235,8 @@ function RunModal({ template, campaigns, onClose, onRun }: {
   const [preview, setPreview] = useState<{ total: number; previouslySent: number } | null>(null)
   const [loadingPreview, startPreview] = useTransition()
 
-  function handleCampaignChange(id: string) {
+  function handleCampaignChange(id: string | null) {
+    if (!id) return
     setCampaignId(id)
     startPreview(async () => {
       const p = await previewDistribution(id)
