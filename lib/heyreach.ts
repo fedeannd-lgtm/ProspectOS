@@ -21,7 +21,7 @@ export async function addLeadsToHeyReach(
         lastName: l.lastName,
         profileUrl: l.linkedInProfileUrl,
         companyName: l.companyName,
-        email: l.email,
+        emailAddress: l.email,
       },
     }))
 
@@ -32,7 +32,12 @@ export async function addLeadsToHeyReach(
         "Accept": "text/plain",
         "X-API-KEY": API_KEY,
       },
-      body: JSON.stringify({ campaignId, accountLeadPairs }),
+      body: JSON.stringify({
+        campaignId: parseInt(campaignId, 10),
+        accountLeadPairs,
+        resumeFinishedCampaign: false,
+        resumePausedCampaign: false,
+      }),
     })
 
     if (!res.ok) {
