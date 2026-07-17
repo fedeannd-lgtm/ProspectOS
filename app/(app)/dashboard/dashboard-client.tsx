@@ -627,10 +627,14 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
   const [calOpen, setCalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const weekCampaigns = useMemo(
-    () => campaigns.filter((c) => c.week_label === selectedWeek),
-    [campaigns, selectedWeek]
-  )
+  const weekCampaigns = useMemo(() => {
+    const weekKey = getISOWeekInfo(new Date(selectedWeek + "T12:00:00")).key
+    return campaigns.filter((c) => {
+      const date = parseCampaignDate(c.week_label)
+      if (!date) return false
+      return getISOWeekInfo(date).key === weekKey
+    })
+  }, [campaigns, selectedWeek])
 
   useEffect(() => {
     const ids = weekCampaigns.map((c) => c.id)
