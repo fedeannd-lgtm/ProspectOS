@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useEffect } from "react"
 import { REPS as BASE_REPS, INDUSTRIES } from "@/lib/reps"
 const REPS = ["Todos", ...BASE_REPS]
 const REP_OPTIONS = BASE_REPS
-import { Plus, Pencil, Trash2, Building2, Users, Send, Zap, LayoutList, CalendarDays, CalendarIcon, BarChart3 } from "lucide-react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -35,10 +35,24 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createCampaign, updateCampaign, deleteCampaign, type IcpStat, type IcpCategoryStat } from "./actions"
+import { createCampaign, updateCampaign, deleteCampaign, getWeekStats, type IcpStat, type IcpCategoryStat } from "./actions"
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
+}
+
+function getWeekMonday(date: Date): string {
+  const d = new Date(date)
+  d.setHours(12, 0, 0, 0)
+  const day = d.getDay()
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+  return d.toISOString().split("T")[0]
+}
+
+function addWeeks(isoMonday: string, n: number): string {
+  const d = new Date(isoMonday + "T12:00:00")
+  d.setDate(d.getDate() + n * 7)
+  return d.toISOString().split("T")[0]
 }
 
 type CampaignStatus = "pending" | "searching" | "enriching" | "distributing" | "done"
@@ -205,7 +219,7 @@ function WeeklyView({ campaigns }: { campaigns: Campaign[] }) {
   if (weeks.length === 0) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-        Sin campañas
+        Sin campañas para esta semana
       </div>
     )
   }
@@ -603,18 +617,36 @@ function ChartsView({ campaigns, icpStats, icpCategoryStats }: { campaigns: Camp
 
 export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
-  const [view, setView] = useState<"list" | "weekly" | "charts">("list")
+  const [view, setView] = useState<"week" | "list" | "charts">("week")
+  const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))
+  const [weekStats, setWeekStats] = useState<{ validEmails: number; scoreGte5: number; sent: number } | null>(null)
+  const [, startWeekStats] = useTransition()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormData>(emptyForm())
   const [calOpen, setCalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
+  const weekCampaigns = useMemo(
+    () => campaigns.filter((c) => c.week_label === selectedWeek),
+    [campaigns, selectedWeek]
+  )
+
+  useEffect(() => {
+    const ids = weekCampaigns.map((c) => c.id)
+    setWeekStats(null)
+    if (!ids.length) { setWeekStats({ validEmails: 0, scoreGte5: 0, sent: 0 }); return }
+    startWeekStats(async () => {
+      const stats = await getWeekStats(ids)
+      setWeekStats(stats)
+    })
+  }, [selectedWeek, campaigns.length])
+
   const kpis = {
-    active: campaigns.filter((c) => c.status !== "done" && c.status !== "pending").length,
-    accounts: campaigns.reduce((s, c) => s + c.accounts_found, 0),
-    prospects: campaigns.reduce((s, c) => s + c.prospects_found, 0),
-    sent: campaigns.reduce((s, c) => s + c.prospects_sent, 0),
+    campaignCount: weekCampaigns.length,
+    accounts: weekCampaigns.reduce((s, c) => s + c.accounts_found, 0),
+    prospects: weekCampaigns.reduce((s, c) => s + c.prospects_found, 0),
+    sent: weekStats?.sent ?? null,
   }
 
   function openCreate() {
@@ -668,18 +700,18 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border">
             <button
-              onClick={() => setView("list")}
-              className={`px-2.5 py-1.5 rounded-l-md transition-colors ${view === "list" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
-              title="Vista lista"
-            >
-              <LayoutList className="size-4" />
-            </button>
-            <button
-              onClick={() => setView("weekly")}
-              className={`px-2.5 py-1.5 border-l transition-colors ${view === "weekly" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
-              title="Vista semanal"
+              onClick={() => setView("week")}
+              className={`px-2.5 py-1.5 rounded-l-md transition-colors ${view === "week" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              title="Esta semana"
             >
               <CalendarDays className="size-4" />
+            </button>
+            <button
+              onClick={() => setView("list")}
+              className={`px-2.5 py-1.5 border-l transition-colors ${view === "list" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              title="Todas las campañas"
+            >
+              <LayoutList className="size-4" />
             </button>
             <button
               onClick={() => setView("charts")}
@@ -696,14 +728,35 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
         </div>
       </div>
 
+      {/* Week navigator — only visible in week view */}
+      {view === "week" && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setSelectedWeek(addWeeks(selectedWeek, -1))}
+            className="p-1.5 rounded-md hover:bg-muted/50 transition-colors"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <span className="text-sm font-medium w-56 text-center">
+            {formatWeekRange(new Date(selectedWeek + "T12:00:00"))}
+          </span>
+          <button
+            onClick={() => setSelectedWeek(addWeeks(selectedWeek, 1))}
+            className="p-1.5 rounded-md hover:bg-muted/50 transition-colors"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground">En curso</CardTitle>
-            <Zap className="size-3.5 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium text-muted-foreground">Campañas</CardTitle>
+            <CalendarDays className="size-3.5 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="text-2xl font-bold">{kpis.active}</div>
+            <div className="text-2xl font-bold">{view === "week" ? kpis.campaignCount : campaigns.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -712,7 +765,11 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
             <Building2 className="size-3.5 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="text-2xl font-bold">{kpis.accounts.toLocaleString("es")}</div>
+            <div className="text-2xl font-bold">
+              {view === "week"
+                ? kpis.accounts.toLocaleString("es")
+                : campaigns.reduce((s, c) => s + c.accounts_found, 0).toLocaleString("es")}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -721,21 +778,31 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
             <Users className="size-3.5 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="text-2xl font-bold">{kpis.prospects.toLocaleString("es")}</div>
+            <div className="text-2xl font-bold">
+              {view === "week"
+                ? kpis.prospects.toLocaleString("es")
+                : campaigns.reduce((s, c) => s + c.prospects_found, 0).toLocaleString("es")}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Enviados</CardTitle>
-            <Send className="size-3.5 text-muted-foreground" />
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              {view === "week" ? "Con email" : "Enviados"}
+            </CardTitle>
+            {view === "week" ? <Mail className="size-3.5 text-muted-foreground" /> : <Send className="size-3.5 text-muted-foreground" />}
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="text-2xl font-bold">{kpis.sent.toLocaleString("es")}</div>
+            <div className="text-2xl font-bold">
+              {view === "week"
+                ? (weekStats === null ? "…" : weekStats.validEmails.toLocaleString("es"))
+                : campaigns.reduce((s, c) => s + c.prospects_sent, 0).toLocaleString("es")}
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {view === "weekly" && <WeeklyView campaigns={campaigns} />}
+      {view === "week" && <WeeklyView campaigns={weekCampaigns} />}
       {view === "charts" && <ChartsView campaigns={campaigns} icpStats={icpStats} icpCategoryStats={icpCategoryStats} />}
 
       {view === "list" && <Tabs defaultValue="Todos">

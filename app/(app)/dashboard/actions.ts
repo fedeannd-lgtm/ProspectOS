@@ -100,3 +100,26 @@ export async function deleteCampaign(id: string) {
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard")
 }
+
+export async function getWeekStats(campaignIds: string[]): Promise<{
+  validEmails: number
+  scoreGte5: number
+  sent: number
+}> {
+  if (!campaignIds.length) return { validEmails: 0, scoreGte5: 0, sent: 0 }
+
+  const [{ count: validEmails }, { count: scoreGte5 }, { count: sent }] = await Promise.all([
+    supabase.from("prospects").select("id", { count: "exact", head: true })
+      .in("campaign_id", campaignIds).not("email", "is", null).neq("email", ""),
+    supabase.from("prospects").select("id", { count: "exact", head: true })
+      .in("campaign_id", campaignIds).gte("icp_score", 5),
+    supabase.from("prospects").select("id", { count: "exact", head: true })
+      .in("campaign_id", campaignIds).not("sent_at", "is", null),
+  ])
+
+  return {
+    validEmails: validEmails ?? 0,
+    scoreGte5: scoreGte5 ?? 0,
+    sent: sent ?? 0,
+  }
+}
