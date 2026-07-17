@@ -21,7 +21,15 @@ export async function addLeadsToSmartlead(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ leads, settings: { ignore_global_block_list: false, ignore_unsubscribe_list: false } }),
+      body: JSON.stringify({
+        lead_list: leads,
+        settings: {
+          ignore_global_block_list: false,
+          ignore_unsubscribe_list: false,
+          ignore_community_bounce_list: false,
+          ignore_duplicate_leads_in_other_campaign: false,
+        },
+      }),
     })
     if (!res.ok) {
       const text = await res.text()
