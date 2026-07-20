@@ -53,7 +53,7 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
         : apolloResult.apolloEmailStatus === "verified"
           ? "valid"
           : "unknown"
-    if (isUsable(effectiveStatus)) {
+    if (isUsable(effectiveStatus) || effectiveStatus === "unknown") {
       return { email: apolloResult.email, provider: "apollo", zbStatus: effectiveStatus, zbSubStatus: subStatus, enriched: true, apolloId: apolloResult.apolloId, apolloLinkedInUrl: apolloResult.canonicalLinkedInUrl ?? null }
     }
   }
