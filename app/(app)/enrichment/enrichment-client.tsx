@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download, AlertCircle, ExternalLink } from "lucide-react"
+import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download, AlertCircle, ExternalLink, ChevronDown } from "lucide-react"
 import type { ProviderStatus } from "../settings/provider-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -161,6 +161,59 @@ function WhatsappCell({ prospect, onSaved }: { prospect: Prospect; onSaved: (id:
   )
 }
 
+function MultiFilter<T extends string>({
+  label, options, value, onChange, className,
+}: {
+  label: string
+  options: { value: T; label: string }[]
+  value: Set<T>
+  onChange: (next: Set<T>) => void
+  className?: string
+}) {
+  const selected = options.filter(o => value.has(o.value))
+  const displayLabel = selected.length === 0
+    ? label
+    : selected.length === 1 ? selected[0].label : `${selected.length} selec.`
+
+  function toggle(v: T) {
+    const next = new Set(value)
+    if (next.has(v)) next.delete(v)
+    else next.add(v)
+    onChange(next)
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button className={`inline-flex h-8 items-center justify-between rounded-md border border-input bg-background px-2.5 text-xs gap-1.5 hover:bg-accent transition-colors ${selected.length > 0 ? "border-primary/50 bg-primary/5 font-medium" : "text-muted-foreground"} ${className ?? ""}`}>
+          {displayLabel}
+          <ChevronDown className="size-3 opacity-50 shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-44 p-1" align="start">
+        {options.map(o => (
+          <button key={o.value} onClick={() => toggle(o.value)}
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent transition-colors">
+            <div className={`size-3.5 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${value.has(o.value) ? "bg-primary border-primary" : "border-input"}`}>
+              {value.has(o.value) && <Check className="size-2.5 text-primary-foreground" />}
+            </div>
+            {o.label}
+          </button>
+        ))}
+        {value.size > 0 && (
+          <>
+            <div className="mx-2 my-1 border-t" />
+            <button onClick={() => onChange(new Set())}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors">
+              <X className="size-3" /> Limpiar
+            </button>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Campaign[]; providerStatus: ProviderStatus[] }) {
   const [campaignId, setCampaignId] = useState("")
   const [comboOpen, setComboOpen] = useState(false)
@@ -174,9 +227,9 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
 
   // Filter state
   const [search, setSearch] = useState("")
-  const [scoreFilter, setScoreFilter] = useState<"all" | "gte5" | "eq10" | "eq0">("all")
-  const [osScoreFilter, setOsScoreFilter] = useState<"all" | "tier1" | "tier2" | "tier3" | "non_icp">("all")
-  const [categoryFilter, setCategoryFilter] = useState<"all" | IcpCategory>("all")
+  const [scoreFilter, setScoreFilter] = useState<Set<"gte5" | "eq10" | "eq0">>(new Set())
+  const [osScoreFilter, setOsScoreFilter] = useState<Set<"tier1" | "tier2" | "tier3" | "non_icp">>(new Set())
+  const [categoryFilter, setCategoryFilter] = useState<Set<IcpCategory>>(new Set())
   const [emailFilter, setEmailFilter] = useState<"all" | "pending" | "enriched">("all")
   const [mesInicioFilter, setMesInicioFilter] = useState<"all" | "con" | "sin">("all")
 
@@ -229,14 +282,24 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
         !p.job_title?.toLowerCase().includes(q)
       ) return false
     }
-    if (scoreFilter === "gte5" && (p.icp_score ?? 0) < 5) return false
-    if (scoreFilter === "eq10" && p.icp_score !== 10) return false
-    if (scoreFilter === "eq0" && p.icp_score !== 0) return false
-    if (osScoreFilter === "tier1" && getOsScore(p) < 10) return false
-    if (osScoreFilter === "tier2" && getOsScore(p) !== 7) return false
-    if (osScoreFilter === "tier3" && getOsScore(p) !== 4) return false
-    if (osScoreFilter === "non_icp" && getOsScore(p) > 3) return false
-    if (categoryFilter !== "all" && p.icp_category !== categoryFilter) return false
+    if (scoreFilter.size > 0) {
+      const s = p.icp_score ?? 0
+      if (!(
+        (scoreFilter.has("gte5") && s >= 5) ||
+        (scoreFilter.has("eq10") && s === 10) ||
+        (scoreFilter.has("eq0") && s === 0)
+      )) return false
+    }
+    if (osScoreFilter.size > 0) {
+      const os = getOsScore(p)
+      if (!(
+        (osScoreFilter.has("tier1") && os >= 10) ||
+        (osScoreFilter.has("tier2") && os === 7) ||
+        (osScoreFilter.has("tier3") && os === 4) ||
+        (osScoreFilter.has("non_icp") && os <= 3)
+      )) return false
+    }
+    if (categoryFilter.size > 0 && !categoryFilter.has(p.icp_category as IcpCategory)) return false
     if (emailFilter === "pending" && hasValidEmail(p)) return false
     if (emailFilter === "enriched" && !hasValidEmail(p)) return false
     if (mesInicioFilter === "con" && p.started_role_months == null) return false
@@ -532,44 +595,44 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
               )}
             </div>
 
-            <Select value={scoreFilter} onValueChange={(v) => setScoreFilter(v as typeof scoreFilter)}>
-              <SelectTrigger className="h-8 text-xs w-32">
-                <SelectValue placeholder="Score ICP" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los scores</SelectItem>
-                <SelectItem value="gte5">Score ≥ 5</SelectItem>
-                <SelectItem value="eq10">Score = 10</SelectItem>
-                <SelectItem value="eq0">Score = 0</SelectItem>
-              </SelectContent>
-            </Select>
+            <MultiFilter
+              label="Score ICP"
+              options={[
+                { value: "gte5", label: "Score ≥ 5" },
+                { value: "eq10", label: "Score = 10" },
+                { value: "eq0",  label: "Score = 0" },
+              ]}
+              value={scoreFilter}
+              onChange={setScoreFilter}
+              className="w-32"
+            />
 
-            <Select value={osScoreFilter} onValueChange={(v) => setOsScoreFilter(v as typeof osScoreFilter)}>
-              <SelectTrigger className="h-8 text-xs w-36">
-                <SelectValue placeholder="OS Score" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos OS Score</SelectItem>
-                <SelectItem value="tier1">Tier 1 (OS = 10)</SelectItem>
-                <SelectItem value="tier2">Tier 2 (OS = 7)</SelectItem>
-                <SelectItem value="tier3">Tier 3 (OS = 4)</SelectItem>
-                <SelectItem value="non_icp">No ICP (OS ≤ 3)</SelectItem>
-              </SelectContent>
-            </Select>
+            <MultiFilter
+              label="OS Score"
+              options={[
+                { value: "tier1",   label: "Tier 1 (OS = 10)" },
+                { value: "tier2",   label: "Tier 2 (OS = 7)" },
+                { value: "tier3",   label: "Tier 3 (OS = 4)" },
+                { value: "non_icp", label: "No ICP (OS ≤ 3)" },
+              ]}
+              value={osScoreFilter}
+              onChange={setOsScoreFilter}
+              className="w-36"
+            />
 
-            <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as typeof categoryFilter)}>
-              <SelectTrigger className="h-8 text-xs w-36">
-                <SelectValue placeholder="Categoría" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las categorías</SelectItem>
-                <SelectItem value="Communication">Communication</SelectItem>
-                <SelectItem value="Experience">Experience</SelectItem>
-                <SelectItem value="Onboarding">Onboarding</SelectItem>
-                <SelectItem value="Helpdesk">Helpdesk</SelectItem>
-                <SelectItem value="Genérico">Genérico</SelectItem>
-              </SelectContent>
-            </Select>
+            <MultiFilter
+              label="Categoría"
+              options={[
+                { value: "Communication", label: "Communication" },
+                { value: "Experience",    label: "Experience" },
+                { value: "Onboarding",    label: "Onboarding" },
+                { value: "Helpdesk",      label: "Helpdesk" },
+                { value: "Genérico",      label: "Genérico" },
+              ]}
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              className="w-36"
+            />
 
             <Select value={emailFilter} onValueChange={(v) => setEmailFilter(v as typeof emailFilter)}>
               <SelectTrigger className="h-8 text-xs w-36">
