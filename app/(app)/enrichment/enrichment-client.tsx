@@ -309,17 +309,15 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
 
   function toggleSelectAll() {
     if (allFilteredSelected) {
+      // Deselect all visible
       setSelectedIds((prev) => {
         const next = new Set(prev)
         filtered.forEach((p) => next.delete(p.id))
         return next
       })
     } else {
-      setSelectedIds((prev) => {
-        const next = new Set(prev)
-        filtered.forEach((p) => next.add(p.id))
-        return next
-      })
+      // Replace selection with only visible items (not additive)
+      setSelectedIds(new Set(filtered.map((p) => p.id)))
     }
   }
 
