@@ -169,13 +169,20 @@ export async function processPeopleSearch(
 
   if (prospects.length > 0) await supabaseAdmin.from("prospects").insert(prospects)
 
+  // Count total prospects for this campaign (includes prior partial batches)
+  const { count: totalCount } = await supabaseAdmin
+    .from("prospects")
+    .select("*", { count: "exact", head: true })
+    .eq("campaign_id", job.campaign_id)
+  const finalCount = totalCount ?? prospects.length
+
   await supabaseAdmin
     .from("search_jobs")
-    .update({ status: "completed", results_count: prospects.length, completed_at: new Date().toISOString() })
+    .update({ status: "completed", results_count: finalCount, completed_at: new Date().toISOString() })
     .eq("id", jobId)
 
   await supabaseAdmin
     .from("campaigns")
-    .update({ prospects_found: prospects.length })
+    .update({ prospects_found: finalCount })
     .eq("id", job.campaign_id)
 }
