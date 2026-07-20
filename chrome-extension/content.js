@@ -801,7 +801,8 @@ function extractWebsiteFromDOM() {
   }
 
   // Strategy 0: direct attribute selector — most reliable, Sales Nav always uses this
-  const directLink = document.querySelector('[data-control-name="visit_company_website"][href]');
+  // Note: don't require [href] in the selector — sometimes href is a JS property, not HTML attribute
+  const directLink = document.querySelector('[data-control-name="visit_company_website"]');
   if (directLink) {
     const href = directLink.getAttribute('href') || directLink.href || '';
     const url = unwrapHref(href);
@@ -890,7 +891,15 @@ async function runCompanyProfileVisit(state) {
 
     const numericId = company.id.match(/(\d+)$/)?.[1] || company.id;
     const storageKey = `__pos_w_${numericId}`;
-    const deadline = Date.now() + 8000;
+
+    // Wait for the SPA to render (body text growing means JS app has started)
+    const pageDeadline = Date.now() + 12000;
+    while (Date.now() < pageDeadline) {
+      if ((document.body?.innerText?.length || 0) > 500) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    const deadline = Date.now() + 12000;
     let website = '';
     while (Date.now() < deadline) {
       // 1. Try interceptor sessionStorage (world: MAIN)
