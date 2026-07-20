@@ -38,7 +38,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 }> {
   const { data: p } = await supabase
     .from("prospects")
-    .select("id, first_name, last_name, company_name, company_domain, linkedin_url, job_title, email, email_status, icp_score, accounts(linkedin_url, domain)")
+    .select("id, first_name, last_name, full_name, company_name, company_domain, linkedin_url, job_title, email, email_status, icp_score, accounts(linkedin_url, domain)")
     .eq("id", prospectId)
     .single()
 
@@ -67,6 +67,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   const result = await enrichProspect({
     first_name: p.first_name ?? "",
     last_name: p.last_name ?? "",
+    full_name: p.full_name ?? "",
     company_name: p.company_name ?? "",
     company_domain: effectiveDomain,
     linkedin_url: p.linkedin_url ?? "",

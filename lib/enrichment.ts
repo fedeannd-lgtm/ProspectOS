@@ -19,6 +19,7 @@ export type EnrichmentResult = {
 type ProspectInput = {
   first_name: string
   last_name: string
+  full_name?: string | null
   company_name: string
   company_domain: string | null
   linkedin_url: string
@@ -26,16 +27,17 @@ type ProspectInput = {
 }
 
 export async function enrichProspect(prospect: ProspectInput): Promise<EnrichmentResult> {
-  const { first_name, last_name, company_name, company_domain, company_linkedin_url } = prospect
+  const { first_name, last_name, full_name, company_name, company_domain, company_linkedin_url } = prospect
 
   const rawUrl = prospect.linkedin_url ?? ""
   const canonicalUrl = canonicalLinkedInUrl(rawUrl) ?? ""
 
   // Apollo works best with just the first word of first_name (e.g. "Cesar", not "Cesar Leopoldo")
   const apolloFirstName = first_name.split(" ")[0]
+  const apolloFullName = full_name || `${first_name} ${last_name}`.trim()
 
-  // 1. Apollo — pass raw URL (handles encoded Sales Nav IDs); use trimmed first name
-  const apolloResult = await findEmailApollo(apolloFirstName, last_name, company_name, rawUrl, company_domain)
+  // 1. Apollo — replicate Clay's setup: first_name + last_name + full_name + domain
+  const apolloResult = await findEmailApollo(apolloFirstName, last_name, apolloFullName, company_name, rawUrl, company_domain)
 
   // Best LinkedIn URL we have: prefer what Apollo returned (canonical), then our own canonical
   const bestLinkedInUrl = apolloResult.canonicalLinkedInUrl ?? canonicalUrl

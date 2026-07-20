@@ -18,7 +18,10 @@ async function matchPerson(payload: Record<string, unknown>): Promise<{ person: 
     },
     body: JSON.stringify({ api_key: APOLLO_API_KEY, reveal_personal_emails: true, reveal_phone_number: true, ...payload }),
   })
-  if (!res.ok) return null
+  if (!res.ok) {
+    console.error(`[Apollo] matchPerson HTTP ${res.status}`, await res.text().catch(() => ""))
+    return null
+  }
   const data = await res.json()
   return data?.person ? data : null
 }
@@ -93,17 +96,19 @@ function isCanonicalLinkedIn(url: string): boolean {
 export async function findEmailApollo(
   firstName: string,
   lastName: string,
+  fullName: string,
   companyName: string,
   linkedinUrl: string,
   companyDomain?: string | null
 ): Promise<ApolloResult> {
   try {
-    // 1. name + company only — most flexible, avoids domain/URL confusion
-    //    Apollo matches even when domain or LinkedIn URL in our DB differ from theirs
+    // 1. Replicate Clay's Apollo setup: first_name + last_name + full name + domain
+    //    Domain is a much stronger identifier than organization_name (text fuzzy match)
     const first = await matchPerson({
       first_name: firstName,
       last_name: lastName,
-      organization_name: companyName || undefined,
+      name: fullName || undefined,
+      domain: companyDomain || undefined,
     })
 
     let person = first?.person as Record<string, unknown> | undefined
