@@ -4,8 +4,8 @@
 
   function extractWebsite(data) {
     if (!data || typeof data !== 'object') return '';
-    const urlFields = ['website', 'companyUrl', 'websiteUrl', 'homepageUrl', 'companyWebsite', 'siteUrl'];
-    const domainFields = ['primaryDomain', 'domain', 'url'];
+    const urlFields = ['website', 'companyUrl', 'websiteUrl', 'homepageUrl', 'companyWebsite', 'siteUrl', 'companyPageUrl', 'externalWebsiteUrl', 'landingPageUrl'];
+    const domainFields = ['primaryDomain', 'domain', 'url', 'companyDomain'];
     const allFields = [...urlFields, ...domainFields];
 
     function valueToUrl(f, v) {
@@ -20,12 +20,19 @@
       const url = valueToUrl(f, data[f]);
       if (url) return url;
     }
-    // One level deep
+    // Two levels deep
     for (const key of Object.keys(data)) {
       const val = data[key];
-      if (val && typeof val === 'object' && !Array.isArray(val)) {
+      if (!val || typeof val !== 'object' || Array.isArray(val)) continue;
+      for (const f of allFields) {
+        const url = valueToUrl(f, val[f]);
+        if (url) return url;
+      }
+      for (const key2 of Object.keys(val)) {
+        const val2 = val[key2];
+        if (!val2 || typeof val2 !== 'object' || Array.isArray(val2)) continue;
         for (const f of allFields) {
-          const url = valueToUrl(f, val[f]);
+          const url = valueToUrl(f, val2[f]);
           if (url) return url;
         }
       }

@@ -196,7 +196,22 @@ export function AccountsClient({ accounts }: { accounts: Account[] }) {
                     const domain = cleanDomain(a.domain)
                     return (
                       <tr key={a.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-2.5 font-medium">{a.company_name || "—"}</td>
+                        <td className="px-4 py-2.5 font-medium">
+                          <div className="flex items-center gap-1.5">
+                            {a.company_name || "—"}
+                            {a.sales_nav_id && (
+                              <a
+                                href={`https://www.linkedin.com/sales/company/${a.sales_nav_id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="shrink-0 text-[#0A66C2] opacity-60 hover:opacity-100"
+                                title="Ver en Sales Navigator"
+                              >
+                                <ExternalLink className="size-3" />
+                              </a>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-2.5">
                           {url && domain ? (
                             <a

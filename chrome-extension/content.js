@@ -788,6 +788,29 @@ function deepHasPremium(root) {
 function extractWebsiteFromDOM() {
   const SKIP = /linkedin\.com|google\.com|bing\.com|microsoft\.com|twitter\.com|facebook\.com|instagram\.com|youtube\.com|t\.co\//i;
 
+  function unwrapHref(href) {
+    if (!href || !href.startsWith('http')) return '';
+    const redirMatch = href.match(/linkedin\.com\/redir\/redirect\?url=([^&]+)/);
+    if (redirMatch) {
+      try {
+        const inner = decodeURIComponent(redirMatch[1]);
+        return SKIP.test(inner) ? '' : inner;
+      } catch { return ''; }
+    }
+    return SKIP.test(href) ? '' : href;
+  }
+
+  // Strategy 0: direct attribute selector — most reliable, Sales Nav always uses this
+  const directLink = document.querySelector('[data-control-name="visit_company_website"][href]');
+  if (directLink) {
+    const href = directLink.getAttribute('href') || directLink.href || '';
+    const url = unwrapHref(href);
+    if (url) {
+      console.log('[ProspectOS] strategy 0 (data-control-name) → website:', url);
+      return url;
+    }
+  }
+
   // Strategy 1: deep shadow DOM traversal — finds <a> inside shadow roots
   function collectLinks(root, links = []) {
     root.querySelectorAll('a[href]').forEach(a => links.push(a));
@@ -798,29 +821,46 @@ function extractWebsiteFromDOM() {
   }
 
   const links = collectLinks(document);
-  console.log('[ProspectOS] shadow DOM total links:', links.length);
 
   for (const link of links) {
     const href = link.href || link.getAttribute('href') || '';
     if (!href.startsWith('http')) continue;
-    if (SKIP.test(href)) continue;
 
     const text = (link.textContent || '').trim().toLowerCase();
     const ariaLabel = (link.getAttribute('aria-label') || '').toLowerCase();
     const title = (link.getAttribute('title') || '').toLowerCase();
     const parentAria = (link.closest('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
 
-    if (text.includes('sitio web') || text.includes('website') ||
+    const isWebsiteLink = text.includes('sitio web') || text.includes('website') ||
         ariaLabel.includes('sitio') || ariaLabel.includes('website') ||
         title.includes('sitio') || title.includes('website') ||
-        parentAria.includes('sitio') || parentAria.includes('website')) {
-      console.log('[ProspectOS] strategy 1 → website:', href);
-      return href;
+        parentAria.includes('sitio') || parentAria.includes('website');
+
+    if (isWebsiteLink) {
+      const url = unwrapHref(href);
+      if (url) {
+        console.log('[ProspectOS] strategy 1 → website:', url);
+        return url;
+      }
     }
   }
 
-  // Strategy 2: scan document.body.innerText for URLs near "sitio web" / "website"
-  // LinkedIn shows the URL as visible text in the company info section
+  // Strategy 1b: look for LinkedIn redirect links only (not all external links)
+  for (const link of links) {
+    const href = link.href || link.getAttribute('href') || '';
+    const redirMatch = href.match(/linkedin\.com\/redir\/redirect\?url=([^&]+)/);
+    if (redirMatch) {
+      try {
+        const inner = decodeURIComponent(redirMatch[1]);
+        if (!SKIP.test(inner) && inner.startsWith('http')) {
+          console.log('[ProspectOS] strategy 1b (redir) → website:', inner);
+          return inner;
+        }
+      } catch {}
+    }
+  }
+
+  // Strategy 2: scan document.body.innerText for URLs near "sitio web"
   try {
     const fullText = document.body.innerText || '';
     const siteIdx = fullText.search(/ir al sitio web|go to website|website\s*[:：]/i);

@@ -309,7 +309,7 @@ export function AccountsClient({ campaign, initialAccounts }: { campaign: Campai
                         onSave={(v) => handleUpdate(account.id, { company_name: v })} />
                     </td>
                     <td className="px-4 py-2.5">
-                      <EditableCell value={account.domain ?? ""} placeholder="dominio.com" mono
+                      <EditableCell value={account.domain ?? ""} placeholder="sin dominio" mono
                         onSave={(v) => handleUpdate(account.id, { domain: v })} />
                     </td>
                     <td className="px-4 py-2.5">
