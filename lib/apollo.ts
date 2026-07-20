@@ -16,7 +16,7 @@ async function matchPerson(payload: Record<string, unknown>): Promise<{ person: 
       "Cache-Control": "no-cache",
       "X-Api-Key": APOLLO_API_KEY,
     },
-    body: JSON.stringify({ api_key: APOLLO_API_KEY, reveal_personal_emails: true, reveal_phone_number: true, ...payload }),
+    body: JSON.stringify({ api_key: APOLLO_API_KEY, reveal_personal_emails: true, ...payload }),
   })
   if (!res.ok) {
     console.error(`[Apollo] matchPerson HTTP ${res.status}`, await res.text().catch(() => ""))
