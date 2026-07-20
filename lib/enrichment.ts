@@ -65,7 +65,7 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
   const REST: Array<{ name: string; selfVerified?: boolean; find: () => Promise<string | null> }> = [
     { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
     { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
-    { name: "hunter",    find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
+    { name: "hunter", selfVerified: true, find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
     // Datagma verifies all emails internally — skip ZeroBounce to avoid wasting credits
     { name: "datagma", selfVerified: true, find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name, company_linkedin_url ?? undefined) },
   ]
