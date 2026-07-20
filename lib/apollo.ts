@@ -102,13 +102,14 @@ export async function findEmailApollo(
   companyDomain?: string | null
 ): Promise<ApolloResult> {
   try {
-    // 1. Replicate Clay's Apollo setup: first_name + last_name + full name + domain
-    //    Domain is a much stronger identifier than organization_name (text fuzzy match)
+    // 1. Replicate Clay's Apollo setup: name + company identifier
+    //    Domain wins over org name when both present; org name used when no domain (Clay's behavior)
     const first = await matchPerson({
       first_name: firstName,
       last_name: lastName,
       name: fullName || undefined,
       domain: companyDomain || undefined,
+      organization_name: !companyDomain && companyName ? companyName : undefined,
     })
 
     let person = first?.person as Record<string, unknown> | undefined
