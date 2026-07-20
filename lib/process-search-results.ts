@@ -50,7 +50,7 @@ function sigWords(s: string): string[] {
 
 export async function processCompanySearch(
   jobId: string,
-  job: { campaign_id: string; campaigns: unknown },
+  job: { campaign_id: string; start_page?: number | null; campaigns: unknown },
   companies: RawCompany[]
 ) {
   const accounts = companies.map((c) => ({
@@ -81,7 +81,7 @@ export async function processCompanySearch(
 
   const campaign = job.campaigns as { rep_name: string; industry: string } | null
   if (campaign) {
-    await advanceSearchPage(campaign.rep_name, campaign.industry, accounts.length)
+    await advanceSearchPage(campaign.rep_name, campaign.industry, accounts.length, job.start_page ?? 1)
   }
 }
 

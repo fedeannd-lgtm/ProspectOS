@@ -87,12 +87,14 @@ export async function triggerCompanySearch(
 export async function advanceSearchPage(
   repName: string,
   industry: string,
-  resultsCount: number
+  resultsCount: number,
+  startPage: number = 1
 ) {
   const pagesConsumed = Math.max(1, Math.ceil(resultsCount / 25))
+  const nextPage = startPage + pagesConsumed
   const { data: savedUrl } = await supabaseAdmin
     .from("saved_urls")
-    .select("id, current_page")
+    .select("id")
     .eq("rep_name", repName)
     .eq("industry", industry)
     .eq("url_type", "company_search")
@@ -101,7 +103,7 @@ export async function advanceSearchPage(
   if (!savedUrl) return
   await supabaseAdmin
     .from("saved_urls")
-    .update({ current_page: ((savedUrl.current_page as number) ?? 1) + pagesConsumed })
+    .update({ current_page: nextPage })
     .eq("id", savedUrl.id)
 }
 

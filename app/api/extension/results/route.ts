@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   const { data: job } = await supabaseAdmin
     .from("search_jobs")
-    .select("job_type, campaign_id, campaigns(rep_name, industry)")
+    .select("job_type, campaign_id, start_page, campaigns(rep_name, industry)")
     .eq("id", jobId)
     .single()
 
