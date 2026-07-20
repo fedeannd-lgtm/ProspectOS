@@ -184,11 +184,9 @@ function MultiFilter<T extends string>({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button className={`inline-flex h-8 items-center justify-between rounded-md border border-input bg-background px-2.5 text-xs gap-1.5 hover:bg-accent transition-colors ${selected.length > 0 ? "border-primary/50 bg-primary/5 font-medium" : "text-muted-foreground"} ${className ?? ""}`}>
-          {displayLabel}
-          <ChevronDown className="size-3 opacity-50 shrink-0" />
-        </button>
+      <PopoverTrigger className={`inline-flex h-8 items-center justify-between rounded-md border border-input bg-background px-2.5 text-xs gap-1.5 hover:bg-accent transition-colors ${selected.length > 0 ? "border-primary/50 bg-primary/5 font-medium" : "text-muted-foreground"} ${className ?? ""}`}>
+        {displayLabel}
+        <ChevronDown className="size-3 opacity-50 shrink-0" />
       </PopoverTrigger>
       <PopoverContent className="w-44 p-1" align="start">
         {options.map(o => (
