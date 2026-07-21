@@ -7,7 +7,7 @@ import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
 import { findPhoneDatagma } from "@/lib/datagma"
 import { findPhoneProspeo } from "@/lib/prospeo"
-import { normalizeCompanyName } from "@/lib/process-search-results"
+import { normalizeCompanyName, normalizePersonName } from "@/lib/process-search-results"
 
 export async function getCampaigns() {
   const { data, error } = await supabase
@@ -194,20 +194,32 @@ export async function setProspectWhatsappPhone(prospectId: string, phone: string
   revalidatePath("/enrichment")
 }
 
-export async function normalizeCompanyNamesForCampaign(campaignId: string): Promise<number> {
+export async function normalizeNamesForCampaign(campaignId: string): Promise<number> {
   const { data, error } = await supabase
     .from("prospects")
-    .select("id, company_name")
+    .select("id, first_name, last_name, full_name, company_name")
     .eq("campaign_id", campaignId)
-    .not("company_name", "is", null)
   if (error) throw new Error(error.message)
   if (!data?.length) return 0
 
   let updated = 0
   for (const p of data) {
-    const normalized = normalizeCompanyName(p.company_name ?? "")
-    if (normalized && normalized !== p.company_name) {
-      await supabaseAdmin.from("prospects").update({ company_name: normalized }).eq("id", p.id)
+    const patch: Record<string, string> = {}
+
+    const firstName = normalizePersonName(p.first_name ?? "")
+    if (firstName && firstName !== p.first_name) patch.first_name = firstName
+
+    const lastName = normalizePersonName(p.last_name ?? "")
+    if (lastName && lastName !== p.last_name) patch.last_name = lastName
+
+    const fullName = normalizePersonName(p.full_name ?? "")
+    if (fullName && fullName !== p.full_name) patch.full_name = fullName
+
+    const company = normalizeCompanyName(p.company_name ?? "")
+    if (company && company !== p.company_name) patch.company_name = company
+
+    if (Object.keys(patch).length > 0) {
+      await supabaseAdmin.from("prospects").update(patch).eq("id", p.id)
       updated++
     }
   }

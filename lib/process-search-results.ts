@@ -33,6 +33,13 @@ export function extractDomain(raw: string): string {
   }
 }
 
+export function normalizePersonName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export function normalizeCompanyName(name: string): string {
   let s = name
     .toLowerCase()

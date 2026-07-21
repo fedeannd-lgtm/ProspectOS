@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeCompanyNamesForCampaign } from "./actions"
+import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeNamesForCampaign } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
@@ -420,7 +420,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
     setNormalizing(true)
     setNormalizeResult(null)
     try {
-      const count = await normalizeCompanyNamesForCampaign(campaignId)
+      const count = await normalizeNamesForCampaign(campaignId)
       setNormalizeResult(count)
       if (count > 0) {
         const data = await getProspectsForEnrichment(campaignId)
@@ -604,7 +604,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                   {normalizeResult === 0 ? "Sin cambios necesarios." : `${normalizeResult} nombre${normalizeResult !== 1 ? "s" : ""} actualizados.`}
                 </p>
               )}
-              <p className="text-[11px] text-muted-foreground">Quita S.A., SAC, SRL, Argentina, etc. del nombre de empresa.</p>
+              <p className="text-[11px] text-muted-foreground">Capitaliza nombres de personas y quita S.A., SAC, SRL, Argentina, etc. de empresas.</p>
             </CardContent>
           </Card>
 
