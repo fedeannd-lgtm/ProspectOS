@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useEffect } from "react"
-import { Plus, Play, Copy, Trash2, ChevronUp, ChevronDown, X, Loader2, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react"
+import { Plus, Play, Copy, Trash2, ChevronUp, ChevronDown, X, Loader2, CheckCircle2, AlertCircle, RotateCcw, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,10 +9,203 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import type { DistributionTemplate, DistributionRoute, Condition, ConditionGroup, DistributionRun, RunResults } from "./actions"
-import type { IntegrationCampaign } from "./actions"
-import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsForTemplate, previewDistribution, getTemplates, loadIntegrationCampaigns } from "./actions"
+import type { IntegrationCampaign, RoutePreviewResult } from "./actions"
+import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsForTemplate, previewDistribution, getTemplates, loadIntegrationCampaigns, previewDistributionRoutes } from "./actions"
+
+// ─── Condition formatter ──────────────────────────────────────────────────────
+
+const FIELD_LABELS: Record<string, string> = {
+  has_email: "Tiene email", email_status: "Estado email", icp_score: "ICP Score",
+  os_score: "OS Score", icp_category: "Categoría", is_premium: "Premium", connection_degree: "Grado",
+}
+const OP_LABELS: Record<string, string> = { eq: "=", neq: "≠", gte: "≥", lte: "≤" }
+const VALUE_LABELS: Record<string, Record<string, string>> = {
+  has_email: { true: "Sí", false: "No" },
+  is_premium: { true: "Sí", false: "No" },
+  connection_degree: { FIRST: "1°", SECOND: "2°", THIRD: "3°" },
+  email_status: { valid: "Válido", "catch-all": "Catch-all", invalid: "Inválido", unknown: "Desconocido" },
+}
+
+function formatCondition(c: Condition): string {
+  const field = FIELD_LABELS[c.field] ?? c.field
+  const op = OP_LABELS[c.operator] ?? c.operator
+  const val = VALUE_LABELS[c.field]?.[c.value] ?? c.value
+  return `${field} ${op} ${val}`
+}
+
+// ─── RouteFlowPreview ─────────────────────────────────────────────────────────
+
+function RouteFlowPreview({ routes, campaigns, integrationCampaigns }: {
+  routes: DistributionRoute[]
+  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
+  integrationCampaigns: { smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null
+}) {
+  const [campaignId, setCampaignId] = useState("")
+  const [preview, setPreview] = useState<RoutePreviewResult | null>(null)
+  const [loading, startLoad] = useTransition()
+
+  function handleCampaignChange(id: string | null) {
+    if (!id) return
+    setCampaignId(id)
+    setPreview(null)
+    startLoad(async () => {
+      const result = await previewDistributionRoutes(routes, id)
+      setPreview(result)
+    })
+  }
+
+  const countMap = Object.fromEntries((preview?.perRoute ?? []).map((r) => [r.routeId, r]))
+  const available = preview ? preview.total - preview.alreadySent : null
+  const totalMatched = preview
+    ? new Set(
+        routes.flatMap((route) => {
+          const c = countMap[route.id]
+          return c ? [`${route.id}`] : []
+        })
+      ).size
+    : null
+  const unmatched = available != null && preview
+    ? Math.max(0, available - (preview.perRoute.reduce((sum, r) => {
+        // rough: if routes can overlap we can't subtract; just show per-route counts
+        return sum
+      }, 0)))
+    : null
+
+  const slName = (id: string | null) =>
+    id ? (integrationCampaigns?.smartlead.find((c) => c.id === id)?.name ?? `ID: ${id}`) : null
+  const hrName = (id: string | null) =>
+    id ? (integrationCampaigns?.heyreach.find((c) => c.id === id)?.name ?? `ID: ${id}`) : null
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Campaign selector */}
+      <div className="pb-4 border-b space-y-3">
+        <p className="text-xs text-muted-foreground">Seleccioná una campaña para ver cuántos perfiles matchearían cada ruta.</p>
+        <Select value={campaignId} onValueChange={handleCampaignChange}>
+          <SelectTrigger className="text-xs">
+            <SelectValue placeholder="Elegí una campaña..." />
+          </SelectTrigger>
+          <SelectContent>
+            {campaigns.map((c) => (
+              <SelectItem key={c.id} value={c.id} className="text-xs">
+                {c.week_label} · {c.rep_name} · {c.industry}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {preview && (
+          <div className="flex gap-4 text-xs">
+            <span><span className="text-muted-foreground">Total:</span> <strong>{preview.total}</strong></span>
+            <span><span className="text-muted-foreground">Ya enviados:</span> <strong>{preview.alreadySent}</strong></span>
+            <span><span className="text-muted-foreground">Disponibles:</span> <strong>{available}</strong></span>
+          </div>
+        )}
+      </div>
+
+      {/* Flow */}
+      <div className="flex-1 overflow-y-auto pt-4">
+        {routes.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">Sin rutas configuradas.</p>
+        ) : (
+          <div className="flex flex-col items-stretch gap-0">
+            {/* Start node */}
+            <div className="flex justify-center">
+              <div className="bg-muted/50 border rounded-full px-4 py-1 text-[11px] font-semibold text-muted-foreground">
+                {available != null ? `${available} perfiles disponibles` : "INICIO"}
+              </div>
+            </div>
+
+            {routes.map((route, i) => {
+              const count = countMap[route.id]
+              const hasCount = !!count
+              const sl = slName(route.smartlead_campaign_id)
+              const hr = hrName(route.heyreach_campaign_id)
+              return (
+                <div key={route.id} className="flex flex-col items-center">
+                  {/* Arrow */}
+                  <div className="w-px h-5 bg-border" />
+
+                  {/* Route card */}
+                  <div className={`w-full border rounded-lg p-3 space-y-2 ${hasCount && count.matched > 0 ? "border-primary/30 bg-primary/5" : ""}`}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold">
+                        <span className="text-muted-foreground mr-1.5">RUTA {i + 1}</span>
+                        {route.name ?? ""}
+                      </span>
+                      {loading && !hasCount && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+                      {hasCount && (
+                        <Badge variant={count.matched > 0 ? "default" : "secondary"} className="text-[11px]">
+                          {count.matched} perfiles
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Conditions */}
+                    <div className="text-[11px] text-muted-foreground space-y-0.5">
+                      {route.conditions.length === 0
+                        ? <span className="italic">Sin condiciones (no matchea nada)</span>
+                        : route.conditions.map((group, gi) => (
+                          <div key={gi} className="flex flex-wrap items-center gap-1">
+                            {gi > 0 && <span className="text-primary font-bold text-[10px]">O</span>}
+                            {group.map((cond, ci) => (
+                              <span key={ci} className="flex items-center gap-1">
+                                {ci > 0 && <span className="opacity-40 text-[10px]">Y</span>}
+                                <span className="bg-muted rounded px-1 py-0.5">{formatCondition(cond)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ))
+                      }
+                    </div>
+
+                    {/* Destinations + sub-counts */}
+                    {(sl || hr) && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5 border-t border-dashed">
+                        {sl && (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              SL → {sl}
+                            </Badge>
+                            {hasCount && <span className="text-[10px] text-muted-foreground">{count.withEmail} con email</span>}
+                          </div>
+                        )}
+                        {hr && (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              HR → {hr}
+                            </Badge>
+                            {hasCount && <span className="text-[10px] text-muted-foreground">{count.withLinkedIn} con LinkedIn</span>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Arrow + end node */}
+            <div className="flex flex-col items-center">
+              <div className="w-px h-5 bg-border" />
+              <div className="bg-muted/30 border border-dashed rounded-lg px-4 py-2 text-[11px] text-muted-foreground">
+                Sin ruta → no enviado
+              </div>
+            </div>
+
+            <p className="text-[10px] text-muted-foreground text-center pt-3">
+              Cada ruta se evalúa de forma independiente — un perfil puede matchear más de una.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -514,6 +707,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
   const [runSuccess, setRunSuccess] = useState<string | null>(null)
   const [integrationCampaigns, setIntegrationCampaigns] = useState<{ smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null>(null)
   const [loadingCampaigns, startLoadCampaigns] = useTransition()
+  const [showPreview, setShowPreview] = useState(false)
 
   function addRoute() {
     setRoutes((prev) => [...prev, newRoute(prev.length)])
@@ -611,6 +805,9 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
           />
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setShowPreview(true)} disabled={routes.length === 0} title="Vista previa del flujo">
+            <Eye className="size-3.5 mr-1" /> Vista previa
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleLoadCampaigns} disabled={loadingCampaigns} title="Cargar campañas de Smartlead y HeyReach">
             {loadingCampaigns ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <RotateCcw className="size-3.5 mr-1" />}
             {integrationCampaigns ? `${integrationCampaigns.smartlead.length + integrationCampaigns.heyreach.length} campañas` : "Cargar campañas"}
@@ -688,6 +885,21 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
           onRun={handleRun}
         />
       )}
+
+      <Sheet open={showPreview} onOpenChange={setShowPreview}>
+        <SheetContent className="w-[480px] sm:max-w-[480px] flex flex-col">
+          <SheetHeader className="pb-2">
+            <SheetTitle>Vista previa — {name || "Plantilla"}</SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-hidden">
+            <RouteFlowPreview
+              routes={routes}
+              campaigns={campaigns}
+              integrationCampaigns={integrationCampaigns}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

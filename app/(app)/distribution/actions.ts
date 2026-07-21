@@ -452,6 +452,43 @@ export async function loadIntegrationCampaigns(): Promise<{
   return { smartlead, heyreach }
 }
 
+// ─── Route preview (per-route match counts before running) ───────────────────
+
+export type RoutePreviewResult = {
+  total: number
+  alreadySent: number
+  perRoute: Array<{ routeId: string; matched: number; withEmail: number; withLinkedIn: number }>
+}
+
+export async function previewDistributionRoutes(
+  routes: DistributionRoute[],
+  campaignId: string
+): Promise<RoutePreviewResult> {
+  const { data: prospects } = await supabaseAdmin
+    .from("prospects")
+    .select("id, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, sent_at")
+    .eq("campaign_id", campaignId)
+
+  const all = (prospects ?? []) as ProspectForDistribution[]
+  const available = all.filter((p) => !p.sent_at)
+
+  const perRoute = routes.map((route) => {
+    const matched = available.filter((p) => prospectMatchesRoute(p, route))
+    return {
+      routeId: route.id,
+      matched: matched.length,
+      withEmail: matched.filter((p) => p.email).length,
+      withLinkedIn: matched.filter((p) => p.linkedin_url).length,
+    }
+  })
+
+  return {
+    total: all.length,
+    alreadySent: all.length - available.length,
+    perRoute,
+  }
+}
+
 // ─── Campaigns for select ─────────────────────────────────────────────────────
 
 export async function getCampaignsForDistribution() {
