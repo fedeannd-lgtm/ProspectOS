@@ -9,6 +9,23 @@ type HeyReachLead = {
   email?: string
 }
 
+export async function fetchHeyReachCampaigns(): Promise<{ id: string; name: string }[]> {
+  try {
+    const res = await fetch("https://api.heyreach.io/api/public/campaign/GetAllActiveCampaigns", {
+      headers: { "X-API-KEY": API_KEY },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    const list: unknown[] = Array.isArray(data) ? data : (data?.items ?? data?.campaigns ?? [])
+    return list
+      .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+      .map((c) => ({ id: String(c.id ?? c.campaignId ?? ""), name: String(c.name ?? "") }))
+      .filter((c) => c.id && c.name)
+  } catch {
+    return []
+  }
+}
+
 export async function addLeadsToHeyReach(
   campaignId: string,
   leads: HeyReachLead[]

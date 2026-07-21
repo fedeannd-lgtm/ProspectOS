@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import type { DistributionTemplate, DistributionRoute, Condition, ConditionGroup, DistributionRun, RunResults } from "./actions"
-import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsForTemplate, previewDistribution, getTemplates } from "./actions"
+import type { IntegrationCampaign } from "./actions"
+import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsForTemplate, previewDistribution, getTemplates, loadIntegrationCampaigns } from "./actions"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -137,9 +138,86 @@ function ConditionRow({ cond, onChange, onRemove }: {
   )
 }
 
+// ─── DestinationsSection ──────────────────────────────────────────────────────
+
+function DestinationSelect({ label, options, value, onChange }: {
+  label: string
+  options: IntegrationCampaign[] | null
+  value: string | null
+  onChange: (v: string | null) => void
+}) {
+  const resolvedName = options?.find((c) => c.id === value)?.name
+
+  if (!options) {
+    return (
+      <div className="space-y-0.5">
+        <div className="flex items-center gap-2">
+          <span className="text-xs w-20 text-muted-foreground shrink-0">{label}</span>
+          <Input
+            className="h-7 text-xs font-mono"
+            placeholder="Campaign ID"
+            value={value ?? ""}
+            onChange={(e) => onChange(e.target.value || null)}
+          />
+        </div>
+        {value && <p className="ml-[88px] text-[11px] text-muted-foreground">Cargá las campañas para ver el nombre</p>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-2">
+        <span className="text-xs w-20 text-muted-foreground shrink-0">{label}</span>
+        <Select value={value ?? "__none__"} onValueChange={(v) => onChange(v === "__none__" ? null : v)}>
+          <SelectTrigger className="h-7 text-xs flex-1">
+            <SelectValue placeholder="Seleccioná una campaña..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__" className="text-xs text-muted-foreground">Sin campaña</SelectItem>
+            {options.map((c) => (
+              <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {value && resolvedName && (
+        <p className="ml-[88px] text-[11px] text-muted-foreground font-mono">ID: {value}</p>
+      )}
+      {value && !resolvedName && (
+        <p className="ml-[88px] text-[11px] text-amber-500">ID {value} no aparece en la lista</p>
+      )}
+    </div>
+  )
+}
+
+function DestinationsSection({ route, onChange, integrationCampaigns }: {
+  route: DistributionRoute
+  onChange: (r: DistributionRoute) => void
+  integrationCampaigns: { smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null
+}) {
+  return (
+    <div className="space-y-2 pt-1 border-t">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Destinos</p>
+      <DestinationSelect
+        label="Smartlead"
+        options={integrationCampaigns?.smartlead ?? null}
+        value={route.smartlead_campaign_id}
+        onChange={(v) => onChange({ ...route, smartlead_campaign_id: v })}
+      />
+      <DestinationSelect
+        label="HeyReach"
+        options={integrationCampaigns?.heyreach ?? null}
+        value={route.heyreach_campaign_id}
+        onChange={(v) => onChange({ ...route, heyreach_campaign_id: v })}
+      />
+    </div>
+  )
+}
+
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
-function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClone, onRemove }: {
+function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClone, onRemove, integrationCampaigns }: {
   route: DistributionRoute
   index: number
   total: number
@@ -148,6 +226,7 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClon
   onMoveDown: () => void
   onClone: () => void
   onRemove: () => void
+  integrationCampaigns: { smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null
 }) {
   return (
     <div className="border rounded-lg p-4 space-y-3 bg-muted/20">
@@ -233,27 +312,7 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClon
       </div>
 
       {/* Destinations */}
-      <div className="space-y-2 pt-1 border-t">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Destinos</p>
-        <div className="flex items-center gap-2">
-          <span className="text-xs w-20 text-muted-foreground">Smartlead</span>
-          <Input
-            className="h-7 text-xs font-mono"
-            placeholder="Campaign ID"
-            value={route.smartlead_campaign_id ?? ""}
-            onChange={(e) => onChange({ ...route, smartlead_campaign_id: e.target.value || null })}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs w-20 text-muted-foreground">HeyReach</span>
-          <Input
-            className="h-7 text-xs font-mono"
-            placeholder="Campaign ID"
-            value={route.heyreach_campaign_id ?? ""}
-            onChange={(e) => onChange({ ...route, heyreach_campaign_id: e.target.value || null })}
-          />
-        </div>
-      </div>
+      <DestinationsSection route={route} onChange={onChange} integrationCampaigns={integrationCampaigns} />
     </div>
   )
 }
@@ -423,6 +482,8 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
   const [runs, setRuns] = useState<DistributionRun[]>([])
   const [loadingRuns, startLoadRuns] = useTransition()
   const [runSuccess, setRunSuccess] = useState<string | null>(null)
+  const [integrationCampaigns, setIntegrationCampaigns] = useState<{ smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null>(null)
+  const [loadingCampaigns, startLoadCampaigns] = useTransition()
 
   function addRoute() {
     setRoutes((prev) => [...prev, newRoute(prev.length)])
@@ -459,6 +520,13 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
       const next = [...prev]
       next.splice(index + 1, 0, copy)
       return next
+    })
+  }
+
+  function handleLoadCampaigns() {
+    startLoadCampaigns(async () => {
+      const campaigns = await loadIntegrationCampaigns()
+      setIntegrationCampaigns(campaigns)
     })
   }
 
@@ -513,6 +581,10 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
           />
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={handleLoadCampaigns} disabled={loadingCampaigns} title="Cargar campañas de Smartlead y HeyReach">
+            {loadingCampaigns ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <RotateCcw className="size-3.5 mr-1" />}
+            {integrationCampaigns ? `${integrationCampaigns.smartlead.length + integrationCampaigns.heyreach.length} campañas` : "Cargar campañas"}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleSave} disabled={saving || !name}>
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
             {isNew ? "Crear" : "Guardar"}
@@ -553,6 +625,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
             onMoveDown={() => moveRoute(i, 1)}
             onClone={() => cloneRoute(i)}
             onRemove={() => removeRoute(i)}
+            integrationCampaigns={integrationCampaigns}
           />
         ))}
         <button

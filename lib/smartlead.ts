@@ -10,6 +10,20 @@ type SmartleadLead = {
   custom_fields?: Record<string, string>
 }
 
+export async function fetchSmartleadCampaigns(): Promise<{ id: string; name: string }[]> {
+  try {
+    const res = await fetch(`${BASE}/campaigns?api_key=${API_KEY}&limit=100`)
+    if (!res.ok) return []
+    const data = await res.json()
+    const list: unknown[] = Array.isArray(data) ? data : (data?.data ?? [])
+    return list
+      .filter((c): c is { id: unknown; name: unknown } => !!c && typeof c === "object" && "id" in c && "name" in c)
+      .map((c) => ({ id: String(c.id), name: String(c.name) }))
+  } catch {
+    return []
+  }
+}
+
 export async function addLeadsToSmartlead(
   campaignId: string,
   leads: SmartleadLead[]

@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
-import { addLeadsToSmartlead } from "@/lib/smartlead"
-import { addLeadsToHeyReach } from "@/lib/heyreach"
+import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
+import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -435,6 +435,21 @@ export async function runDistribution(
 
   revalidatePath("/distribution")
   return run.id
+}
+
+// ─── Integration campaign list ────────────────────────────────────────────────
+
+export type IntegrationCampaign = { id: string; name: string }
+
+export async function loadIntegrationCampaigns(): Promise<{
+  smartlead: IntegrationCampaign[]
+  heyreach: IntegrationCampaign[]
+}> {
+  const [smartlead, heyreach] = await Promise.all([
+    fetchSmartleadCampaigns(),
+    fetchHeyReachCampaigns(),
+  ])
+  return { smartlead, heyreach }
 }
 
 // ─── Campaigns for select ─────────────────────────────────────────────────────
