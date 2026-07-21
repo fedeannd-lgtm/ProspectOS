@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download, AlertCircle, ExternalLink, ChevronDown } from "lucide-react"
+import { Loader2, Zap, Tags, CheckCircle2, ChevronsUpDown, Check, AlertTriangle, Search, X, Download, AlertCircle, ExternalLink, ChevronDown, Building2 } from "lucide-react"
 import type { ProviderStatus } from "../settings/provider-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone } from "./actions"
+import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeCompanyNamesForCampaign } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
@@ -244,6 +244,10 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
   const [phoneProgress, setPhoneProgress] = useState({ done: 0, total: 0 })
   const [phoneNotFoundIds, setPhoneNotFoundIds] = useState<Set<string>>(new Set())
 
+  // Normalize company names state
+  const [normalizing, setNormalizing] = useState(false)
+  const [normalizeResult, setNormalizeResult] = useState<number | null>(null)
+
   const selectedCampaign = campaigns.find((c) => c.id === campaignId)
 
   async function loadProspects(id: string) {
@@ -411,6 +415,24 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
     return p && !hasValidEmail(p)
   }).length
 
+  async function handleNormalizeCompanyNames() {
+    if (!campaignId) return
+    setNormalizing(true)
+    setNormalizeResult(null)
+    try {
+      const count = await normalizeCompanyNamesForCampaign(campaignId)
+      setNormalizeResult(count)
+      if (count > 0) {
+        const data = await getProspectsForEnrichment(campaignId)
+        setProspects(data as Prospect[])
+      }
+    } catch {
+      setError("Error al normalizar nombres")
+    } finally {
+      setNormalizing(false)
+    }
+  }
+
   const problemProviders = providerStatus.filter((p) => p.status === "out" || p.status === "error")
 
   return (
@@ -561,6 +583,28 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
                 </div>
               )}
               <p className="text-[11px] text-muted-foreground">Seleccioná prospectos antes de enriquecer teléfonos.</p>
+            </CardContent>
+          </Card>
+
+          {/* Normalize company names */}
+          <Card>
+            <CardContent className="pt-4 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleNormalizeCompanyNames}
+                disabled={!campaignId || loadingProspects || normalizing || enriching || classifying}
+              >
+                {normalizing
+                  ? <><Loader2 className="mr-2 size-4 animate-spin" />Normalizando…</>
+                  : <><Building2 className="mr-2 size-4" />Normalizar nombres</>}
+              </Button>
+              {normalizeResult !== null && (
+                <p className="text-[11px] text-green-700">
+                  {normalizeResult === 0 ? "Sin cambios necesarios." : `${normalizeResult} nombre${normalizeResult !== 1 ? "s" : ""} actualizados.`}
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground">Quita S.A., SAC, SRL, Argentina, etc. del nombre de empresa.</p>
             </CardContent>
           </Card>
 

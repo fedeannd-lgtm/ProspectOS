@@ -33,7 +33,7 @@ export function extractDomain(raw: string): string {
   }
 }
 
-function normalizeCompanyName(name: string): string {
+export function normalizeCompanyName(name: string): string {
   let s = name
     .toLowerCase()
     .replace(/\./g, " ") // dots → spaces so "S.A." becomes "s a"

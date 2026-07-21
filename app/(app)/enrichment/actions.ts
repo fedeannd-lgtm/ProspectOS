@@ -7,6 +7,7 @@ import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
 import { findPhoneDatagma } from "@/lib/datagma"
 import { findPhoneProspeo } from "@/lib/prospeo"
+import { normalizeCompanyName } from "@/lib/process-search-results"
 
 export async function getCampaigns() {
   const { data, error } = await supabase
@@ -191,4 +192,26 @@ export async function setProspectWhatsappPhone(prospectId: string, phone: string
   const trimmed = phone.trim()
   await supabaseAdmin.from("prospects").update({ phone_wa: trimmed || null }).eq("id", prospectId)
   revalidatePath("/enrichment")
+}
+
+export async function normalizeCompanyNamesForCampaign(campaignId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("id, company_name")
+    .eq("campaign_id", campaignId)
+    .not("company_name", "is", null)
+  if (error) throw new Error(error.message)
+  if (!data?.length) return 0
+
+  let updated = 0
+  for (const p of data) {
+    const normalized = normalizeCompanyName(p.company_name ?? "")
+    if (normalized && normalized !== p.company_name) {
+      await supabaseAdmin.from("prospects").update({ company_name: normalized }).eq("id", p.id)
+      updated++
+    }
+  }
+
+  revalidatePath("/enrichment")
+  return updated
 }
