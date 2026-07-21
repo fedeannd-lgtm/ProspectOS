@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import type { DistributionTemplate, DistributionRoute, Condition, DistributionRun, RunResults } from "./actions"
+import type { DistributionTemplate, DistributionRoute, Condition, ConditionGroup, DistributionRun, RunResults } from "./actions"
 import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsForTemplate, previewDistribution, getTemplates } from "./actions"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -60,12 +60,12 @@ const VALUES_FOR_FIELD: Record<string, { value: string; label: string }[] | null
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function newRoute(priority: number): DistributionRoute {
-  return { id: crypto.randomUUID(), name: null, priority, conditions: [], smartlead_campaign_id: null, heyreach_campaign_id: null }
-}
-
 function newCondition(): Condition {
   return { field: "has_email", operator: "eq", value: "true" }
+}
+
+function newRoute(priority: number): DistributionRoute {
+  return { id: crypto.randomUUID(), name: null, priority, conditions: [[newCondition()]], smartlead_campaign_id: null, heyreach_campaign_id: null }
 }
 
 // ─── ConditionRow ─────────────────────────────────────────────────────────────
@@ -173,26 +173,58 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onRemo
         </div>
       </div>
 
-      {/* Conditions */}
+      {/* Conditions — AND within group, OR between groups */}
       <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Condiciones (AND)</p>
-        {route.conditions.map((cond, ci) => (
-          <ConditionRow
-            key={ci}
-            cond={cond}
-            onChange={(c) => {
-              const conditions = [...route.conditions]
-              conditions[ci] = c
-              onChange({ ...route, conditions })
-            }}
-            onRemove={() => onChange({ ...route, conditions: route.conditions.filter((_, i) => i !== ci) })}
-          />
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Condiciones</p>
+
+        {route.conditions.map((group, gi) => (
+          <div key={gi}>
+            {gi > 0 && (
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
+                <span className="text-[10px] font-bold text-muted-foreground px-1">O</span>
+                <div className="flex-1 border-t border-dashed border-muted-foreground/30" />
+              </div>
+            )}
+            <div className="space-y-1.5 pl-2 border-l-2 border-muted">
+              {group.map((cond, ci) => (
+                <ConditionRow
+                  key={ci}
+                  cond={cond}
+                  onChange={(c) => {
+                    const conditions: ConditionGroup[] = route.conditions.map((g, i) =>
+                      i === gi ? g.map((x, j) => (j === ci ? c : x)) : g
+                    )
+                    onChange({ ...route, conditions })
+                  }}
+                  onRemove={() => {
+                    const conditions: ConditionGroup[] = route.conditions
+                      .map((g, i) => (i === gi ? g.filter((_, j) => j !== ci) : g))
+                      .filter((g) => g.length > 0)
+                    onChange({ ...route, conditions })
+                  }}
+                />
+              ))}
+              <button
+                onClick={() => {
+                  const conditions: ConditionGroup[] = route.conditions.map((g, i) =>
+                    i === gi ? [...g, newCondition()] : g
+                  )
+                  onChange({ ...route, conditions })
+                }}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <Plus className="size-3" /> Agregar condición
+              </button>
+            </div>
+          </div>
         ))}
+
         <button
-          onClick={() => onChange({ ...route, conditions: [...route.conditions, newCondition()] })}
-          className="text-xs text-primary hover:underline flex items-center gap-1"
+          onClick={() => onChange({ ...route, conditions: [...route.conditions, [newCondition()]] })}
+          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-1"
         >
-          <Plus className="size-3" /> Agregar condición
+          <Plus className="size-3" /> Agregar grupo OR
         </button>
       </div>
 

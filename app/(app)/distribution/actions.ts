@@ -13,11 +13,14 @@ export type Condition = {
   value: string
 }
 
+// Conditions within a group are AND; groups themselves are OR-ed together
+export type ConditionGroup = Condition[]
+
 export type DistributionRoute = {
   id: string
   name: string | null
   priority: number
-  conditions: Condition[]
+  conditions: ConditionGroup[]
   smartlead_campaign_id: string | null
   heyreach_campaign_id: string | null
 }
@@ -76,7 +79,7 @@ export async function getTemplates(): Promise<DistributionTemplate[]> {
     ...t,
     routes: (routes ?? [])
       .filter((r) => r.template_id === t.id)
-      .map((r) => ({ ...r, conditions: r.conditions ?? [] })),
+      .map((r) => ({ ...r, conditions: normalizeConditions(r.conditions) })),
   }))
 }
 
@@ -185,6 +188,16 @@ export async function getRunsForTemplate(templateId: string): Promise<Distributi
   }))
 }
 
+// ─── Backward compat: old routes stored conditions as Condition[] (flat AND).
+//     New format is ConditionGroup[] (array of arrays). Detect and wrap.
+function normalizeConditions(raw: unknown): ConditionGroup[] {
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  if (raw[0] && typeof raw[0] === "object" && !Array.isArray(raw[0]) && "field" in raw[0]) {
+    return [raw as Condition[]]
+  }
+  return raw as ConditionGroup[]
+}
+
 // ─── Condition evaluator ──────────────────────────────────────────────────────
 
 type ProspectForDistribution = {
@@ -246,7 +259,10 @@ function evaluateCondition(prospect: ProspectForDistribution, cond: Condition): 
 
 function prospectMatchesRoute(prospect: ProspectForDistribution, route: DistributionRoute): boolean {
   if (!route.conditions.length) return false
-  return route.conditions.every((c) => evaluateCondition(prospect, c))
+  // OR between groups, AND within each group
+  return route.conditions.some(
+    (group) => group.length > 0 && group.every((c) => evaluateCondition(prospect, c))
+  )
 }
 
 // ─── Preview (count before running) ──────────────────────────────────────────
@@ -289,7 +305,7 @@ export async function runDistribution(
     .select("*")
     .eq("template_id", templateId)
     .order("priority", { ascending: true })
-  const routes: DistributionRoute[] = (routeRows ?? []).map((r) => ({ ...r, conditions: r.conditions ?? [] }))
+  const routes: DistributionRoute[] = (routeRows ?? []).map((r) => ({ ...r, conditions: normalizeConditions(r.conditions) }))
 
   // Create run record
   const { data: run, error: runErr } = await supabaseAdmin
