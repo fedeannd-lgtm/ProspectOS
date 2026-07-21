@@ -20,6 +20,7 @@ import { saveTemplate, cloneTemplate, deleteTemplate, runDistribution, getRunsFo
 const FIELD_LABELS: Record<string, string> = {
   has_email: "Tiene email", email_status: "Estado email", icp_score: "ICP Score",
   os_score: "OS Score", icp_category: "Categoría", is_premium: "Premium", connection_degree: "Grado",
+  started_role_months: "Mes inicio",
 }
 const OP_LABELS: Record<string, string> = { eq: "=", neq: "≠", gte: "≥", lte: "≤" }
 const VALUE_LABELS: Record<string, Record<string, string>> = {
@@ -217,6 +218,7 @@ const CONDITION_FIELDS = [
   { value: "icp_category", label: "Categoría ICP" },
   { value: "is_premium", label: "Premium LinkedIn" },
   { value: "connection_degree", label: "Grado conexión" },
+  { value: "started_role_months", label: "Mes de inicio (meses)" },
 ]
 
 const OPERATORS_FOR_FIELD: Record<string, { value: string; label: string }[]> = {
@@ -227,6 +229,7 @@ const OPERATORS_FOR_FIELD: Record<string, { value: string; label: string }[]> = 
   icp_category: [{ value: "eq", label: "=" }],
   is_premium: [{ value: "eq", label: "=" }],
   connection_degree: [{ value: "eq", label: "=" }],
+  started_role_months: [{ value: "gte", label: ">=" }, { value: "lte", label: "<=" }, { value: "eq", label: "=" }],
 }
 
 const VALUES_FOR_FIELD: Record<string, { value: string; label: string }[] | null> = {
@@ -252,6 +255,7 @@ const VALUES_FOR_FIELD: Record<string, { value: string; label: string }[] | null
     { value: "SECOND", label: "2do grado" },
     { value: "THIRD", label: "3er grado" },
   ],
+  started_role_months: null,
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

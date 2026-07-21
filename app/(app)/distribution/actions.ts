@@ -214,6 +214,7 @@ type ProspectForDistribution = {
   connection_degree: string
   linkedin_url: string
   company_name: string
+  started_role_months: number | null
   sent_at: string | null
 }
 
@@ -253,6 +254,13 @@ function evaluateCondition(prospect: ProspectForDistribution, cond: Condition): 
   }
   if (field === "connection_degree") {
     return prospect.connection_degree === value
+  }
+  if (field === "started_role_months") {
+    if (prospect.started_role_months == null) return false
+    const v = parseInt(value, 10)
+    if (operator === "gte") return prospect.started_role_months >= v
+    if (operator === "lte") return prospect.started_role_months <= v
+    if (operator === "eq") return prospect.started_role_months === v
   }
   return false
 }
@@ -325,7 +333,7 @@ export async function runDistribution(
     // Fetch prospects
     let query = supabaseAdmin
       .from("prospects")
-      .select("id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, sent_at")
+      .select("id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, started_role_months, sent_at")
       .eq("campaign_id", sourceCampaignId)
 
     if (!includePreviouslySent) {
@@ -466,7 +474,7 @@ export async function previewDistributionRoutes(
 ): Promise<RoutePreviewResult> {
   const { data: prospects } = await supabaseAdmin
     .from("prospects")
-    .select("id, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, sent_at")
+    .select("id, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, started_role_months, sent_at")
     .eq("campaign_id", campaignId)
 
   const all = (prospects ?? []) as ProspectForDistribution[]
