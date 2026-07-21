@@ -34,9 +34,47 @@ export function extractDomain(raw: string): string {
 }
 
 function normalizeCompanyName(name: string): string {
-  return name
+  let s = name
     .toLowerCase()
-    .replace(/\b(s\.?a\.?c?\.?i?\.?f?\.?e?\.?\s?i?\.?|s\.?r\.?l\.?|ltd\.?|inc\.?|corp\.?|s\.?a\.?s\.?|b\.?v\.?)\b/gi, "")
+    .replace(/\./g, " ") // dots → spaces so "S.A." becomes "s a"
+    .replace(/\s+/g, " ")
+    .trim()
+
+  // Legal entity suffixes — compound forms first (longer match wins)
+  const legal = [
+    /\bs\s*a\s*a\s*i\b/g,        // S.A.A.I.
+    /\bs\s*a\s*s\b/g,             // S.A.S., SAS
+    /\br\s*l\s+de\s+c\s*v\b/g,   // R.L. de CV
+    /\bs\s*a\s+de\s+c\s*v\b/g,   // S.A. de C.V.
+    /\bsa\s+de\s+cv\b/g,          // SA De CV
+    /\bde\s+c\s*v\b/g,            // de C.V.
+    /\bs\s*a\s*c\b/g,             // SAC, S.A.C., Sac
+    /\bs\s*r\s*l\b/g,             // SRL, S.R.L.
+    /\bs\s*a\b/g,                  // SA, S.A., S A
+    /\bltda?\b/g,                  // Ltda, Ltd
+    /\bcia\b/g,                    // Cia.
+    /\binc\b/g,                    // Inc.
+    /\bcorp\b/g,                   // Corp.
+    /\bb\s*v\b/g,                  // B.V., BV
+    /\bllc\b/g,                    // LLC
+  ]
+  for (const p of legal) s = s.replace(p, " ")
+
+  // Country names (longer phrases first)
+  const geo = [
+    /\bde\s+m[eé]xico\b/g,
+    /\bm[eé]xico\b/g,
+    /\bde\s+chile\b/g,
+    /\bargentina\b/g,
+    /\bparaguay\b/g,
+    /\buruguay\b/g,
+    /\bchile\b/g,
+    /\bcolombia\b/g,
+    /\becuador\b/g,
+  ]
+  for (const p of geo) s = s.replace(p, " ")
+
+  return s
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim()
