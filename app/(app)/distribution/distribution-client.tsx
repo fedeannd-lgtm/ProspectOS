@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import type { DistributionTemplate, DistributionRoute, Condition, ConditionGroup, DistributionRun, RunResults } from "./actions"
@@ -146,47 +148,75 @@ function DestinationSelect({ label, options, value, onChange }: {
   value: string | null
   onChange: (v: string | null) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
   const resolvedName = options?.find((c) => c.id === value)?.name
 
   if (!options) {
     return (
-      <div className="space-y-0.5">
-        <div className="flex items-center gap-2">
-          <span className="text-xs w-20 text-muted-foreground shrink-0">{label}</span>
-          <Input
-            className="h-7 text-xs font-mono"
-            placeholder="Campaign ID"
-            value={value ?? ""}
-            onChange={(e) => onChange(e.target.value || null)}
-          />
-        </div>
-        {value && <p className="ml-[88px] text-[11px] text-muted-foreground">Cargá las campañas para ver el nombre</p>}
+      <div className="flex items-center gap-2">
+        <span className="text-xs w-20 text-muted-foreground shrink-0">{label}</span>
+        <Input
+          className="h-7 text-xs font-mono"
+          placeholder="Campaign ID — cargá campañas para buscar por nombre"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value || null)}
+        />
       </div>
     )
   }
 
   return (
-    <div className="space-y-0.5">
-      <div className="flex items-center gap-2">
-        <span className="text-xs w-20 text-muted-foreground shrink-0">{label}</span>
-        <Select value={value ?? "__none__"} onValueChange={(v) => onChange(v === "__none__" ? null : v)}>
-          <SelectTrigger className="h-7 text-xs flex-1">
-            <SelectValue placeholder="Seleccioná una campaña..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__" className="text-xs text-muted-foreground">Sin campaña</SelectItem>
-            {options.map((c) => (
-              <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {value && resolvedName && (
-        <p className="ml-[88px] text-[11px] text-muted-foreground font-mono">ID: {value}</p>
-      )}
-      {value && !resolvedName && (
-        <p className="ml-[88px] text-[11px] text-amber-500">ID {value} no aparece en la lista</p>
-      )}
+    <div className="flex items-center gap-2">
+      <span className="text-xs w-20 text-muted-foreground shrink-0">{label}</span>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger className="h-7 text-xs flex-1 flex items-center justify-between rounded-md border border-input bg-background px-2 hover:bg-accent hover:text-accent-foreground truncate">
+          {resolvedName
+            ? <span className="truncate">{resolvedName}</span>
+            : value
+              ? <span className="font-mono text-amber-500 truncate">ID: {value} (no encontrado)</span>
+              : <span className="text-muted-foreground">Seleccioná una campaña...</span>
+          }
+        </PopoverTrigger>
+        <PopoverContent className="p-0 w-72" align="start">
+          <Command filter={(value, search) => value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0}>
+            <CommandInput placeholder="Buscar campaña o pegá un ID..." className="h-8 text-xs" value={query} onValueChange={setQuery} />
+            <CommandList>
+              <CommandEmpty>
+                {query.trim()
+                  ? <button
+                      className="w-full text-xs py-2 px-3 text-left hover:bg-accent"
+                      onMouseDown={(e) => { e.preventDefault(); onChange(query.trim()); setQuery(""); setOpen(false) }}
+                    >
+                      Usar ID: <span className="font-mono">{query.trim()}</span>
+                    </button>
+                  : <p className="text-xs py-3 text-center text-muted-foreground">Sin resultados</p>
+                }
+              </CommandEmpty>
+              {value && (
+                <CommandItem
+                  value="__clear__"
+                  onSelect={() => { onChange(null); setOpen(false) }}
+                  className="text-xs text-muted-foreground"
+                >
+                  — Sin campaña
+                </CommandItem>
+              )}
+              {options.map((c) => (
+                <CommandItem
+                  key={c.id}
+                  value={c.name}
+                  onSelect={() => { onChange(c.id); setOpen(false) }}
+                  className="text-xs"
+                >
+                  <span className="truncate flex-1">{c.name}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono ml-2 shrink-0">{c.id}</span>
+                </CommandItem>
+              ))}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }

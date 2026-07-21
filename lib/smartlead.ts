@@ -12,7 +12,7 @@ type SmartleadLead = {
 
 export async function fetchSmartleadCampaigns(): Promise<{ id: string; name: string }[]> {
   try {
-    const res = await fetch(`${BASE}/campaigns?api_key=${API_KEY}&limit=100`)
+    const res = await fetch(`${BASE}/campaigns/?api_key=${API_KEY}`)
     if (!res.ok) return []
     const data = await res.json()
     const list: unknown[] = Array.isArray(data) ? data : (data?.data ?? [])

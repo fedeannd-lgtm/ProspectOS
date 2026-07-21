@@ -11,15 +11,21 @@ type HeyReachLead = {
 
 export async function fetchHeyReachCampaigns(): Promise<{ id: string; name: string }[]> {
   try {
-    const res = await fetch("https://api.heyreach.io/api/public/campaign/GetAllActiveCampaigns", {
-      headers: { "X-API-KEY": API_KEY },
+    const res = await fetch("https://api.heyreach.io/api/public/campaign/GetAll", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "text/plain",
+      },
+      body: JSON.stringify({ offset: 0, limit: 100 }),
     })
     if (!res.ok) return []
     const data = await res.json()
-    const list: unknown[] = Array.isArray(data) ? data : (data?.items ?? data?.campaigns ?? [])
+    const list: unknown[] = data?.items ?? []
     return list
       .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
-      .map((c) => ({ id: String(c.id ?? c.campaignId ?? ""), name: String(c.name ?? "") }))
+      .map((c) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }))
       .filter((c) => c.id && c.name)
   } catch {
     return []
