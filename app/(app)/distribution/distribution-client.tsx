@@ -139,13 +139,14 @@ function ConditionRow({ cond, onChange, onRemove }: {
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
-function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onRemove }: {
+function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClone, onRemove }: {
   route: DistributionRoute
   index: number
   total: number
   onChange: (r: DistributionRoute) => void
   onMoveUp: () => void
   onMoveDown: () => void
+  onClone: () => void
   onRemove: () => void
 }) {
   return (
@@ -167,7 +168,10 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onRemo
           <button onClick={onMoveDown} disabled={index === total - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
             <ChevronDown className="size-4" />
           </button>
-          <button onClick={onRemove} className="text-muted-foreground hover:text-destructive ml-1">
+          <button onClick={onClone} className="text-muted-foreground hover:text-primary ml-1" title="Clonar ruta">
+            <Copy className="size-3.5" />
+          </button>
+          <button onClick={onRemove} className="text-muted-foreground hover:text-destructive">
             <X className="size-4" />
           </button>
         </div>
@@ -442,6 +446,22 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
     setRoutes((prev) => prev.filter((_, i) => i !== index))
   }
 
+  function cloneRoute(index: number) {
+    setRoutes((prev) => {
+      const src = prev[index]
+      const srcName = src.name ?? `Ruta ${index + 1}`
+      const copy: DistributionRoute = {
+        ...src,
+        id: crypto.randomUUID(),
+        name: `Copy ${srcName}`,
+        conditions: src.conditions.map((g) => [...g]),
+      }
+      const next = [...prev]
+      next.splice(index + 1, 0, copy)
+      return next
+    })
+  }
+
   function handleSave() {
     startSave(async () => {
       const id = await saveTemplate({ id: template?.id, name, industry: industry || null, notes: null, routes })
@@ -531,6 +551,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
             onChange={(r) => updateRoute(i, r)}
             onMoveUp={() => moveRoute(i, -1)}
             onMoveDown={() => moveRoute(i, 1)}
+            onClone={() => cloneRoute(i)}
             onRemove={() => removeRoute(i)}
           />
         ))}
