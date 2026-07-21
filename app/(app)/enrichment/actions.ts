@@ -46,8 +46,8 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 
   const osScore = calculateOsScore(p.job_title)
 
-  // Skip if already has a valid email
-  if (p.email && (p.email_status === "valid" || p.email_status === "catch-all")) {
+  // Skip if already has a valid email (unknown = ZB couldn't verify, but we trust the source)
+  if (p.email && (p.email_status === "valid" || p.email_status === "catch-all" || p.email_status === "unknown")) {
     const { category, score } = classifyIcp(p.job_title ?? "")
     await supabaseAdmin.from("prospects").update({ os_score: osScore }).eq("id", prospectId)
     return { email: p.email, provider: null, zbStatus: p.email_status, icpCategory: category, icpScore: score, osScore, apolloId: null }

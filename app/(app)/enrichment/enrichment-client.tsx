@@ -79,7 +79,7 @@ function getOsScore(p: Prospect): number {
 }
 
 function hasValidEmail(p: Prospect) {
-  return !!(p.email && (p.email_status === "valid" || p.email_status === "catch-all"))
+  return !!(p.email && (p.email_status === "valid" || p.email_status === "catch-all" || p.email_status === "unknown"))
 }
 
 function isClassified(p: Prospect) {
