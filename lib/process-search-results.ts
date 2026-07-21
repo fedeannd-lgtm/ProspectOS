@@ -78,6 +78,7 @@ export function normalizeCompanyName(name: string): string {
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 const STOPWORDS = new Set(["del", "los", "las", "una", "uno", "con", "por", "que", "son", "sus", "and", "the", "for"])
