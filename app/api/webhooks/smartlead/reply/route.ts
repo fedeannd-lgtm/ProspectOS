@@ -3,8 +3,9 @@ import { after } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
 import { analyzeReply } from "@/lib/ai-reply"
 
+type SLMessage = { message_id?: string; html?: string; text?: string; time?: string }
+
 export async function POST(req: NextRequest) {
-  // Verify webhook secret
   const secret = req.nextUrl.searchParams.get("secret")
   if (process.env.WEBHOOK_SECRET && secret !== process.env.WEBHOOK_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -17,26 +18,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  // Smartlead sends different event types — only handle replies
-  const eventType = String(body.event_type ?? body.type ?? "")
-  if (eventType && eventType !== "EMAIL_REPLY" && eventType !== "REPLY") {
+  const eventType = String(body.event_type ?? "")
+  if (eventType && eventType !== "EMAIL_REPLY") {
     return NextResponse.json({ ok: true, skipped: true })
   }
 
-  const leadEmail = String(body.lead_email ?? body.email ?? "")
-  const leadId = String(body.lead_id ?? "")
+  const replyMsg = body.reply_message as SLMessage | undefined
+  const sentMsg = body.sent_message as SLMessage | undefined
+
+  // Prefer new fields, fall back to deprecated ones
+  const replyBody = replyMsg?.text || replyMsg?.html || String(body.reply_body ?? body.preview_text ?? "")
+  const replyMessageId = replyMsg?.message_id || String(body.message_id ?? "")
+  const repliedAt = replyMsg?.time || String(body.event_timestamp ?? body.time_replied ?? new Date().toISOString())
+  const leadEmail = String(body.sl_lead_email ?? "")
+  const leadId = String(body.sl_email_lead_id ?? "")
   const campaignId = String(body.campaign_id ?? "")
-  const replyBody = String(body.email_body ?? body.body ?? body.reply_text ?? "")
-  const replyMessageId = String(body.reply_message_id ?? body.message_id ?? "")
-  const repliedAt = String(body.created_at ?? body.timestamp ?? new Date().toISOString())
-  const subject = String(body.subject ?? body.email_subject ?? "")
-  const senderName = String(body.first_name ?? body.sender_name ?? "") + (body.last_name ? ` ${body.last_name}` : "")
+  const subject = String(body.subject ?? "")
+  const senderName = String(body.to_name ?? "")
+
+  // Build thread history from sent message for AI context
+  const threadHistory = sentMsg
+    ? [{ type: "SENT", body: sentMsg.text || sentMsg.html || "", time: sentMsg.time }]
+    : null
 
   if (!replyBody) {
     return NextResponse.json({ error: "Missing reply body" }, { status: 400 })
   }
 
-  // Find matching prospect by email
   let prospectId: string | null = null
   let dbCampaignId: string | null = null
   if (leadEmail) {
@@ -63,7 +71,8 @@ export async function POST(req: NextRequest) {
       replied_at: repliedAt,
       subject: subject || null,
       body: replyBody,
-      sender_name: senderName.trim() || null,
+      thread_history: threadHistory,
+      sender_name: senderName || null,
       sender_email: leadEmail || null,
       status: "pending_review",
     })
@@ -74,7 +83,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Trigger AI analysis after response is sent
   after(async () => {
     await analyzeReply(inserted.id)
   })
