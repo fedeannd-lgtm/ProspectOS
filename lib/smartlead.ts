@@ -24,6 +24,34 @@ export async function fetchSmartleadCampaigns(): Promise<{ id: string; name: str
   }
 }
 
+export async function sendSmartleadReply(params: {
+  campaignId: string
+  leadId: string
+  emailBody: string
+  replyMessageId: string
+  replyEmailTime: string
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BASE}/campaigns/${params.campaignId}/reply-email-thread?api_key=${API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lead_id: parseInt(params.leadId, 10),
+        email_body: params.emailBody,
+        reply_message_id: params.replyMessageId,
+        reply_email_time: params.replyEmailTime,
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 200)}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" }
+  }
+}
+
 export async function addLeadsToSmartlead(
   campaignId: string,
   leads: SmartleadLead[]

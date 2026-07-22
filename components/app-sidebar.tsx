@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Building2, Users, UserCheck, Briefcase, Sparkles, Send, Settings } from "lucide-react"
+import { LayoutDashboard, Building2, Users, UserCheck, Briefcase, Sparkles, Send, Settings, Inbox } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -23,10 +23,11 @@ const navItems = [
   { href: "/prospects", label: "Prospectos", icon: UserCheck },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
   { href: "/distribution", label: "Distribution", icon: Send },
+  { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 
-export function AppSidebar() {
+export function AppSidebar({ inboxCount = 0 }: { inboxCount?: number }) {
   const pathname = usePathname()
 
   return (
@@ -47,6 +48,11 @@ export function AppSidebar() {
                   >
                     <item.icon className="size-4" />
                     <span>{item.label}</span>
+                    {item.href === "/inbox" && inboxCount > 0 && (
+                      <span className="ml-auto inline-flex items-center rounded-full bg-primary px-1.5 py-0 text-[10px] font-medium text-primary-foreground">
+                        {inboxCount}
+                      </span>
+                    )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { upsertRepCookie, createSavedUrl, deleteSavedUrl, type SavedUrl } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
+import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
 const URL_TYPE_LABELS: Record<string, string> = {
   company_search: "Company Search",
   people_search: "People Search",
@@ -439,11 +440,73 @@ function ProviderRow({ p }: { p: ProviderStatus }) {
   )
 }
 
-export function SettingsClient({ configs, savedUrls, providerStatus: initialProviderStatus, providerUsage }: {
+function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
+  const [productContext, setProductContext] = useState(initialConfig.product_context ?? "")
+  const [calendlyLink, setCalendlyLink] = useState(initialConfig.calendly_link ?? "")
+  const [isPending, startTransition] = useTransition()
+  const [saved, setSaved] = useState(false)
+
+  function handleSave() {
+    startTransition(async () => {
+      await saveInboxConfig({ product_context: productContext || null, calendly_link: calendlyLink || null })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Inbox IA</CardTitle>
+        <CardDescription>
+          Contexto del producto y link de Calendly que usa la IA para generar borradores de respuesta.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Link de Calendly</label>
+          <Input
+            value={calendlyLink}
+            onChange={(e) => setCalendlyLink(e.target.value)}
+            placeholder="https://calendly.com/tu-link"
+            className="text-sm"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contexto del producto (Lara)</label>
+          <textarea
+            value={productContext}
+            onChange={(e) => setProductContext(e.target.value)}
+            rows={10}
+            placeholder="Describí las features de Lara, casos de uso por industria, y los pain points que resuelve. La IA usará este texto para generar respuestas personalizadas."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+          />
+          <p className="text-xs text-muted-foreground">
+            Incluí features por industria, objeciones comunes y cómo responderlas, y el tono de voz del equipo.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={handleSave} disabled={isPending}>
+            {isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+            Guardar
+          </Button>
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs text-green-700">
+              <CheckCircle2 className="size-3" /> Guardado
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function SettingsClient({ configs, savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig }: {
   configs: RepConfig[]
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
   providerUsage: ProviderUsage[]
+  inboxConfig: InboxConfig
 }) {
   const [providerStatus, setProviderStatus] = useState<ProviderStatus[]>(initialProviderStatus)
   const [refreshing, startRefresh] = useTransition()
@@ -530,6 +593,8 @@ export function SettingsClient({ configs, savedUrls, providerStatus: initialProv
       </Card>
 
       <SavedUrlsCard initialUrls={savedUrls} />
+
+      <InboxSettingsCard initialConfig={inboxConfig} />
     </div>
   )
 }
