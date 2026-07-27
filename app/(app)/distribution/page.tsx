@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { getTemplates, getCampaignsForDistribution } from "./actions"
 import { DistributionClient } from "./distribution-client"
 
