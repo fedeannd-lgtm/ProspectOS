@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useTransition, useMemo, useEffect } from "react"
+import { useState, useTransition, useMemo, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { REPS as BASE_REPS, INDUSTRIES } from "@/lib/reps"
 const REPS = ["Todos", ...BASE_REPS]
 const REP_OPTIONS = BASE_REPS
-import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3 } from "lucide-react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, Search, ArrowRight } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -616,16 +617,20 @@ function ChartsView({ campaigns, icpStats, icpCategoryStats }: { campaigns: Camp
 }
 
 export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[] }) {
+  const router = useRouter()
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
   const [view, setView] = useState<"week" | "list" | "charts">("week")
   const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))
   const [weekStats, setWeekStats] = useState<{ validEmails: number; scoreGte5: number; sent: number } | null>(null)
   const [, startWeekStats] = useTransition()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<"new" | "existing">("new")
+  const [searchQuery, setSearchQuery] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormData>(emptyForm())
   const [calOpen, setCalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const weekCampaigns = useMemo(() => {
     const weekKey = getISOWeekInfo(new Date(selectedWeek + "T12:00:00")).key
@@ -656,6 +661,8 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
   function openCreate() {
     setEditingId(null)
     setForm(emptyForm())
+    setDialogMode("new")
+    setSearchQuery("")
     setDialogOpen(true)
   }
 
@@ -828,65 +835,131 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Editar campaña" : "Nueva campaña"}</DialogTitle>
+            <DialogTitle>{editingId ? "Editar campaña" : "Campaña"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Fecha</label>
-              <Popover open={calOpen} onOpenChange={setCalOpen}>
-                <PopoverTrigger className="flex h-9 w-full items-center justify-start rounded-md border border-input bg-background px-3 text-sm font-normal hover:bg-accent hover:text-accent-foreground">
-                  <CalendarIcon className="mr-2 size-4 text-muted-foreground" />
-                  {form.week_label || "Seleccionar fecha"}
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={form.week_label ? new Date(form.week_label + "T12:00:00") : undefined}
-                    onSelect={(d) => {
-                      if (d) {
-                        const monday = new Date(d)
-                        monday.setDate(d.getDate() - (d.getDay() || 7) + 1)
-                        setForm((f) => ({ ...f, week_label: formatDate(monday) }))
-                        setCalOpen(false)
-                      }
-                    }}
+
+          {/* Mode toggle — only when creating (not editing) */}
+          {!editingId && (
+            <div className="flex rounded-md border p-0.5 bg-muted/40 gap-0.5">
+              <button
+                onClick={() => setDialogMode("new")}
+                className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors ${dialogMode === "new" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Nueva
+              </button>
+              <button
+                onClick={() => { setDialogMode("existing"); setTimeout(() => searchRef.current?.focus(), 50) }}
+                className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors ${dialogMode === "existing" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Existente
+              </button>
+            </div>
+          )}
+
+          {/* Existing campaign picker */}
+          {!editingId && dialogMode === "existing" && (
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                <Input
+                  ref={searchRef}
+                  className="pl-8 text-sm"
+                  placeholder="Buscar por rep, industria, fecha…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="max-h-72 overflow-y-auto space-y-1 pr-0.5">
+                {campaigns
+                  .filter((c) => {
+                    const q = searchQuery.toLowerCase()
+                    return !q || c.rep_name.toLowerCase().includes(q) || c.industry.toLowerCase().includes(q) || c.week_label.includes(q)
+                  })
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => { setDialogOpen(false); router.push(`/campaigns/${c.id}`) }}
+                      className="w-full flex items-center justify-between rounded-md border px-3 py-2.5 text-left hover:bg-muted/50 transition-colors group"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{c.rep_name} · {c.industry}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{c.week_label}</p>
+                      </div>
+                      <ArrowRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  ))}
+                {campaigns.filter((c) => {
+                  const q = searchQuery.toLowerCase()
+                  return !q || c.rep_name.toLowerCase().includes(q) || c.industry.toLowerCase().includes(q) || c.week_label.includes(q)
+                }).length === 0 && (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Sin resultados</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* New / edit form */}
+          {(editingId || dialogMode === "new") && (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Fecha</label>
+                  <Popover open={calOpen} onOpenChange={setCalOpen}>
+                    <PopoverTrigger className="flex h-9 w-full items-center justify-start rounded-md border border-input bg-background px-3 text-sm font-normal hover:bg-accent hover:text-accent-foreground">
+                      <CalendarIcon className="mr-2 size-4 text-muted-foreground" />
+                      {form.week_label || "Seleccionar fecha"}
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={form.week_label ? new Date(form.week_label + "T12:00:00") : undefined}
+                        onSelect={(d) => {
+                          if (d) {
+                            const monday = new Date(d)
+                            monday.setDate(d.getDate() - (d.getDay() || 7) + 1)
+                            setForm((f) => ({ ...f, week_label: formatDate(monday) }))
+                            setCalOpen(false)
+                          }
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Rep</label>
+                  <Select value={form.rep_name} onValueChange={(v) => setForm((f) => ({ ...f, rep_name: v ?? "" }))}>
+                    <SelectTrigger><SelectValue placeholder="Seleccionar rep" /></SelectTrigger>
+                    <SelectContent>
+                      {REP_OPTIONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Industria</label>
+                  <Select value={form.industry} onValueChange={(v) => setForm((f) => ({ ...f, industry: v ?? "" }))}>
+                    <SelectTrigger><SelectValue placeholder="Seleccionar industria" /></SelectTrigger>
+                    <SelectContent>
+                      {INDUSTRIES.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-muted-foreground">Notas (opcional)</label>
+                  <Input
+                    value={form.notes}
+                    onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                    placeholder="Notas..."
                   />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Rep</label>
-              <Select value={form.rep_name} onValueChange={(v) => setForm((f) => ({ ...f, rep_name: v ?? "" }))}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar rep" /></SelectTrigger>
-                <SelectContent>
-                  {REP_OPTIONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Industria</label>
-              <Select value={form.industry} onValueChange={(v) => setForm((f) => ({ ...f, industry: v ?? "" }))}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar industria" /></SelectTrigger>
-                <SelectContent>
-                  {INDUSTRIES.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Notas (opcional)</label>
-              <Input
-                value={form.notes}
-                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Notas..."
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isPending || !form.rep_name || !form.industry || !form.week_label}>
-              {isPending ? "Guardando..." : editingId ? "Guardar cambios" : "Crear campaña"}
-            </Button>
-          </DialogFooter>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+                <Button onClick={handleSave} disabled={isPending || !form.rep_name || !form.industry || !form.week_label}>
+                  {isPending ? "Guardando..." : editingId ? "Guardar cambios" : "Crear campaña"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
