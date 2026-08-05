@@ -23,6 +23,8 @@ const devBypass =
   process.env.NODE_ENV === "development" &&
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY === "pk_test_xxx"
 
+const skipClerk = process.env.NEXT_PUBLIC_SKIP_CLERK === "true"
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -42,7 +44,7 @@ export default function RootLayout({
     </html>
   )
 
-  if (devBypass) return content
+  if (devBypass || skipClerk) return content
 
   return <ClerkProvider>{content}</ClerkProvider>
 }
