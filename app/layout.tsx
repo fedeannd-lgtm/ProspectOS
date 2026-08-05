@@ -30,21 +30,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const content = (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
-      <body className="min-h-full flex flex-col">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
-        </ThemeProvider>
-      </body>
+  // TEMP: minimal layout to test if Vercel serves anything
+  return (
+    <html lang="en">
+      <body>Darwin test OK - {String(skipClerk)}</body>
     </html>
   )
-
-  if (devBypass || skipClerk) return content
-
-  return <ClerkProvider>{content}</ClerkProvider>
 }
