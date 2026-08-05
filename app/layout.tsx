@@ -19,21 +19,27 @@ export const metadata: Metadata = {
   description: "B2B prospecting platform",
 };
 
-const devBypass =
-  process.env.NODE_ENV === "development" &&
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY === "pk_test_xxx"
-
-const skipClerk = process.env.NEXT_PUBLIC_SKIP_CLERK === "true"
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // TEMP: minimal layout to test if Vercel serves anything
   return (
-    <html lang="en">
-      <body>Darwin test OK - {String(skipClerk)}</body>
-    </html>
-  )
+    <ClerkProvider>
+      <html lang="en" suppressHydrationWarning>
+        <body
+          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        >
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+        </body>
+      </html>
+    </ClerkProvider>
+  );
 }
