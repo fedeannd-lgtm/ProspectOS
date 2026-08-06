@@ -1,13 +1,15 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity, ChevronsUpDown } from "lucide-react"
 import type { ProviderStatus } from "./provider-status"
 import type { ProviderUsage } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { upsertRepCookie, createSavedUrl, deleteSavedUrl, type SavedUrl } from "./actions"
 import { getProviderStatus } from "./provider-status"
@@ -202,8 +204,9 @@ type NewUrlForm = {
 
 const EMPTY_URL_FORM: NewUrlForm = { rep_name: "", industry: "", url_type: "", url: "", label: "" }
 
-function AddUrlForm({ onAdded }: { onAdded: (url: SavedUrl) => void }) {
+function AddUrlForm({ onAdded, allIndustries }: { onAdded: (url: SavedUrl) => void; allIndustries: string[] }) {
   const [form, setForm] = useState<NewUrlForm>(EMPTY_URL_FORM)
+  const [industryOpen, setIndustryOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState("")
 
@@ -242,14 +245,48 @@ function AddUrlForm({ onAdded }: { onAdded: (url: SavedUrl) => void }) {
           </SelectContent>
         </Select>
 
-        <Select value={form.industry} onValueChange={(v) => { if (v) setForm((f) => ({ ...f, industry: v })) }}>
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue placeholder="Industria" />
-          </SelectTrigger>
-          <SelectContent>
-            {INDUSTRIES.map((i) => <SelectItem key={i} value={i} className="text-xs">{i}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        {/* Industry combobox with free-text support */}
+        <Popover open={industryOpen} onOpenChange={setIndustryOpen}>
+          <PopoverTrigger className="flex h-8 w-full items-center justify-between rounded-md border border-input bg-background px-2 text-xs hover:bg-accent hover:text-accent-foreground">
+            <span className={form.industry ? "" : "text-muted-foreground"}>
+              {form.industry || "Industria"}
+            </span>
+            <ChevronsUpDown className="size-3 text-muted-foreground" />
+          </PopoverTrigger>
+          <PopoverContent className="w-52 p-0" align="start">
+            <Command>
+              <CommandInput
+                placeholder="Buscar o escribir…"
+                value={form.industry}
+                onValueChange={(v) => setForm((f) => ({ ...f, industry: v }))}
+                className="h-8 text-xs"
+              />
+              <CommandList>
+                <CommandEmpty>
+                  <button
+                    className="w-full px-3 py-2 text-left text-xs hover:bg-muted/50"
+                    onClick={() => setIndustryOpen(false)}
+                  >
+                    Usar &quot;{form.industry}&quot;
+                  </button>
+                </CommandEmpty>
+                <CommandGroup>
+                  {allIndustries.map((i) => (
+                    <CommandItem
+                      key={i}
+                      value={i}
+                      className="text-xs"
+                      onSelect={() => { setForm((f) => ({ ...f, industry: i })); setIndustryOpen(false) }}
+                    >
+                      <Check className={`mr-2 size-3 ${form.industry === i ? "opacity-100" : "opacity-0"}`} />
+                      {i}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
 
         <Select value={form.url_type} onValueChange={(v) => { if (v) setForm((f) => ({ ...f, url_type: v as NewUrlForm["url_type"] })) }}>
           <SelectTrigger className="h-8 text-xs">
@@ -292,7 +329,7 @@ function AddUrlForm({ onAdded }: { onAdded: (url: SavedUrl) => void }) {
 
 // ─── Saved URLs card ──────────────────────────────────────────────────────────
 
-function SavedUrlsCard({ initialUrls }: { initialUrls: SavedUrl[] }) {
+function SavedUrlsCard({ initialUrls, allIndustries }: { initialUrls: SavedUrl[]; allIndustries: string[] }) {
   const [urls, setUrls] = useState<SavedUrl[]>(initialUrls)
   const [showAdd, setShowAdd] = useState(false)
   const [filterRep, setFilterRep] = useState("all")
@@ -334,7 +371,7 @@ function SavedUrlsCard({ initialUrls }: { initialUrls: SavedUrl[] }) {
       </CardHeader>
       <CardContent className="space-y-4">
         {showAdd && (
-          <AddUrlForm onAdded={(newUrl) => {
+          <AddUrlForm allIndustries={allIndustries} onAdded={(newUrl) => {
             setUrls((prev) => [...prev, newUrl])
             setShowAdd(false)
           }} />
@@ -358,7 +395,7 @@ function SavedUrlsCard({ initialUrls }: { initialUrls: SavedUrl[] }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">Todas las industrias</SelectItem>
-              {INDUSTRIES.map((i) => <SelectItem key={i} value={i} className="text-xs">{i}</SelectItem>)}
+              {allIndustries.map((i) => <SelectItem key={i} value={i} className="text-xs">{i}</SelectItem>)}
             </SelectContent>
           </Select>
 
@@ -501,13 +538,19 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   )
 }
 
-export function SettingsClient({ configs, savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig }: {
+export function SettingsClient({ configs, savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries }: {
   configs: RepConfig[]
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
   providerUsage: ProviderUsage[]
   inboxConfig: InboxConfig
+  campaignIndustries: string[]
 }) {
+  // Merge predefined industries with custom ones from campaigns, deduplicated and sorted
+  const allIndustries = useMemo(() => {
+    const merged = [...new Set([...INDUSTRIES, ...campaignIndustries])]
+    return merged.sort()
+  }, [campaignIndustries])
   const [providerStatus, setProviderStatus] = useState<ProviderStatus[]>(initialProviderStatus)
   const [refreshing, startRefresh] = useTransition()
 
@@ -592,7 +635,7 @@ export function SettingsClient({ configs, savedUrls, providerStatus: initialProv
         </CardContent>
       </Card>
 
-      <SavedUrlsCard initialUrls={savedUrls} />
+      <SavedUrlsCard initialUrls={savedUrls} allIndustries={allIndustries} />
 
       <InboxSettingsCard initialConfig={inboxConfig} />
     </div>

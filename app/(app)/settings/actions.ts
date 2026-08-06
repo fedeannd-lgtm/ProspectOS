@@ -128,6 +128,15 @@ export async function getProviderUsage(): Promise<ProviderUsage[]> {
   })
 }
 
+export async function getCampaignIndustries(): Promise<string[]> {
+  const { data } = await supabase
+    .from("campaigns")
+    .select("industry")
+  if (!data) return []
+  const unique = [...new Set(data.map((r) => r.industry as string).filter(Boolean))]
+  return unique.sort()
+}
+
 export async function upsertRepCookie(repName: string, cookie: string) {
   const { error } = await supabaseAdmin
     .from("rep_configs")
