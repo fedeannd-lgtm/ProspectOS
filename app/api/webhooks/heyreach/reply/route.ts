@@ -16,12 +16,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  // HeyReach webhook format — adapt field names when docs are confirmed
-  // Common fields based on HeyReach patterns:
+  // HeyReach sends eventType like "First Message Reply Received"
+  // Accept any event that contains "reply" in the name (case-insensitive)
+  // or has no event type (don't skip unknown events with body)
   const eventType = String(body.eventType ?? body.event_type ?? body.type ?? "")
-  // Only process reply events (update field names once HeyReach webhook docs are confirmed)
-  const REPLY_EVENTS = ["REPLY", "MESSAGE_REPLY", "CONVERSATION_REPLY", "LINKEDIN_REPLY"]
-  if (eventType && !REPLY_EVENTS.includes(eventType.toUpperCase())) {
+  if (eventType && !eventType.toLowerCase().includes("reply")) {
     return NextResponse.json({ ok: true, skipped: true })
   }
 
