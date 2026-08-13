@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   const profileUrl = String(body.profileUrl ?? body.linkedin_url ?? "")
 
   if (!replyBody) {
-    return NextResponse.json({ error: "Missing reply body" }, { status: 400 })
+    return NextResponse.json({ ok: true, skipped: true, reason: "empty body" })
   }
 
   // Find matching prospect by LinkedIn URL
