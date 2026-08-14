@@ -1,5 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk"
+import { readFileSync } from "fs"
+import { join } from "path"
 import { supabaseAdmin } from "./supabase"
+
+// Product context fallback: read from lib/product-context.md at startup
+let PRODUCT_CONTEXT_FALLBACK = ""
+try {
+  PRODUCT_CONTEXT_FALLBACK = readFileSync(join(process.cwd(), "lib/product-context.md"), "utf-8")
+} catch {
+  // file may not exist in some environments
+}
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -32,7 +42,7 @@ export async function generateSequences(
     .eq("id", 1)
     .single()
 
-  const productContext = config?.product_context ?? "(sin contexto de producto configurado)"
+  const productContext = config?.product_context || PRODUCT_CONTEXT_FALLBACK || "(sin contexto de producto configurado)"
   const calendlyLink = config?.calendly_link ?? ""
 
   const p = prospect as typeof prospect & { accounts: { industry: string | null; headcount_range: string | null; country: string | null } | null }
