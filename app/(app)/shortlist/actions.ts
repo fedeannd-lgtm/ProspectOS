@@ -22,6 +22,7 @@ export type ShortlistedProspect = {
   phone: string | null
   apollo_id: string | null
   accounts: { industry: string | null; headcount_range: string | null } | null
+  campaigns: { rep_name: string | null } | null
   latest_sequences: {
     id: string
     research_context: string | null
@@ -37,7 +38,8 @@ export async function getShortlistedProspects(): Promise<ShortlistedProspect[]> 
       id, first_name, last_name, full_name, job_title, company_name,
       company_domain, linkedin_url, email, icp_score, icp_category,
       os_score, highlights, location, phone, apollo_id,
-      accounts ( industry, headcount_range )
+      accounts ( industry, headcount_range ),
+      campaigns ( rep_name )
     `)
     .eq("shortlisted", true)
     .order("created_at", { ascending: false })

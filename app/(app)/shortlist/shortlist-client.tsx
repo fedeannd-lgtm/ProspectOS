@@ -96,6 +96,7 @@ function ProspectCard({
   onClick: () => void
 }) {
   const icpCls = prospect.icp_category ? (ICP_COLORS[prospect.icp_category] ?? "bg-zinc-100 text-zinc-600") : ""
+  const rep = prospect.campaigns?.rep_name
   return (
     <button
       onClick={onClick}
@@ -103,7 +104,12 @@ function ProspectCard({
         selected ? "bg-muted border-foreground/20" : "hover:bg-muted/50"
       }`}
     >
-      <p className="text-sm font-medium truncate">{prospectLabel(prospect)}</p>
+      <div className="flex items-start justify-between gap-1">
+        <p className="text-sm font-medium truncate">{prospectLabel(prospect)}</p>
+        {rep && (
+          <span className="text-[10px] text-muted-foreground shrink-0 bg-muted rounded px-1 py-0.5">{rep}</span>
+        )}
+      </div>
       <p className="text-xs text-muted-foreground truncate">{prospect.job_title}</p>
       <p className="text-xs text-muted-foreground truncate">{prospect.company_name}</p>
       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -129,6 +135,7 @@ function ProspectCard({
 
 export function ShortlistClient({ initialProspects }: { initialProspects: ShortlistedProspect[] }) {
   const [prospects, setProspects] = useState<ShortlistedProspect[]>(initialProspects)
+  const [repFilter, setRepFilter] = useState<string>("all")
   const [selected, setSelected] = useState<ShortlistedProspect | null>(initialProspects[0] ?? null)
   const [research, setResearch] = useState<string>(selected?.latest_sequences?.research_context ?? "")
   const [sequences, setSequences] = useState<Sequences | null>(
@@ -137,6 +144,10 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [generating, startGenerate] = useTransition()
   const [removing, startRemove] = useTransition()
   const [error, setError] = useState("")
+
+  // Unique reps from all prospects
+  const allReps = Array.from(new Set(prospects.map((p) => p.campaigns?.rep_name).filter(Boolean) as string[])).sort()
+  const filtered = repFilter === "all" ? prospects : prospects.filter((p) => p.campaigns?.rep_name === repFilter)
 
   function handleSelect(p: ShortlistedProspect) {
     setSelected(p)
@@ -189,19 +200,29 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
         <div className="flex items-center gap-2">
           <Star className="size-4 text-amber-500" />
           <h1 className="text-lg font-semibold">Shortlist</h1>
-          {prospects.length > 0 && (
+          {filtered.length > 0 && (
             <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              {prospects.length}
+              {filtered.length}
             </span>
           )}
         </div>
+        {allReps.length > 1 && (
+          <select
+            value={repFilter}
+            onChange={(e) => setRepFilter(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="all">Todos los SDR</option>
+            {allReps.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        )}
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — prospect list */}
         <div className="w-72 shrink-0 border-r flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {prospects.length === 0 ? (
+            {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center px-4">
                 <Star className="size-8 text-muted-foreground/30 mb-2" />
                 <p className="text-sm text-muted-foreground">Sin prospectos en Shortlist</p>
@@ -210,7 +231,7 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                 </p>
               </div>
             ) : (
-              prospects.map((p) => (
+              filtered.map((p) => (
                 <ProspectCard
                   key={p.id}
                   prospect={p}
