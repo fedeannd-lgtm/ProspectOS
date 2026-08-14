@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, Linkedin, RefreshCw } from "lucide-react"
+import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -256,7 +256,7 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                   {selected.linkedin_url && (
                     <a href={selected.linkedin_url} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                      <Linkedin className="size-3" /> LinkedIn
+                      LinkedIn
                       <ExternalLink className="size-3" />
                     </a>
                   )}
@@ -317,7 +317,7 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                         <Mail className="size-3.5" /> Email (5 pasos)
                       </TabsTrigger>
                       <TabsTrigger value="linkedin" className="gap-1.5">
-                        <Linkedin className="size-3.5" /> LinkedIn (5 pasos)
+                        LinkedIn (5 pasos)
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="email" className="space-y-3 mt-4">
