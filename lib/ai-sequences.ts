@@ -37,7 +37,7 @@ export async function generateSequences(
 
   const p = prospect as typeof prospect & { accounts: { industry: string | null; headcount_range: string | null; country: string | null } | null }
 
-  const prospectName = p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "el prospecto"
+  const prospectName = (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()) || "el prospecto"
   const jobTitle = p.job_title ?? ""
   const company = p.company_name ?? ""
   const domain = p.company_domain ?? ""

@@ -12,7 +12,7 @@ import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 function prospectLabel(p: ShortlistedProspect): string {
-  return p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "Sin nombre"
+  return (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()) || "Sin nombre"
 }
 
 const ICP_COLORS: Record<string, string> = {
