@@ -44,7 +44,7 @@ export async function getShortlistedProspects(): Promise<ShortlistedProspect[]> 
 
   if (error) throw new Error(error.message)
 
-  const prospects = (data ?? []) as ShortlistedProspect[]
+  const prospects = (data ?? []) as unknown as ShortlistedProspect[]
 
   // For each prospect, fetch the latest shortlist_sequences row
   if (prospects.length === 0) return prospects
