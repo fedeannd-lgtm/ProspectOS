@@ -128,9 +128,11 @@ export async function dismissReply(replyId: string): Promise<void> {
   revalidatePath("/inbox")
 }
 
-export async function regenerateDraft(replyId: string): Promise<void> {
+export async function regenerateDraft(replyId: string): Promise<{ ai_draft: string | null } | null> {
   await supabaseAdmin.from("prospect_replies").update({ status: "pending_review", ai_draft: null, intent: null, ai_reasoning: null }).eq("id", replyId)
   const { analyzeReply } = await import("@/lib/ai-reply")
   await analyzeReply(replyId)
   revalidatePath("/inbox")
+  const { data } = await supabaseAdmin.from("prospect_replies").select("ai_draft").eq("id", replyId).single()
+  return data ?? null
 }

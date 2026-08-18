@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { after } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
-import { analyzeReply } from "@/lib/ai-reply"
 
 export async function POST(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get("secret")
@@ -74,10 +72,6 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
-  after(async () => {
-    await analyzeReply(inserted.id)
-  })
 
   return NextResponse.json({ ok: true, id: inserted.id })
 }
