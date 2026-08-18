@@ -22,7 +22,8 @@ export type ShortlistedProspect = {
   phone: string | null
   apollo_id: string | null
   accounts: { industry: string | null; headcount_range: string | null } | null
-  campaigns: { rep_name: string | null } | null
+  campaigns: { rep_name: string | null; week_label: string | null } | null
+  shortlist_status: string | null
   latest_sequences: {
     id: string
     research_context: string | null
@@ -37,9 +38,9 @@ export async function getShortlistedProspects(): Promise<ShortlistedProspect[]> 
     .select(`
       id, first_name, last_name, full_name, job_title, company_name,
       company_domain, linkedin_url, email, icp_score, icp_category,
-      os_score, highlights, location, phone, apollo_id,
+      os_score, highlights, location, phone, apollo_id, shortlist_status,
       accounts ( industry, headcount_range ),
-      campaigns ( rep_name )
+      campaigns ( rep_name, week_label )
     `)
     .eq("shortlisted", true)
     .order("created_at", { ascending: false })
@@ -89,6 +90,14 @@ export async function generateAndSaveSequences(
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error generando secuencias" }
   }
+}
+
+export async function updateShortlistStatus(prospectId: string, status: string): Promise<void> {
+  await supabaseAdmin
+    .from("prospects")
+    .update({ shortlist_status: status })
+    .eq("id", prospectId)
+  revalidatePath("/shortlist")
 }
 
 export async function addToShortlist(prospectIds: string[]): Promise<void> {
