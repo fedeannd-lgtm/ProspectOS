@@ -95,6 +95,12 @@ export async function updateCampaign(
   revalidatePath("/dashboard")
 }
 
+export async function getCampaignIndustries(): Promise<string[]> {
+  const { data } = await supabase.from("campaigns").select("industry")
+  if (!data) return []
+  return [...new Set(data.map((r) => r.industry as string).filter(Boolean))].sort()
+}
+
 export async function deleteCampaign(id: string) {
   const { error } = await supabase.from("campaigns").delete().eq("id", id)
   if (error) throw new Error(error.message)

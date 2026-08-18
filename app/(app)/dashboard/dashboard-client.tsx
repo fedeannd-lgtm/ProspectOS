@@ -616,7 +616,7 @@ function ChartsView({ campaigns, icpStats, icpCategoryStats }: { campaigns: Camp
   )
 }
 
-export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[] }) {
+export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
   const [view, setView] = useState<"week" | "list" | "charts">("week")
   const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))
@@ -629,6 +629,11 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
   const [industryOpen, setIndustryOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const searchRef = useRef<HTMLInputElement>(null)
+
+  const allIndustries = useMemo(() => {
+    const merged = new Set([...INDUSTRIES, ...campaignIndustries])
+    return [...merged].sort()
+  }, [campaignIndustries])
 
   const weekCampaigns = useMemo(() => {
     const weekKey = getISOWeekInfo(new Date(selectedWeek + "T12:00:00")).key
@@ -892,7 +897,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats }
                         </button>
                       </CommandEmpty>
                       <CommandGroup>
-                        {INDUSTRIES.map((i) => (
+                        {allIndustries.map((i) => (
                           <CommandItem
                             key={i}
                             value={i}
