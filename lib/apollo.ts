@@ -9,7 +9,7 @@ export type ApolloResult = {
 }
 
 async function matchPerson(payload: Record<string, unknown>): Promise<{ person: Record<string, unknown> } | null> {
-  const res = await fetch("https://api.apollo.io/v1/people/match", {
+  const res = await fetch("https://api.apollo.io/api/v1/people/match", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -50,7 +50,7 @@ async function searchPeopleAtCompany(
   lastName: string,
   companyDomain: string,
 ): Promise<{ email: string; linkedInUrl: string | null } | null> {
-  const res = await fetch("https://api.apollo.io/v1/mixed_people/api_search", {
+  const res = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
