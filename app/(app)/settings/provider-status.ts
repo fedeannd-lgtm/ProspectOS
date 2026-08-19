@@ -51,38 +51,36 @@ async function checkApollo(): Promise<ProviderStatus> {
   const key = process.env.APOLLO_API_KEY
   if (!key) return { name: "apollo", label: "Apollo", status: "unconfigured", detail: "API key no configurada" }
   try {
-    // Endpoint oficial de 0 créditos — devuelve rate limits por endpoint
-    const res = await fetch("https://api.apollo.io/api/v1/usage_stats/api_usage_stats", {
+    // credit_usage_stats — créditos de email reveal (0 créditos consumidos)
+    const res = await fetch("https://api.apollo.io/api/v1/usage_stats/credit_usage_stats", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "x-api-key": key },
     })
 
     if (res.status === 401) return { name: "apollo", label: "Apollo", status: "error", detail: "API key inválida" }
-    if (res.status === 403) {
-      // La key no tiene permiso para este endpoint — al menos sabemos que la key es válida
-      return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado (key sin scope de stats)" }
-    }
+    if (res.status === 403) return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado (key sin scope de stats)" }
     if (!res.ok) return { name: "apollo", label: "Apollo", status: "error", detail: `HTTP ${res.status}` }
 
-    const data = await res.json() as Record<string, { day?: { limit: number; consumed: number; left_over: number } }>
+    const data = await res.json()
 
-    // Usamos el endpoint de people/match que es el que consume créditos de enriquecimiento
-    const matchKey = Object.keys(data).find((k) => k.includes("people") && k.includes("match"))
-    const matchDay = matchKey ? data[matchKey]?.day : null
+    // Apollo puede devolver distintas estructuras — intentamos las más comunes
+    const used    = data?.credits_used    ?? data?.used    ?? data?.consumed ?? null
+    const limit   = data?.credits_limit   ?? data?.limit   ?? data?.total    ?? null
+    const remaining = data?.credits_remaining ?? data?.remaining ?? data?.left_over ??
+      (limit != null && used != null ? limit - used : null)
 
-    if (!matchDay) {
+    if (remaining === null) {
+      // No pudimos parsear — al menos la key es válida
       return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado" }
     }
 
-    const { limit, consumed, left_over } = matchDay
-
-    if (left_over === 0) {
-      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Límite diario alcanzado (${consumed}/${limit})` }
+    if (remaining <= 0) {
+      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Sin créditos${limit ? ` (${used}/${limit} usados)` : ""}` }
     }
-    if (left_over < 50) {
-      return { name: "apollo", label: "Apollo", status: "low", credits: left_over, detail: `${left_over} requests restantes hoy` }
+    if (remaining < 100) {
+      return { name: "apollo", label: "Apollo", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
     }
-    return { name: "apollo", label: "Apollo", status: "ok", credits: left_over, detail: `${consumed}/${limit} usados hoy` }
+    return { name: "apollo", label: "Apollo", status: "ok", credits: remaining, detail: `${remaining} créditos disponibles` }
   } catch {
     return { name: "apollo", label: "Apollo", status: "error", detail: "Error al consultar" }
   }
