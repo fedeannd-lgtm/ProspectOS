@@ -47,6 +47,58 @@ function checkKey(name: string, label: string, envVar: string): ProviderStatus {
   return { name, label, status: "ok", detail: "Configurado" }
 }
 
+async function checkApollo(): Promise<ProviderStatus> {
+  const key = process.env.APOLLO_API_KEY
+  if (!key) return { name: "apollo", label: "Apollo", status: "unconfigured", detail: "API key no configurada" }
+  try {
+    // Lightweight match call — sin reveal_personal_emails no consume créditos de email
+    const res = await fetch("https://api.apollo.io/v1/people/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "X-Api-Key": key },
+      body: JSON.stringify({ api_key: key, first_name: "ping", organization_name: "ping" }),
+    })
+
+    if (res.status === 401) return { name: "apollo", label: "Apollo", status: "error", detail: "API key inválida" }
+
+    // Apollo devuelve headers de uso en todas las respuestas
+    const monthlyUsage  = parseInt(res.headers.get("x-monthly-usage")   ?? "-1", 10)
+    const monthlyLimit  = parseInt(res.headers.get("x-monthly-limit")   ?? "-1", 10)
+    const dailyUsage    = parseInt(res.headers.get("x-24-hour-usage")   ?? "-1", 10)
+    const dailyLimit    = parseInt(res.headers.get("x-24-hour-limit")   ?? "-1", 10)
+
+    // Detectar sin créditos por mensaje en body (422)
+    if (res.status === 422) {
+      const body = await res.json().catch(() => ({}))
+      const msg = String(body?.message ?? body?.error ?? "")
+      if (msg.toLowerCase().includes("credit") || msg.toLowerCase().includes("limit")) {
+        return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: "Sin créditos disponibles" }
+      }
+    }
+
+    if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
+      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Límite diario alcanzado (${dailyUsage}/${dailyLimit})` }
+    }
+    if (monthlyLimit > 0 && monthlyUsage >= monthlyLimit) {
+      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Límite mensual alcanzado (${monthlyUsage}/${monthlyLimit})` }
+    }
+
+    const remaining = dailyLimit > 0 ? dailyLimit - dailyUsage : (monthlyLimit > 0 ? monthlyLimit - monthlyUsage : null)
+    if (remaining !== null && remaining < 20) {
+      return { name: "apollo", label: "Apollo", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
+    }
+
+    const detail = dailyLimit > 0
+      ? `${dailyUsage}/${dailyLimit} usados hoy`
+      : monthlyLimit > 0
+        ? `${monthlyUsage}/${monthlyLimit} usados este mes`
+        : "Configurado"
+
+    return { name: "apollo", label: "Apollo", status: "ok", credits: remaining, detail }
+  } catch {
+    return { name: "apollo", label: "Apollo", status: "error", detail: "Error al consultar" }
+  }
+}
+
 async function checkFindymail(): Promise<ProviderStatus> {
   const key = process.env.FINDYMAIL_API_KEY
   if (!key) return { name: "findymail", label: "FindyEmail", status: "unconfigured", detail: "API key no configurada" }
@@ -66,9 +118,9 @@ async function checkFindymail(): Promise<ProviderStatus> {
 }
 
 export async function getProviderStatus(): Promise<ProviderStatus[]> {
-  const [zb, hunter, findymail] = await Promise.all([checkZeroBounce(), checkHunter(), checkFindymail()])
+  const [apollo, zb, hunter, findymail] = await Promise.all([checkApollo(), checkZeroBounce(), checkHunter(), checkFindymail()])
   return [
-    checkKey("apollo", "Apollo", "APOLLO_API_KEY"),
+    apollo,
     findymail,
     checkKey("prospeo", "Prospeo", "PROSPEO_API_KEY"),
     hunter,
