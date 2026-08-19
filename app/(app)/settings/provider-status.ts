@@ -51,49 +51,38 @@ async function checkApollo(): Promise<ProviderStatus> {
   const key = process.env.APOLLO_API_KEY
   if (!key) return { name: "apollo", label: "Apollo", status: "unconfigured", detail: "API key no configurada" }
   try {
-    // Lightweight match call — sin reveal_personal_emails no consume créditos de email
-    const res = await fetch("https://api.apollo.io/v1/people/match", {
+    // Endpoint oficial de 0 créditos — devuelve rate limits por endpoint
+    const res = await fetch("https://api.apollo.io/api/v1/usage_stats/api_usage_stats", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "X-Api-Key": key },
-      body: JSON.stringify({ api_key: key, first_name: "ping", organization_name: "ping" }),
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "x-api-key": key },
     })
 
     if (res.status === 401) return { name: "apollo", label: "Apollo", status: "error", detail: "API key inválida" }
+    if (res.status === 403) {
+      // La key no tiene permiso para este endpoint — al menos sabemos que la key es válida
+      return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado (key sin scope de stats)" }
+    }
+    if (!res.ok) return { name: "apollo", label: "Apollo", status: "error", detail: `HTTP ${res.status}` }
 
-    // Apollo devuelve headers de uso en todas las respuestas
-    const monthlyUsage  = parseInt(res.headers.get("x-monthly-usage")   ?? "-1", 10)
-    const monthlyLimit  = parseInt(res.headers.get("x-monthly-limit")   ?? "-1", 10)
-    const dailyUsage    = parseInt(res.headers.get("x-24-hour-usage")   ?? "-1", 10)
-    const dailyLimit    = parseInt(res.headers.get("x-24-hour-limit")   ?? "-1", 10)
+    const data = await res.json() as Record<string, { day?: { limit: number; consumed: number; left_over: number } }>
 
-    // Detectar sin créditos por mensaje en body (422)
-    if (res.status === 422) {
-      const body = await res.json().catch(() => ({}))
-      const msg = String(body?.message ?? body?.error ?? "")
-      if (msg.toLowerCase().includes("credit") || msg.toLowerCase().includes("limit")) {
-        return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: "Sin créditos disponibles" }
-      }
+    // Usamos el endpoint de people/match que es el que consume créditos de enriquecimiento
+    const matchKey = Object.keys(data).find((k) => k.includes("people") && k.includes("match"))
+    const matchDay = matchKey ? data[matchKey]?.day : null
+
+    if (!matchDay) {
+      return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado" }
     }
 
-    if (dailyLimit > 0 && dailyUsage >= dailyLimit) {
-      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Límite diario alcanzado (${dailyUsage}/${dailyLimit})` }
-    }
-    if (monthlyLimit > 0 && monthlyUsage >= monthlyLimit) {
-      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Límite mensual alcanzado (${monthlyUsage}/${monthlyLimit})` }
-    }
+    const { limit, consumed, left_over } = matchDay
 
-    const remaining = dailyLimit > 0 ? dailyLimit - dailyUsage : (monthlyLimit > 0 ? monthlyLimit - monthlyUsage : null)
-    if (remaining !== null && remaining < 20) {
-      return { name: "apollo", label: "Apollo", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
+    if (left_over === 0) {
+      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Límite diario alcanzado (${consumed}/${limit})` }
     }
-
-    const detail = dailyLimit > 0
-      ? `${dailyUsage}/${dailyLimit} usados hoy`
-      : monthlyLimit > 0
-        ? `${monthlyUsage}/${monthlyLimit} usados este mes`
-        : "Configurado"
-
-    return { name: "apollo", label: "Apollo", status: "ok", credits: remaining, detail }
+    if (left_over < 50) {
+      return { name: "apollo", label: "Apollo", status: "low", credits: left_over, detail: `${left_over} requests restantes hoy` }
+    }
+    return { name: "apollo", label: "Apollo", status: "ok", credits: left_over, detail: `${consumed}/${limit} usados hoy` }
   } catch {
     return { name: "apollo", label: "Apollo", status: "error", detail: "Error al consultar" }
   }
