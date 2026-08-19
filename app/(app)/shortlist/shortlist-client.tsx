@@ -299,6 +299,12 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                       LinkedIn <ExternalLink className="size-3" />
                     </a>
                   )}
+                  {selected.apollo_id && (
+                    <a href={`https://app.apollo.io/#/people/${selected.apollo_id}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-400 transition-colors">
+                      Apollo <ExternalLink className="size-3" />
+                    </a>
+                  )}
                   {selected.email && (
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Mail className="size-3" /> {selected.email}
