@@ -29,13 +29,20 @@ async function checkHunter(): Promise<ProviderStatus> {
   const key = process.env.HUNTER_API_KEY
   if (!key) return { name: "hunter", label: "Hunter", status: "unconfigured", detail: "API key no configurada" }
   try {
-    const res = await fetch(`https://api.hunter.io/v2/account?api_key=${key}`)
+    const res = await fetch(`https://api.hunter.io/v2/usage?api_key=${key}`)
     if (!res.ok) return { name: "hunter", label: "Hunter", status: "error", detail: "API key inválida" }
     const data = await res.json()
-    const available = data?.data?.requests?.available ?? null
-    if (available === 0) return { name: "hunter", label: "Hunter", status: "out", credits: 0, detail: "Sin créditos" }
-    if (available !== null && available < 10) return { name: "hunter", label: "Hunter", status: "low", credits: available, detail: `${available} requests restantes` }
-    return { name: "hunter", label: "Hunter", status: "ok", credits: available, detail: available !== null ? `${available} requests` : "Configurado" }
+    // Formato: { data: { requests: { searches: { remaining }, verifications: { remaining } } } }
+    const searches = data?.data?.requests?.searches?.remaining ?? data?.data?.requests?.credits?.remaining ?? null
+    const verifications = data?.data?.requests?.verifications?.remaining ?? null
+    const remaining = searches ?? verifications ?? null
+    if (remaining === null) return { name: "hunter", label: "Hunter", status: "ok", detail: "Configurado" }
+    if (remaining <= 0) return { name: "hunter", label: "Hunter", status: "out", credits: 0, detail: "Sin créditos" }
+    if (remaining < 50) return { name: "hunter", label: "Hunter", status: "low", credits: remaining, detail: `${remaining} búsquedas restantes` }
+    const detail = verifications !== null
+      ? `${searches?.toLocaleString()} búsquedas · ${verifications.toLocaleString()} verificaciones`
+      : `${remaining.toLocaleString()} requests`
+    return { name: "hunter", label: "Hunter", status: "ok", credits: remaining, detail }
   } catch {
     return { name: "hunter", label: "Hunter", status: "error", detail: "Error al consultar" }
   }
