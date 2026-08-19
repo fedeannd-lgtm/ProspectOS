@@ -110,12 +110,33 @@ async function checkFindymail(): Promise<ProviderStatus> {
   }
 }
 
+async function checkProspeo(): Promise<ProviderStatus> {
+  const key = process.env.PROSPEO_API_KEY
+  if (!key) return { name: "prospeo", label: "Prospeo", status: "unconfigured", detail: "API key no configurada" }
+  try {
+    const res = await fetch("https://api.prospeo.io/account-information", {
+      headers: { "X-KEY": key },
+    })
+    if (!res.ok) return { name: "prospeo", label: "Prospeo", status: "error", detail: res.status === 400 ? "API key inválida" : `HTTP ${res.status}` }
+    const data = await res.json()
+    if (data?.error) return { name: "prospeo", label: "Prospeo", status: "error", detail: "API key inválida" }
+    const remaining = data?.response?.remaining_credits ?? null
+    const used      = data?.response?.used_credits ?? null
+    if (remaining === null) return { name: "prospeo", label: "Prospeo", status: "ok", detail: "Configurado" }
+    if (remaining <= 0) return { name: "prospeo", label: "Prospeo", status: "out", credits: 0, detail: `Sin créditos${used != null ? ` (${used} usados)` : ""}` }
+    if (remaining < 20) return { name: "prospeo", label: "Prospeo", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
+    return { name: "prospeo", label: "Prospeo", status: "ok", credits: remaining, detail: `${remaining} créditos disponibles` }
+  } catch {
+    return { name: "prospeo", label: "Prospeo", status: "error", detail: "Error al consultar" }
+  }
+}
+
 export async function getProviderStatus(): Promise<ProviderStatus[]> {
-  const [apollo, zb, hunter, findymail] = await Promise.all([checkApollo(), checkZeroBounce(), checkHunter(), checkFindymail()])
+  const [apollo, zb, hunter, findymail, prospeo] = await Promise.all([checkApollo(), checkZeroBounce(), checkHunter(), checkFindymail(), checkProspeo()])
   return [
     apollo,
     findymail,
-    checkKey("prospeo", "Prospeo", "PROSPEO_API_KEY"),
+    prospeo,
     hunter,
     checkKey("datagma", "Datagma", "DATAGMA_API_KEY"),
     zb,
