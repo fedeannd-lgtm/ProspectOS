@@ -63,19 +63,18 @@ async function checkApollo(): Promise<ProviderStatus> {
 
     const data = await res.json()
 
-    // Apollo puede devolver distintas estructuras — intentamos las más comunes
-    const used    = data?.credits_used    ?? data?.used    ?? data?.consumed ?? null
-    const limit   = data?.credits_limit   ?? data?.limit   ?? data?.total    ?? null
-    const remaining = data?.credits_remaining ?? data?.remaining ?? data?.left_over ??
-      (limit != null && used != null ? limit - used : null)
+    // Formato real: { credit_usage_stats: { lead_credit: { limit, consumed, left_over } } }
+    const leadCredit = data?.credit_usage_stats?.lead_credit
+    const remaining = leadCredit?.left_over ?? null
+    const limit     = leadCredit?.limit ?? null
+    const consumed  = leadCredit?.consumed ?? null
 
     if (remaining === null) {
-      // No pudimos parsear — al menos la key es válida
       return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado" }
     }
 
     if (remaining <= 0) {
-      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Sin créditos${limit ? ` (${used}/${limit} usados)` : ""}` }
+      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Sin créditos${limit ? ` (${consumed}/${limit} usados)` : ""}` }
     }
     if (remaining < 100) {
       return { name: "apollo", label: "Apollo", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
