@@ -131,14 +131,31 @@ async function checkProspeo(): Promise<ProviderStatus> {
   }
 }
 
+async function checkDatagma(): Promise<ProviderStatus> {
+  const key = process.env.DATAGMA_API_KEY
+  if (!key) return { name: "datagma", label: "Datagma", status: "unconfigured", detail: "API key no configurada" }
+  try {
+    const res = await fetch(`https://gateway.datagma.net/api/ingress/v1/mine?apiId=${encodeURIComponent(key)}`)
+    if (!res.ok) return { name: "datagma", label: "Datagma", status: "error", detail: `HTTP ${res.status}` }
+    const data = await res.json()
+    const remaining = data?.currentCredit != null ? parseInt(data.currentCredit, 10) : null
+    if (remaining === null || isNaN(remaining)) return { name: "datagma", label: "Datagma", status: "ok", detail: "Configurado" }
+    if (remaining <= 0) return { name: "datagma", label: "Datagma", status: "out", credits: 0, detail: "Sin créditos" }
+    if (remaining < 20) return { name: "datagma", label: "Datagma", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
+    return { name: "datagma", label: "Datagma", status: "ok", credits: remaining, detail: `${remaining.toLocaleString()} créditos disponibles` }
+  } catch {
+    return { name: "datagma", label: "Datagma", status: "error", detail: "Error al consultar" }
+  }
+}
+
 export async function getProviderStatus(): Promise<ProviderStatus[]> {
-  const [apollo, zb, hunter, findymail, prospeo] = await Promise.all([checkApollo(), checkZeroBounce(), checkHunter(), checkFindymail(), checkProspeo()])
+  const [apollo, zb, hunter, findymail, prospeo, datagma] = await Promise.all([checkApollo(), checkZeroBounce(), checkHunter(), checkFindymail(), checkProspeo(), checkDatagma()])
   return [
     apollo,
     findymail,
     prospeo,
     hunter,
-    checkKey("datagma", "Datagma", "DATAGMA_API_KEY"),
+    datagma,
     zb,
   ]
 }
