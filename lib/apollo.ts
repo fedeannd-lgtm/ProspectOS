@@ -167,6 +167,23 @@ export async function findEmailApollo(
   }
 }
 
+// Lookup a company's primary domain by name — does NOT consume lead credits
+export async function apolloOrgLookup(companyName: string): Promise<string | null> {
+  if (!APOLLO_API_KEY || !companyName) return null
+  try {
+    const res = await fetch("https://api.apollo.io/api/v1/organizations/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": APOLLO_API_KEY },
+      body: JSON.stringify({ q_organization_name: companyName, per_page: 1 }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return (data?.organizations?.[0]?.primary_domain as string) ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function findPhoneApollo(
   firstName: string,
   lastName: string,

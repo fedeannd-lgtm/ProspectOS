@@ -786,7 +786,7 @@ function deepHasPremium(root) {
 }
 
 function extractWebsiteFromDOM() {
-  const SKIP = /linkedin\.com|google\.com|bing\.com|microsoft\.com|twitter\.com|facebook\.com|instagram\.com|youtube\.com|t\.co\//i;
+  const SKIP = /linkedin\.com|google\.com|bing\.com|microsoft\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|youtube\.com|t\.co\/|xing\.com|crunchbase\.com/i;
 
   function unwrapHref(href) {
     if (!href || !href.startsWith('http')) return '';
@@ -800,9 +800,20 @@ function extractWebsiteFromDOM() {
     return SKIP.test(href) ? '' : href;
   }
 
-  // Strategy 0: direct attribute selector — most reliable, Sales Nav always uses this
-  // Note: don't require [href] in the selector — sometimes href is a JS property, not HTML attribute
-  const directLink = document.querySelector('[data-control-name="visit_company_website"]');
+  // Strategy 0: deep shadow-DOM-aware selector (Sales Nav renders inside shadow roots)
+  function querySelectorDeep(root, selector) {
+    const found = root.querySelector(selector);
+    if (found) return found;
+    for (const el of root.querySelectorAll('*')) {
+      if (el.shadowRoot) {
+        const inner = querySelectorDeep(el.shadowRoot, selector);
+        if (inner) return inner;
+      }
+    }
+    return null;
+  }
+
+  const directLink = querySelectorDeep(document, '[data-control-name="visit_company_website"]');
   if (directLink) {
     const href = directLink.getAttribute('href') || directLink.href || '';
     const url = unwrapHref(href);
@@ -823,6 +834,9 @@ function extractWebsiteFromDOM() {
 
   const links = collectLinks(document);
 
+  // Domain-like TLDs — link text that looks like a domain counts as a website link
+  const DOMAIN_PATTERN = /\.(com|net|org|io|co|pe|ar|mx|cl|br|uy|bo|py|ec|ve|do|gt|hn|sv|ni|cr|pa|cu|pr|info|biz|us|eu|uk|de|fr|es|it|nl|se|no|dk|fi|pl|ru|cn|jp|au|nz)(\/|$|\s)/i;
+
   for (const link of links) {
     const href = link.href || link.getAttribute('href') || '';
     if (!href.startsWith('http')) continue;
@@ -832,10 +846,12 @@ function extractWebsiteFromDOM() {
     const title = (link.getAttribute('title') || '').toLowerCase();
     const parentAria = (link.closest('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
 
-    const isWebsiteLink = text.includes('sitio web') || text.includes('website') ||
-        ariaLabel.includes('sitio') || ariaLabel.includes('website') ||
-        title.includes('sitio') || title.includes('website') ||
-        parentAria.includes('sitio') || parentAria.includes('website');
+    const isWebsiteLink =
+      text.includes('sitio web') || text.includes('website') ||
+      ariaLabel.includes('sitio') || ariaLabel.includes('website') ||
+      title.includes('sitio') || title.includes('website') ||
+      parentAria.includes('sitio') || parentAria.includes('website') ||
+      DOMAIN_PATTERN.test(text); // link text looks like a domain ("ransa.com.pe")
 
     if (isWebsiteLink) {
       const url = unwrapHref(href);
@@ -872,6 +888,28 @@ function extractWebsiteFromDOM() {
         const url = urlMatch[0].replace(/[.,;)>]+$/, '');
         console.log('[ProspectOS] strategy 2 (innerText) → website:', url);
         return url;
+      }
+    }
+  } catch (e) {}
+
+  // Strategy 3: on company profile pages, any single external non-social link = the website
+  try {
+    if (window.location.pathname.includes('/sales/company/')) {
+      const externalUrls = links
+        .map(a => unwrapHref(a.href || a.getAttribute('href') || ''))
+        .filter(Boolean);
+      // Deduplicate
+      const unique = [...new Set(externalUrls)];
+      if (unique.length === 1) {
+        console.log('[ProspectOS] strategy 3 (sole external link) → website:', unique[0]);
+        return unique[0];
+      }
+      // Multiple externals: pick the one whose hostname matches the page title / company name
+      if (unique.length > 1) {
+        // Prefer shorter URLs (company root domains over deep paths)
+        const sorted = unique.sort((a, b) => a.length - b.length);
+        console.log('[ProspectOS] strategy 3 (shortest external link) → website:', sorted[0]);
+        return sorted[0];
       }
     }
   } catch (e) {}
