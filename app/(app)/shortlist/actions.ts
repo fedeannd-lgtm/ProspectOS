@@ -108,3 +108,45 @@ export async function addToShortlist(prospectIds: string[]): Promise<void> {
   revalidatePath("/shortlist")
   revalidatePath("/enrichment")
 }
+
+export type ManualProspectInput = {
+  full_name: string
+  job_title?: string
+  company_name?: string
+  company_domain?: string
+  email?: string
+  linkedin_url?: string
+  phone?: string
+  location?: string
+  notes?: string
+}
+
+export async function addManualProspect(input: ManualProspectInput): Promise<{ id: string } | { error: string }> {
+  const parts = input.full_name.trim().split(/\s+/)
+  const first_name = parts[0] ?? ""
+  const last_name = parts.slice(1).join(" ") || ""
+
+  const { data, error } = await supabaseAdmin
+    .from("prospects")
+    .insert({
+      full_name: input.full_name.trim(),
+      first_name,
+      last_name,
+      job_title: input.job_title || null,
+      company_name: input.company_name || null,
+      company_domain: input.company_domain || null,
+      email: input.email || null,
+      linkedin_url: input.linkedin_url || null,
+      phone: input.phone || null,
+      location: input.location || null,
+      highlights: input.notes || null,
+      shortlisted: true,
+      shortlist_status: "Pendiente",
+    })
+    .select("id")
+    .single()
+
+  if (error) return { error: error.message }
+  revalidatePath("/shortlist")
+  return { id: data.id }
+}

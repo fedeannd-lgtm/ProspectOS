@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useTransition, useOptimistic } from "react"
-import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles } from "lucide-react"
+import { useState, useTransition } from "react"
+import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import type { ShortlistedProspect } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus } from "./actions"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import type { ShortlistedProspect, ManualProspectInput } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -150,7 +152,12 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [generating, startGenerate] = useTransition()
   const [removing, startRemove] = useTransition()
   const [updatingStatus, startUpdateStatus] = useTransition()
+  const [adding, startAdd] = useTransition()
   const [error, setError] = useState("")
+  const [addOpen, setAddOpen] = useState(false)
+  const [addError, setAddError] = useState("")
+  const emptyForm = (): ManualProspectInput => ({ full_name: "", job_title: "", company_name: "", company_domain: "", email: "", linkedin_url: "", phone: "", location: "", notes: "" })
+  const [form, setForm] = useState<ManualProspectInput>(emptyForm)
 
   // Derived filter options
   const allReps = Array.from(new Set(prospects.map((p) => p.campaigns?.rep_name).filter(Boolean) as string[])).sort()
@@ -197,6 +204,42 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
             : p
         )
       )
+    })
+  }
+
+  function handleAdd() {
+    if (!form.full_name.trim()) { setAddError("El nombre es obligatorio"); return }
+    if (!form.linkedin_url?.trim()) { setAddError("El LinkedIn URL es obligatorio"); return }
+    setAddError("")
+    startAdd(async () => {
+      const result = await addManualProspect(form)
+      if ("error" in result) { setAddError(result.error); return }
+      // Build a minimal ShortlistedProspect so it appears immediately in the list
+      const parts = form.full_name.trim().split(/\s+/)
+      const newProspect: ShortlistedProspect = {
+        id: result.id,
+        first_name: parts[0] ?? null,
+        last_name: parts.slice(1).join(" ") || null,
+        full_name: form.full_name.trim(),
+        job_title: form.job_title || null,
+        company_name: form.company_name || null,
+        company_domain: form.company_domain || null,
+        email: form.email || null,
+        linkedin_url: form.linkedin_url || null,
+        phone: form.phone || null,
+        location: form.location || null,
+        highlights: form.notes || null,
+        icp_score: null, icp_category: null, os_score: null, apollo_id: null,
+        accounts: null, campaigns: null,
+        shortlist_status: "Pendiente",
+        latest_sequences: null,
+      }
+      setProspects((prev) => [newProspect, ...prev])
+      setSelected(newProspect)
+      setResearch("")
+      setSequences(null)
+      setForm(emptyForm())
+      setAddOpen(false)
     })
   }
 
@@ -250,6 +293,12 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel */}
         <div className="w-72 shrink-0 border-r flex flex-col overflow-hidden">
+          <div className="px-3 py-2 border-b flex items-center justify-between shrink-0">
+            <span className="text-xs font-medium text-muted-foreground">{filtered.length} prospecto{filtered.length !== 1 ? "s" : ""}</span>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => { setForm(emptyForm()); setAddError(""); setAddOpen(true) }}>
+              <Plus className="size-3.5" /> Agregar
+            </Button>
+          </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center px-4">
@@ -395,6 +444,72 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
           </div>
         )}
       </div>
+
+      {/* Add prospect dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar prospecto manual</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Nombre completo *</label>
+              <Input placeholder="María García" value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Cargo</label>
+                <Input placeholder="HR Manager" value={form.job_title} onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Empresa</label>
+                <Input placeholder="Acme Corp" value={form.company_name} onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Dominio</label>
+                <Input placeholder="acme.com" value={form.company_domain} onChange={(e) => setForm((f) => ({ ...f, company_domain: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Email</label>
+                <Input placeholder="maria@acme.com" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">LinkedIn URL *</label>
+              <Input placeholder="https://linkedin.com/in/..." value={form.linkedin_url} onChange={(e) => setForm((f) => ({ ...f, linkedin_url: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Teléfono</label>
+                <Input placeholder="+54 9 11 ..." value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Ubicación</label>
+                <Input placeholder="Buenos Aires" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Notas</label>
+              <textarea
+                rows={3}
+                placeholder="Contexto adicional sobre este prospecto..."
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+              />
+            </div>
+            {addError && <p className="text-sm text-destructive">{addError}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setAddOpen(false)} disabled={adding}>Cancelar</Button>
+              <Button size="sm" onClick={handleAdd} disabled={adding}>
+                {adding ? <><Loader2 className="mr-1.5 size-3.5 animate-spin" /> Guardando…</> : "Agregar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
