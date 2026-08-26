@@ -93,7 +93,8 @@
 
   const decodedCb = scrapeCb ? decodeURIComponent(scrapeCb) : scrapeCb;
   const maxResults = parseInt(hashParams.get('_max') || '500', 10);
-  console.log('[ProspectOS] scrape params:', { mode, jobId, maxResults, decodedCb });
+  const startAtPage = parseInt(hashParams.get('page') || '1', 10);
+  console.log('[ProspectOS] scrape params:', { mode, jobId, maxResults, startAtPage, decodedCb });
 
   if (mode === 'people_scrape' && jobId && scrapeCb) {
     await runPeopleScrape(jobId, decodedCb, maxResults);
@@ -101,7 +102,7 @@
   }
 
   if (mode === 'company_scrape' && jobId && scrapeCb) {
-    await runCompanyScrape(jobId, decodedCb, maxResults);
+    await runCompanyScrape(jobId, decodedCb, maxResults, startAtPage);
     return;
   }
 
@@ -636,13 +637,27 @@ function scrapePeopleFromPage(seen = new Set()) {
 
 // ── Company Scrape ───────────────────────────────────────────────────────────
 
-async function runCompanyScrape(jobId, callbackUrl, maxResults = 50) {
+async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage = 1) {
   const overlay = createOverlay();
   const { setStatus, setProgress } = overlay;
 
   try {
     setStatus('Esperando que Sales Nav cargue…');
     await new Promise(r => setTimeout(r, 4000));
+
+    // ── Navigate to starting page ─────────────────────────────────────────────
+    if (startAtPage > 1) {
+      setStatus(`Navegando a página ${startAtPage}…`);
+      await waitForSelector('a[href*="/sales/company/"]', 30000);
+      for (let p = 1; p < startAtPage; p++) {
+        const nextBtn = findNextButton();
+        if (!nextBtn) { setStatus(`⚠️ No se encontró botón siguiente en página ${p}`); break; }
+        nextBtn.click();
+        setProgress(`Saltando a pág. ${p + 1} de ${startAtPage}…`);
+        await new Promise(r => setTimeout(r, 3500));
+        await waitForSelector('a[href*="/sales/company/"]', 30000);
+      }
+    }
 
     // ── Phase 1: scroll + paginate through search results ────────────────────
     const allCompanies = [];
@@ -651,7 +666,7 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50) {
     const MAX_PAGES = Math.ceil(maxResults / 25) + 2;
 
     while (page <= MAX_PAGES && allCompanies.length < maxResults) {
-      setStatus(`Leyendo página ${page}…`);
+      setStatus(`Leyendo página ${startAtPage + page - 1}…`);
       await waitForSelector('a[href*="/sales/company/"]', 30000);
 
       const pageCompanies = await scrapeCompaniesWhileScrolling(globalSeen);
