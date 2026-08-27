@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { generateSequences, type Sequences } from "@/lib/ai-sequences"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
-import { addLeadsToHeyReach, fetchHeyReachCampaigns, fetchHeyReachLinkedInAccounts } from "@/lib/heyreach"
+import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
 import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-results"
 
-export { fetchSmartleadCampaigns, fetchHeyReachCampaigns, fetchHeyReachLinkedInAccounts }
+export { fetchSmartleadCampaigns, fetchHeyReachCampaigns }
 
 export type ShortlistedProspect = {
   id: string
@@ -214,7 +214,7 @@ export async function pushToSmartlead(
 export async function pushToHeyReach(
   prospectId: string,
   campaignId: string,
-  linkedInAccountId: number
+  linkedInAccountId?: number
 ): Promise<{ ok: boolean; error?: string }> {
   const [{ data: prospect }, { data: seq }] = await Promise.all([
     supabaseAdmin
@@ -240,7 +240,7 @@ export async function pushToHeyReach(
   }))
 
   const nameParts = (prospect.full_name ?? "").split(" ")
-  const result = await addLeadsToHeyReach(campaignId, linkedInAccountId, [{
+  const lead = {
     linkedInProfileUrl: prospect.linkedin_url,
     firstName: prospect.first_name ?? nameParts[0] ?? undefined,
     lastName: prospect.last_name ?? (nameParts.slice(1).join(" ") || undefined),
@@ -249,7 +249,11 @@ export async function pushToHeyReach(
     location: prospect.location ?? undefined,
     emailAddress: prospect.email ?? undefined,
     customUserFields,
-  }])
+  }
+
+  const result = linkedInAccountId
+    ? await addLeadsToHeyReach(campaignId, linkedInAccountId, [lead])
+    : await addLeadsToHeyReach(campaignId, [lead])
 
   if (result.error) return { ok: false, error: result.error }
   if (result.success === 0) return { ok: false, error: "HeyReach no aceptó el lead (¿ya existe en la campaña?)" }

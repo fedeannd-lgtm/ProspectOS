@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, fetchHeyReachLinkedInAccounts, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -203,10 +203,8 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [pushResult, setPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
   // HeyReach
   const [pushing2, startPush2] = useTransition()
-  const [hrCampaigns, setHrCampaigns] = useState<{ id: string; name: string }[] | null>(null)
-  const [hrAccounts, setHrAccounts] = useState<{ id: number; name: string }[] | null>(null)
+  const [hrCampaigns, setHrCampaigns] = useState<{ id: string; name: string; linkedInAccountId?: number }[] | null>(null)
   const [selectedHrCampaign, setSelectedHrCampaign] = useState("")
-  const [selectedHrAccount, setSelectedHrAccount] = useState<number | "">("")
   const [hrPushResult, setHrPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
@@ -257,19 +255,18 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
 
   function handleLoadHrCampaigns() {
     if (hrCampaigns !== null) return
-    Promise.all([fetchHeyReachCampaigns(), fetchHeyReachLinkedInAccounts()]).then(([camps, accounts]) => {
+    fetchHeyReachCampaigns().then((camps) => {
       setHrCampaigns(camps)
-      setHrAccounts(accounts)
       if (camps.length > 0) setSelectedHrCampaign(camps[0].id)
-      if (accounts.length > 0) setSelectedHrAccount(accounts[0].id)
     })
   }
 
   function handlePushHeyReach() {
-    if (!selected || !selectedHrCampaign || selectedHrAccount === "") return
+    if (!selected || !selectedHrCampaign) return
     setHrPushResult(null)
+    const hrAccountId = hrCampaigns?.find((c) => c.id === selectedHrCampaign)?.linkedInAccountId
     startPush2(async () => {
-      const result = await pushToHeyReach(selected.id, selectedHrCampaign, Number(selectedHrAccount))
+      const result = await pushToHeyReach(selected.id, selectedHrCampaign, hrAccountId)
       setHrPushResult(result)
       if (result.ok) {
         setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, shortlist_status: "Enviado" } : p))
@@ -723,18 +720,7 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                         {hrCampaigns?.length === 0 && <option value="">Sin campañas en HeyReach</option>}
                         {hrCampaigns?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
-                      <select
-                        value={selectedHrAccount === "" ? "" : String(selectedHrAccount)}
-                        onChange={(e) => setSelectedHrAccount(e.target.value ? Number(e.target.value) : "")}
-                        onFocus={handleLoadHrCampaigns}
-                        className="h-8 w-36 shrink-0 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        {hrAccounts === null && <option value="">Cuenta LinkedIn…</option>}
-                        {hrAccounts?.length === 0 && <option value="">Sin cuentas</option>}
-                        {hrAccounts?.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                      </select>
-                      <Button size="sm" onClick={handlePushHeyReach}
-                        disabled={pushing2 || !selectedHrCampaign || selectedHrAccount === ""}>
+                      <Button size="sm" onClick={handlePushHeyReach} disabled={pushing2 || !selectedHrCampaign}>
                         {pushing2 ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Send className="mr-1.5 size-3.5" />}
                         Enviar
                       </Button>

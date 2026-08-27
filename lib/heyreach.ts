@@ -12,7 +12,8 @@ export type HeyReachLead = {
   customUserFields?: { name: string; value: string }[]
 }
 
-export async function fetchHeyReachCampaigns(): Promise<{ id: string; name: string }[]> {
+// Returns campaigns with their first linkedInAccountId already embedded
+export async function fetchHeyReachCampaigns(): Promise<{ id: string; name: string; linkedInAccountId?: number }[]> {
   try {
     const res = await fetch(`${BASE}/campaign/GetAll`, {
       method: "POST",
@@ -28,34 +29,19 @@ export async function fetchHeyReachCampaigns(): Promise<{ id: string; name: stri
     const list: unknown[] = data?.items ?? []
     return list
       .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
-      .map((c) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }))
+      .map((c) => {
+        // HeyReach returns linkedInAccountIds (array) or linkedInAccountId (number)
+        const rawIds = c.linkedInAccountIds ?? c.linkedInAccountId
+        const accountIds: number[] = Array.isArray(rawIds)
+          ? rawIds.map(Number).filter(Boolean)
+          : rawIds ? [Number(rawIds)] : []
+        return {
+          id: String(c.id ?? ""),
+          name: String(c.name ?? ""),
+          linkedInAccountId: accountIds[0],
+        }
+      })
       .filter((c) => c.id && c.name)
-  } catch {
-    return []
-  }
-}
-
-export async function fetchHeyReachLinkedInAccounts(): Promise<{ id: number; name: string }[]> {
-  try {
-    const res = await fetch(`${BASE}/linkedInAccount/GetAll`, {
-      method: "POST",
-      headers: {
-        "X-API-KEY": API_KEY,
-        "Content-Type": "application/json",
-        "Accept": "text/plain",
-      },
-      body: JSON.stringify({ offset: 0, limit: 50 }),
-    })
-    if (!res.ok) return []
-    const data = await res.json()
-    const list: unknown[] = Array.isArray(data) ? data : (data?.items ?? [])
-    return list
-      .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
-      .map((a) => ({
-        id: Number(a.id ?? 0),
-        name: String(a.name ?? a.email ?? a.username ?? `Cuenta ${a.id}`),
-      }))
-      .filter((a) => a.id)
   } catch {
     return []
   }
