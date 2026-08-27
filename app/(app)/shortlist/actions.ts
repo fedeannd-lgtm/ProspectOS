@@ -263,6 +263,14 @@ export async function pushToHeyReach(
   return { ok: true }
 }
 
+export async function assignIndustryToCompany(companyName: string, industry: string): Promise<void> {
+  await supabaseAdmin
+    .from("accounts")
+    .update({ industry })
+    .ilike("company_name", companyName)
+  revalidatePath("/shortlist")
+}
+
 export async function updateShortlistStatus(prospectId: string, status: string): Promise<void> {
   await supabaseAdmin
     .from("prospects")

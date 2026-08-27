@@ -9,12 +9,23 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
 
 const STATUSES = ["Pendiente", "Enviado", "Reunión Agendada", "Sin respuesta"] as const
+
+const INDUSTRIES = [
+  "Retail & Comercio",
+  "Manufactura",
+  "Finance & Insurance",
+  "Agro & Energy",
+  "Construcción",
+  "BPO & Professional Services",
+  "Health & Entertainment",
+  "Consulting & Telco",
+] as const
 type ShortlistStatus = typeof STATUSES[number]
 
 const STATUS_CFG: Record<ShortlistStatus, { cls: string }> = {
@@ -199,6 +210,8 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [pushing, startPush] = useTransition()
   const [collapsedIndustries, setCollapsedIndustries] = useState<Set<string>>(new Set())
   const [collapsedCompanies,  setCollapsedCompanies]  = useState<Set<string>>(new Set())
+  const [editingIndustryFor, setEditingIndustryFor] = useState<string | null>(null)
+  const [assigningIndustry, startAssignIndustry] = useTransition()
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[] | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [pushResult, setPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
@@ -433,6 +446,19 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     })
   }
 
+  function handleAssignIndustry(companyName: string, industry: string) {
+    startAssignIndustry(async () => {
+      await assignIndustryToCompany(companyName, industry)
+      // Update local state: set accounts.industry for all prospects with this company
+      setProspects((prev) => prev.map((p) =>
+        p.company_name === companyName
+          ? { ...p, accounts: { ...(p.accounts ?? { headcount_range: null }), industry } }
+          : p
+      ))
+      setEditingIndustryFor(null)
+    })
+  }
+
   const icpCls = selected?.icp_category ? (ICP_COLORS[selected.icp_category] ?? "bg-zinc-100 text-zinc-600") : ""
 
   return (
@@ -524,21 +550,48 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                       return (
                         <div key={company} className="ml-2">
                           {/* Company header */}
-                          <button
-                            onClick={() => toggleCompany(industry, company)}
-                            className="w-full flex items-center justify-between px-2 py-1 rounded-md hover:bg-muted/50 transition-colors group"
-                          >
-                            <span className="flex items-center gap-1 min-w-0">
-                              <ChevronRight className={cn(
-                                "size-3 shrink-0 text-muted-foreground/60 transition-transform duration-150",
-                                !companyCollapsed && "rotate-90"
-                              )} />
-                              <span className="text-xs font-medium text-foreground/70 group-hover:text-foreground truncate">
-                                {company}
-                              </span>
-                            </span>
-                            <span className="text-[10px] text-muted-foreground shrink-0 ml-1">{sorted.length}</span>
-                          </button>
+                          {editingIndustryFor === company ? (
+                            <div className="flex items-center gap-1 px-2 py-1">
+                              <select
+                                autoFocus
+                                disabled={assigningIndustry}
+                                defaultValue=""
+                                onChange={(e) => e.target.value && handleAssignIndustry(company, e.target.value)}
+                                onBlur={() => setEditingIndustryFor(null)}
+                                className="flex-1 h-6 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              >
+                                <option value="" disabled>Seleccionar industria…</option>
+                                {INDUSTRIES.map((ind) => (
+                                  <option key={ind} value={ind}>{ind}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="flex items-center group rounded-md hover:bg-muted/50 transition-colors">
+                              <button
+                                onClick={() => toggleCompany(industry, company)}
+                                className="flex-1 flex items-center gap-1 min-w-0 px-2 py-1"
+                              >
+                                <ChevronRight className={cn(
+                                  "size-3 shrink-0 text-muted-foreground/60 transition-transform duration-150",
+                                  !companyCollapsed && "rotate-90"
+                                )} />
+                                <span className="text-xs font-medium text-foreground/70 group-hover:text-foreground truncate">
+                                  {company}
+                                </span>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingIndustryFor(company) }}
+                                className="opacity-0 group-hover:opacity-100 px-1.5 py-1 text-muted-foreground hover:text-foreground transition-all"
+                                title="Asignar industria"
+                              >
+                                <svg className="size-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                  <path d="M11.5 2.5a1.5 1.5 0 0 1 2.121 2.121l-7.5 7.5L3 13l.879-3.121 7.621-7.379Z"/>
+                                </svg>
+                              </button>
+                              <span className="text-[10px] text-muted-foreground pr-2 shrink-0">{sorted.length}</span>
+                            </div>
+                          )}
 
                           {/* Prospects */}
                           {!companyCollapsed && (
