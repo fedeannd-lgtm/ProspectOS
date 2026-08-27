@@ -601,6 +601,16 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                       <Mail className="size-3" /> {selected.email}
                     </span>
                   )}
+                  {selected.phone && (
+                    <a
+                      href={`https://wa.me/${selected.phone.replace(/[^\d+]/g, "")}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-500 transition-colors"
+                      title="Abrir WhatsApp"
+                    >
+                      <Phone className="size-3" /> {selected.phone}
+                    </a>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
