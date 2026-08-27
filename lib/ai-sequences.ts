@@ -76,6 +76,8 @@ Instrucciones para las secuencias:
 - Sé concreto, evitá frases genéricas de relleno
 - Usá el contexto de research adicional para personalizar al máximo
 - NO incluyas placeholders como [NOMBRE] — usá el nombre real del prospecto
+- NO uses doble guión (--) en ningún lugar del texto
+- NO firmes los emails ni mensajes con nombre propio (sin "Federico", sin "Saludos, X", sin firma de ningún tipo)
 
 Devolvé ÚNICAMENTE un JSON válido sin markdown, sin texto adicional, con este formato exacto:
 {
