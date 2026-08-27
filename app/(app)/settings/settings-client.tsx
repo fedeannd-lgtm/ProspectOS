@@ -379,25 +379,33 @@ function ClientListCard({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState("")
 
-  // Parse textarea: "Nombre, https://linkedin.com/company/slug/" or "Nombre"
+  // Parse textarea: "Nombre" or "Nombre, linkedin_url" or "Nombre, linkedin_url, dominio.com"
   const [raw, setRaw] = useState(() =>
     initialCompanies
-      .map((c) => (c.linkedin_url ? `${c.company_name}, ${c.linkedin_url}` : c.company_name))
+      .map((c) => {
+        const parts = [c.company_name]
+        if (c.linkedin_url) parts.push(c.linkedin_url)
+        if (c.domain) parts.push(c.domain)
+        return parts.join(", ")
+      })
       .join("\n")
   )
 
-  function parseRaw(text: string): { company_name: string; linkedin_url: string | null }[] {
+  function parseRaw(text: string): { company_name: string; linkedin_url: string | null; domain: string | null }[] {
     return text
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const commaIdx = line.indexOf(",")
-        if (commaIdx === -1) return { company_name: line.trim(), linkedin_url: null }
-        const name = line.slice(0, commaIdx).trim()
-        const url = line.slice(commaIdx + 1).trim()
-        const isLinkedIn = url.includes("linkedin.com/company/")
-        return { company_name: name, linkedin_url: isLinkedIn ? url : null }
+        const parts = line.split(",").map((p) => p.trim())
+        const company_name = parts[0] ?? ""
+        const second = parts[1] ?? ""
+        const third = parts[2] ?? ""
+        const linkedin_url = second.includes("linkedin.com/company/") ? second : null
+        // domain: third field, or second if it doesn't look like a LinkedIn URL
+        const rawDomain = third || (!second.includes("linkedin.com") && second ? second : "")
+        const domain = rawDomain && /\.[a-z]{2,}/.test(rawDomain) ? rawDomain.replace(/^https?:\/\/(www\.)?/, "").split("/")[0] : null
+        return { company_name, linkedin_url, domain }
       })
       .filter((e) => e.company_name)
   }
@@ -409,7 +417,7 @@ function ClientListCard({
     startTransition(async () => {
       await saveClientCompanies(entries)
       // Optimistic update
-      setCompanies(entries.map((e, i) => ({ id: String(i), ...e, sales_nav_id: null, domain: null })))
+      setCompanies(entries.map((e, i) => ({ id: String(i), ...e, sales_nav_id: null, domain: e.domain ?? null })))
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     })
@@ -455,17 +463,17 @@ function ClientListCard({
       <CardContent className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Empresas <span className="normal-case font-normal">(una por línea — opcionalmente agregá la URL de LinkedIn separada por coma)</span>
+            Empresas <span className="normal-case font-normal">(una por línea — LinkedIn URL y dominio son opcionales)</span>
           </label>
           <textarea
             rows={8}
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            placeholder={"Ransa\nCencosud, https://www.linkedin.com/company/cencosud/\nFalabella"}
+            placeholder={"Ransa\nCencosud, https://www.linkedin.com/company/cencosud/, cencosud.com\nFalabella, https://www.linkedin.com/company/falabella/\nWalmex, , walmex.mx"}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono leading-relaxed resize-y focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
           />
           <p className="text-xs text-muted-foreground">
-            Formato: <code className="bg-muted px-1 rounded">Nombre de empresa</code> o <code className="bg-muted px-1 rounded">Nombre, https://linkedin.com/company/slug/</code>
+            Formato: <code className="bg-muted px-1 rounded">Nombre</code> o <code className="bg-muted px-1 rounded">Nombre, linkedin_url, dominio.com</code> — cada campo separado por coma
           </p>
         </div>
 

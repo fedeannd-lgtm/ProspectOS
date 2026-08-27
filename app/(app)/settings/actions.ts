@@ -148,7 +148,7 @@ export async function getClientCompanies(): Promise<ClientCompany[]> {
 }
 
 export async function saveClientCompanies(
-  entries: { company_name: string; linkedin_url?: string | null }[]
+  entries: { company_name: string; linkedin_url?: string | null; domain?: string | null }[]
 ): Promise<void> {
   // Deduplicate by normalized name
   const seen = new Set<string>()
@@ -160,7 +160,7 @@ export async function saveClientCompanies(
       seen.add(key)
       return true
     })
-    .map((e) => ({ company_name: e.company_name.trim(), linkedin_url: e.linkedin_url || null }))
+    .map((e) => ({ company_name: e.company_name.trim(), linkedin_url: e.linkedin_url || null, domain: e.domain || null }))
 
   await supabaseAdmin.from("client_companies").delete().neq("id", "00000000-0000-0000-0000-000000000000")
   if (rows.length > 0) await supabaseAdmin.from("client_companies").insert(rows)
