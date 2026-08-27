@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus } from "lucide-react"
+import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -169,6 +169,10 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [adding, startAdd] = useTransition()
   const [saving, startSave] = useTransition()
   const [savedOk, setSavedOk] = useState(false)
+  const [pushing, startPush] = useTransition()
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[] | null>(null)
+  const [selectedCampaign, setSelectedCampaign] = useState("")
+  const [pushResult, setPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState("")
@@ -192,6 +196,28 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     setSequences(p.latest_sequences?.sequences ?? null)
     setError("")
     setSavedOk(false)
+    setPushResult(null)
+  }
+
+  function handleLoadCampaigns() {
+    if (campaigns !== null) return
+    fetchSmartleadCampaigns().then((list) => {
+      setCampaigns(list)
+      if (list.length > 0) setSelectedCampaign(list[0].id)
+    })
+  }
+
+  function handlePush() {
+    if (!selected || !selectedCampaign) return
+    setPushResult(null)
+    startPush(async () => {
+      const result = await pushToSmartlead(selected.id, selectedCampaign)
+      setPushResult(result)
+      if (result.ok) {
+        setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, shortlist_status: "Enviado" } : p))
+        setSelected((prev) => prev ? { ...prev, shortlist_status: "Enviado" } : prev)
+      }
+    })
   }
 
   function handleSequenceChange(updated: Sequences) {
@@ -451,6 +477,43 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                 {error && <p className="text-sm text-destructive">{error}</p>}
               </div>
             </div>
+
+            {/* Push to Smartlead */}
+            {sequences && (
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Send className="size-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Enviar a Smartlead</p>
+                </div>
+                {!selected.email && (
+                  <p className="text-xs text-amber-600">Este prospecto no tiene email — no se puede enviar a Smartlead.</p>
+                )}
+                {selected.email && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={selectedCampaign}
+                      onChange={(e) => setSelectedCampaign(e.target.value)}
+                      onFocus={handleLoadCampaigns}
+                      className="h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      {campaigns === null && <option value="">Click para cargar campañas…</option>}
+                      {campaigns?.length === 0 && <option value="">Sin campañas en Smartlead</option>}
+                      {campaigns?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <Button size="sm" onClick={handlePush} disabled={pushing || !selectedCampaign}>
+                      {pushing ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Send className="mr-1.5 size-3.5" />}
+                      Enviar
+                    </Button>
+                  </div>
+                )}
+                {pushResult?.ok && (
+                  <p className="text-xs text-green-600 flex items-center gap-1"><Check className="size-3" /> Lead enviado correctamente</p>
+                )}
+                {pushResult?.error && (
+                  <p className="text-xs text-destructive">{pushResult.error}</p>
+                )}
+              </div>
+            )}
 
             {/* Sequences */}
             {sequences && (

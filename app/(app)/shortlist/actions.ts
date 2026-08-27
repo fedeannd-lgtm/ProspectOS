@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { generateSequences, type Sequences } from "@/lib/ai-sequences"
+import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
+
+export { fetchSmartleadCampaigns }
 
 export type ShortlistedProspect = {
   id: string
@@ -108,6 +111,52 @@ export async function saveEditedSequences(prospectId: string, sequences: Sequenc
       .eq("id", data.id)
   }
   revalidatePath("/shortlist")
+}
+
+export async function pushToSmartlead(
+  prospectId: string,
+  campaignId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const [{ data: prospect }, { data: seq }] = await Promise.all([
+    supabaseAdmin
+      .from("prospects")
+      .select("first_name, last_name, full_name, email, company_name, linkedin_url")
+      .eq("id", prospectId)
+      .single(),
+    supabaseAdmin
+      .from("shortlist_sequences")
+      .select("sequences")
+      .eq("prospect_id", prospectId)
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .single(),
+  ])
+
+  if (!prospect?.email) return { ok: false, error: "El prospecto no tiene email guardado" }
+
+  const emailSteps = (seq?.sequences as Sequences | null)?.email ?? []
+  const custom_fields: Record<string, string> = {}
+  emailSteps.slice(0, 4).forEach((step, i) => {
+    custom_fields[`Mail${i + 1}`] = step.body
+  })
+
+  const nameParts = (prospect.full_name ?? "").split(" ")
+  const result = await addLeadsToSmartlead(campaignId, [{
+    email: prospect.email,
+    first_name: prospect.first_name ?? nameParts[0] ?? undefined,
+    last_name: prospect.last_name ?? (nameParts.slice(1).join(" ") || undefined),
+    company_name: prospect.company_name ?? undefined,
+    linkedin_profile: prospect.linkedin_url ?? undefined,
+    custom_fields,
+  }])
+
+  if (result.error) return { ok: false, error: result.error }
+  if (result.success === 0) return { ok: false, error: "Smartlead no aceptó el lead (¿ya existe en la campaña?)" }
+
+  // Mark as sent
+  await supabaseAdmin.from("prospects").update({ shortlist_status: "Enviado" }).eq("id", prospectId)
+  revalidatePath("/shortlist")
+  return { ok: true }
 }
 
 export async function updateShortlistStatus(prospectId: string, status: string): Promise<void> {
