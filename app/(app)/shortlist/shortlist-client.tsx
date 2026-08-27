@@ -195,6 +195,7 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [enrichingEmail, startEnrichEmail] = useTransition()
   const [enrichingPhone, startEnrichPhone] = useTransition()
   const [normalizing, startNormalize] = useTransition()
+  const [enrichFeedback, setEnrichFeedback] = useState<string | null>(null)
   const [pushing, startPush] = useTransition()
   const [collapsedIndustries, setCollapsedIndustries] = useState<Set<string>>(new Set())
   const [collapsedCompanies,  setCollapsedCompanies]  = useState<Set<string>>(new Set())
@@ -230,6 +231,8 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     setError("")
     setSavedOk(false)
     setPushResult(null)
+    setHrPushResult(null)
+    setEnrichFeedback(null)
   }
 
   function handleLoadCampaigns() {
@@ -364,6 +367,11 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     })
   }
 
+  function showFeedback(msg: string) {
+    setEnrichFeedback(msg)
+    setTimeout(() => setEnrichFeedback(null), 3000)
+  }
+
   function handleEnrichEmail() {
     if (!selected) return
     startEnrichEmail(async () => {
@@ -371,6 +379,9 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
       if (result.email) {
         setSelected((prev) => prev ? { ...prev, email: result.email } : prev)
         setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, email: result.email } : p))
+        showFeedback("✓ Email encontrado")
+      } else {
+        showFeedback("Email no encontrado")
       }
     })
   }
@@ -382,6 +393,9 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
       if (phone) {
         setSelected((prev) => prev ? { ...prev, phone } : prev)
         setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, phone } : p))
+        showFeedback("✓ Teléfono encontrado")
+      } else {
+        showFeedback("Teléfono no encontrado")
       }
     })
   }
@@ -393,6 +407,9 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
       if (result) {
         setSelected((prev) => prev ? { ...prev, ...result } : prev)
         setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, ...result } : p))
+        showFeedback("✓ Nombre normalizado")
+      } else {
+        showFeedback("Ya estaba normalizado")
       }
     })
   }
@@ -586,24 +603,31 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button variant="outline" size="sm" onClick={handleEnrichEmail} disabled={enrichingEmail}
-                  title="Buscar email">
-                  {enrichingEmail ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleEnrichPhone} disabled={enrichingPhone}
-                  title="Buscar teléfono">
-                  {enrichingPhone ? <Loader2 className="size-3.5 animate-spin" /> : <Phone className="size-3.5" />}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleNormalize} disabled={normalizing}
-                  title="Normalizar nombre">
-                  {normalizing ? <Loader2 className="size-3.5 animate-spin" /> : <Type className="size-3.5" />}
-                </Button>
-                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive"
-                  onClick={handleRemove} disabled={removing}>
-                  {removing ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                  <span className="ml-1.5">Quitar</span>
-                </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                {enrichFeedback && (
+                  <span className={`text-xs ${enrichFeedback.startsWith("✓") ? "text-green-600" : "text-muted-foreground"}`}>
+                    {enrichFeedback}
+                  </span>
+                )}
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" onClick={handleEnrichEmail} disabled={enrichingEmail}
+                    title="Buscar email">
+                    {enrichingEmail ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleEnrichPhone} disabled={enrichingPhone}
+                    title="Buscar teléfono">
+                    {enrichingPhone ? <Loader2 className="size-3.5 animate-spin" /> : <Phone className="size-3.5" />}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleNormalize} disabled={normalizing}
+                    title="Normalizar nombre">
+                    {normalizing ? <Loader2 className="size-3.5 animate-spin" /> : <Type className="size-3.5" />}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive"
+                    onClick={handleRemove} disabled={removing}>
+                    {removing ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                    <span className="ml-1.5">Quitar</span>
+                  </Button>
+                </div>
               </div>
             </div>
 
