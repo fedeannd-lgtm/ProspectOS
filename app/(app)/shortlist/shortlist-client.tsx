@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, fetchHeyReachLinkedInAccounts, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -201,6 +201,13 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[] | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [pushResult, setPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
+  // HeyReach
+  const [pushing2, startPush2] = useTransition()
+  const [hrCampaigns, setHrCampaigns] = useState<{ id: string; name: string }[] | null>(null)
+  const [hrAccounts, setHrAccounts] = useState<{ id: number; name: string }[] | null>(null)
+  const [selectedHrCampaign, setSelectedHrCampaign] = useState("")
+  const [selectedHrAccount, setSelectedHrAccount] = useState<number | "">("")
+  const [hrPushResult, setHrPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState("")
@@ -241,6 +248,29 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     startPush(async () => {
       const result = await pushToSmartlead(selected.id, selectedCampaign)
       setPushResult(result)
+      if (result.ok) {
+        setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, shortlist_status: "Enviado" } : p))
+        setSelected((prev) => prev ? { ...prev, shortlist_status: "Enviado" } : prev)
+      }
+    })
+  }
+
+  function handleLoadHrCampaigns() {
+    if (hrCampaigns !== null) return
+    Promise.all([fetchHeyReachCampaigns(), fetchHeyReachLinkedInAccounts()]).then(([camps, accounts]) => {
+      setHrCampaigns(camps)
+      setHrAccounts(accounts)
+      if (camps.length > 0) setSelectedHrCampaign(camps[0].id)
+      if (accounts.length > 0) setSelectedHrAccount(accounts[0].id)
+    })
+  }
+
+  function handlePushHeyReach() {
+    if (!selected || !selectedHrCampaign || selectedHrAccount === "") return
+    setHrPushResult(null)
+    startPush2(async () => {
+      const result = await pushToHeyReach(selected.id, selectedHrCampaign, Number(selectedHrAccount))
+      setHrPushResult(result)
       if (result.ok) {
         setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, shortlist_status: "Enviado" } : p))
         setSelected((prev) => prev ? { ...prev, shortlist_status: "Enviado" } : prev)
@@ -666,6 +696,56 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                 )}
                 {pushResult?.error && (
                   <p className="text-xs text-destructive">{pushResult.error}</p>
+                )}
+              </div>
+            )}
+
+            {/* Push to HeyReach */}
+            {sequences && (
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Send className="size-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Enviar a HeyReach</p>
+                </div>
+                {!selected.linkedin_url && (
+                  <p className="text-xs text-amber-600">Este prospecto no tiene LinkedIn URL — requerido para HeyReach.</p>
+                )}
+                {selected.linkedin_url && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={selectedHrCampaign}
+                        onChange={(e) => setSelectedHrCampaign(e.target.value)}
+                        onFocus={handleLoadHrCampaigns}
+                        className="h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {hrCampaigns === null && <option value="">Click para cargar campañas…</option>}
+                        {hrCampaigns?.length === 0 && <option value="">Sin campañas en HeyReach</option>}
+                        {hrCampaigns?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <select
+                        value={selectedHrAccount === "" ? "" : String(selectedHrAccount)}
+                        onChange={(e) => setSelectedHrAccount(e.target.value ? Number(e.target.value) : "")}
+                        onFocus={handleLoadHrCampaigns}
+                        className="h-8 w-36 shrink-0 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {hrAccounts === null && <option value="">Cuenta LinkedIn…</option>}
+                        {hrAccounts?.length === 0 && <option value="">Sin cuentas</option>}
+                        {hrAccounts?.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                      <Button size="sm" onClick={handlePushHeyReach}
+                        disabled={pushing2 || !selectedHrCampaign || selectedHrAccount === ""}>
+                        {pushing2 ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Send className="mr-1.5 size-3.5" />}
+                        Enviar
+                      </Button>
+                    </div>
+                    {hrPushResult?.ok && (
+                      <p className="text-xs text-green-600 flex items-center gap-1"><Check className="size-3" /> Lead enviado correctamente</p>
+                    )}
+                    {hrPushResult?.error && (
+                      <p className="text-xs text-destructive">{hrPushResult.error}</p>
+                    )}
+                  </div>
                 )}
               </div>
             )}

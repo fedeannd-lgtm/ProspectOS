@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { generateSequences, type Sequences } from "@/lib/ai-sequences"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
+import { addLeadsToHeyReach, fetchHeyReachCampaigns, fetchHeyReachLinkedInAccounts } from "@/lib/heyreach"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
 import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-results"
 
-export { fetchSmartleadCampaigns }
+export { fetchSmartleadCampaigns, fetchHeyReachCampaigns, fetchHeyReachLinkedInAccounts }
 
 export type ShortlistedProspect = {
   id: string
@@ -205,6 +206,54 @@ export async function pushToSmartlead(
   if (result.success === 0) return { ok: false, error: "Smartlead no aceptó el lead (¿ya existe en la campaña?)" }
 
   // Mark as sent
+  await supabaseAdmin.from("prospects").update({ shortlist_status: "Enviado" }).eq("id", prospectId)
+  revalidatePath("/shortlist")
+  return { ok: true }
+}
+
+export async function pushToHeyReach(
+  prospectId: string,
+  campaignId: string,
+  linkedInAccountId: number
+): Promise<{ ok: boolean; error?: string }> {
+  const [{ data: prospect }, { data: seq }] = await Promise.all([
+    supabaseAdmin
+      .from("prospects")
+      .select("first_name, last_name, full_name, email, company_name, job_title, location, linkedin_url")
+      .eq("id", prospectId)
+      .single(),
+    supabaseAdmin
+      .from("shortlist_sequences")
+      .select("sequences")
+      .eq("prospect_id", prospectId)
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .single(),
+  ])
+
+  if (!prospect?.linkedin_url) return { ok: false, error: "El prospecto no tiene LinkedIn URL" }
+
+  const linkedinSteps = (seq?.sequences as Sequences | null)?.linkedin ?? []
+  const customUserFields = linkedinSteps.slice(0, 5).map((step, i) => ({
+    name: `Li${i + 1}`,
+    value: step.message,
+  }))
+
+  const nameParts = (prospect.full_name ?? "").split(" ")
+  const result = await addLeadsToHeyReach(campaignId, linkedInAccountId, [{
+    linkedInProfileUrl: prospect.linkedin_url,
+    firstName: prospect.first_name ?? nameParts[0] ?? undefined,
+    lastName: prospect.last_name ?? (nameParts.slice(1).join(" ") || undefined),
+    companyName: prospect.company_name ?? undefined,
+    position: prospect.job_title ?? undefined,
+    location: prospect.location ?? undefined,
+    emailAddress: prospect.email ?? undefined,
+    customUserFields,
+  }])
+
+  if (result.error) return { ok: false, error: result.error }
+  if (result.success === 0) return { ok: false, error: "HeyReach no aceptó el lead (¿ya existe en la campaña?)" }
+
   await supabaseAdmin.from("prospects").update({ shortlist_status: "Enviado" }).eq("id", prospectId)
   revalidatePath("/shortlist")
   return { ok: true }
