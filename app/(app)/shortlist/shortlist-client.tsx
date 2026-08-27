@@ -54,15 +54,26 @@ function prospectLabel(p: ShortlistedProspect): string {
 
 type Grouped = Map<string, Map<string, ShortlistedProspect[]>>
 
+// Canonical display name: Title Case of first word, rest lowercase — e.g. "AGUNSA" → "Agunsa"
+function canonicalCompany(name: string): string {
+  return name.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
+}
+
 function groupProspects(prospects: ShortlistedProspect[]): Grouped {
+  // key → canonical display name
+  const displayName = new Map<string, string>()
   const map: Grouped = new Map()
   for (const p of prospects) {
     const industry = p.accounts?.industry ?? "Sin industria"
-    const company  = p.company_name ?? "Sin empresa"
+    const raw      = p.company_name ?? "Sin empresa"
+    const key      = raw.trim().toLowerCase()  // normalize key for grouping
+    const display  = displayName.get(key) ?? canonicalCompany(raw)
+    displayName.set(key, display)
+
     if (!map.has(industry)) map.set(industry, new Map())
     const byCompany = map.get(industry)!
-    if (!byCompany.has(company)) byCompany.set(company, [])
-    byCompany.get(company)!.push(p)
+    if (!byCompany.has(display)) byCompany.set(display, [])
+    byCompany.get(display)!.push(p)
   }
   return map
 }
@@ -450,9 +461,10 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   function handleAssignIndustry(companyName: string, industry: string) {
     startAssignIndustry(async () => {
       await assignIndustryToCompany(companyName, industry)
-      // Update local state: set accounts.industry for all prospects with this company
+      // Case-insensitive match so "AGUNSA" and "Agunsa" both update
+      const key = companyName.trim().toLowerCase()
       setProspects((prev) => prev.map((p) =>
-        p.company_name === companyName
+        (p.company_name ?? "").trim().toLowerCase() === key
           ? { ...p, accounts: { ...(p.accounts ?? { headcount_range: null }), industry } }
           : p
       ))
