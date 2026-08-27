@@ -997,7 +997,7 @@ async function runCreateClientList(appBaseUrl) {
     sessionStorage.setItem('prospectOS_client_list', JSON.stringify(state));
 
     await new Promise(r => setTimeout(r, 800));
-    window.location.href = `/sales/search/company?keywords=${encodeURIComponent(toResolve[0].company_name)}`;
+    window.location.href = `/sales/search/company?keywords=${encodeURIComponent(cleanSearchName(toResolve[0].company_name))}`;
     // Page will reload → resumeClientListFlow picks up the state
 
   } catch (err) {
@@ -1007,6 +1007,33 @@ async function runCreateClientList(appBaseUrl) {
   }
 }
 
+// Strip domain-like words from a company name so search works better.
+// "Cervecería Quilmes quilmes.com.ar" → "Cervecería Quilmes"
+function cleanSearchName(name) {
+  const cleaned = name
+    .split(/\s+/)
+    .filter(word => !/^[\w.-]+\.[a-z]{2,6}(\.[a-z]{2,3})?$/i.test(word))
+    .join(' ')
+    .trim();
+  return cleaned || name;
+}
+
+// Find all anchor links matching a pattern, piercing shadow roots.
+// querySelectorAll doesn't cross shadow boundaries in Lit/React components.
+function findLinksDeep(root, hrefFragment) {
+  const results = [];
+  function traverse(node) {
+    if (!node) return;
+    if (node.shadowRoot) traverse(node.shadowRoot);
+    if (node.querySelectorAll) {
+      node.querySelectorAll(`a[href*="${hrefFragment}"]`).forEach(el => results.push(el));
+    }
+    if (node.children) Array.from(node.children).forEach(traverse);
+  }
+  traverse(root);
+  return results;
+}
+
 // Called on each page load while state exists (we're navigating one search per company)
 async function resumeClientListFlow(state) {
   const { appBaseUrl, toResolve, resolved, currentIndex, totalCount } = state;
@@ -1014,44 +1041,59 @@ async function resumeClientListFlow(state) {
   const { setStatus, setProgress } = overlay;
 
   const current = toResolve[currentIndex];
-  setStatus(`Capturando ID: "${current.company_name}" (${currentIndex + 1}/${toResolve.length})`);
+  const displayName = cleanSearchName(current.company_name);
+  setStatus(`Capturando ID: "${displayName}" (${currentIndex + 1}/${toResolve.length})`);
   setProgress('Esperando resultados…');
 
-  // Wait for Sales Nav company search results to appear in DOM
-  // Company links look like /sales/company/12345678/
+  // Wait for Sales Nav company search results to appear.
+  // Strategy 1: look for /sales/company/ID/ links in DOM (incl. shadow roots).
+  // Strategy 2: check Performance API for salesApiCompanies responses (IDs are in the URL).
   let companyId = null;
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const links = Array.from(document.querySelectorAll('a[href*="/sales/company/"]'));
+    // Shadow-DOM-aware link search
+    const links = findLinksDeep(document.body, '/sales/company/');
     for (const link of links) {
       const m = (link.getAttribute('href') || '').match(/\/sales\/company\/(\d+)/);
       if (m) { companyId = m[1]; break; }
     }
     if (companyId) break;
-    // Also stop if the page clearly has no results
+
+    // Fallback: parse salesApiCompanies URL from Performance entries
+    // The page fetches e.g. /sales-api/salesApiCompanies?ids=List(urn%3Ali%3Afs_salesCompany%3A12345,...)
+    if (!companyId) {
+      const entries = performance.getEntriesByType('resource');
+      for (const entry of entries) {
+        if (entry.name.includes('salesApiCompanies') && entry.name.includes('ids=List(')) {
+          const m = entry.name.match(/urn%3Ali%3Afs_salesCompany%3A(\d+)/);
+          if (m) { companyId = m[1]; break; }
+        }
+      }
+    }
+    if (companyId) break;
+
     if (/no result|sin resultado|0 result/i.test(document.body?.innerText || '')) break;
     await new Promise(r => setTimeout(r, 600));
   }
 
   const newResolved = [...resolved];
   if (companyId) {
-    setProgress(`✓ ${current.company_name} → ${companyId}`);
+    setProgress(`✓ ${displayName} → ${companyId}`);
     newResolved.push({ company_name: current.company_name, sales_nav_id: companyId });
   } else {
-    setProgress(`⚠ No encontrado: ${current.company_name}`);
+    setProgress(`⚠ No encontrado: ${displayName}`);
   }
-  console.log('[ProspectOS client_list]', current.company_name, '→', companyId ?? 'NOT FOUND');
+  console.log('[ProspectOS client_list]', displayName, '→', companyId ?? 'NOT FOUND');
 
   await new Promise(r => setTimeout(r, 800));
 
   const nextIndex = currentIndex + 1;
   if (nextIndex < toResolve.length) {
-    // More companies to search
     const nextState = { ...state, resolved: newResolved, currentIndex: nextIndex };
     sessionStorage.setItem('prospectOS_client_list', JSON.stringify(nextState));
-    window.location.href = `/sales/search/company?keywords=${encodeURIComponent(toResolve[nextIndex].company_name)}`;
+    const nextName = cleanSearchName(toResolve[nextIndex].company_name);
+    window.location.href = `/sales/search/company?keywords=${encodeURIComponent(nextName)}`;
   } else {
-    // All done — create the list
     sessionStorage.removeItem('prospectOS_client_list');
     await doCreateList(newResolved, appBaseUrl, { setStatus, setProgress }, totalCount);
   }
