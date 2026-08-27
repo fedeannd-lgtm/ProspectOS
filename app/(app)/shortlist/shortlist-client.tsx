@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type } from "lucide-react"
+import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type, ChevronRight } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +36,29 @@ const ICP_COLORS: Record<string, string> = {
 
 function prospectLabel(p: ShortlistedProspect): string {
   return (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()) || "Sin nombre"
+}
+
+// ── grouping ───────────────────────────────────────────────────────────────────
+
+type Grouped = Map<string, Map<string, ShortlistedProspect[]>>
+
+function groupProspects(prospects: ShortlistedProspect[]): Grouped {
+  const map: Grouped = new Map()
+  for (const p of prospects) {
+    const industry = p.accounts?.industry ?? "Sin industria"
+    const company  = p.company_name ?? "Sin empresa"
+    if (!map.has(industry)) map.set(industry, new Map())
+    const byCompany = map.get(industry)!
+    if (!byCompany.has(company)) byCompany.set(company, [])
+    byCompany.get(company)!.push(p)
+  }
+  return map
+}
+
+function sortedGroupKeys(map: Map<string, unknown>, last: string): string[] {
+  const keys = Array.from(map.keys()).sort()
+  if (keys.includes(last)) return [...keys.filter((k) => k !== last), last]
+  return keys
 }
 
 // ── copy button ────────────────────────────────────────────────────────────────
@@ -134,8 +158,7 @@ function ProspectCard({ prospect, selected, onClick }: { prospect: ShortlistedPr
         <p className="text-sm font-medium truncate">{prospectLabel(prospect)}</p>
         {rep && <span className="text-[10px] text-muted-foreground shrink-0 bg-muted rounded px-1 py-0.5">{rep}</span>}
       </div>
-      <p className="text-xs text-muted-foreground truncate">{prospect.job_title}</p>
-      <p className="text-xs text-muted-foreground truncate">{prospect.company_name}</p>
+      {prospect.job_title && <p className="text-xs text-muted-foreground truncate">{prospect.job_title}</p>}
       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
         <StatusBadge status={prospect.shortlist_status} />
         {prospect.icp_category && (
@@ -173,6 +196,8 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [enrichingPhone, startEnrichPhone] = useTransition()
   const [normalizing, startNormalize] = useTransition()
   const [pushing, startPush] = useTransition()
+  const [collapsedIndustries, setCollapsedIndustries] = useState<Set<string>>(new Set())
+  const [collapsedCompanies,  setCollapsedCompanies]  = useState<Set<string>>(new Set())
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[] | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [pushResult, setPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
@@ -345,6 +370,25 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     })
   }
 
+  // ── grouping state ──────────────────────────────────────────────────────────
+  const grouped = groupProspects(filtered)
+
+  function toggleIndustry(industry: string) {
+    setCollapsedIndustries((prev) => {
+      const next = new Set(prev)
+      if (next.has(industry)) next.delete(industry); else next.add(industry)
+      return next
+    })
+  }
+  function toggleCompany(industry: string, company: string) {
+    const key = `${industry}::${company}`
+    setCollapsedCompanies((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
   const icpCls = selected?.icp_category ? (ICP_COLORS[selected.icp_category] ?? "bg-zinc-100 text-zinc-600") : ""
 
   return (
@@ -392,7 +436,7 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
               <Plus className="size-3.5" /> Agregar
             </Button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="flex-1 overflow-y-auto p-2">
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center px-4">
                 <Star className="size-8 text-muted-foreground/30 mb-2" />
@@ -402,9 +446,70 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                 </p>
               </div>
             ) : (
-              filtered.map((p) => (
-                <ProspectCard key={p.id} prospect={p} selected={selected?.id === p.id} onClick={() => handleSelect(p)} />
-              ))
+              sortedGroupKeys(grouped, "Sin industria").map((industry) => {
+                const companies = grouped.get(industry)!
+                const industryCollapsed = collapsedIndustries.has(industry)
+                const totalInIndustry = Array.from(companies.values()).reduce((s, ps) => s + ps.length, 0)
+                return (
+                  <div key={industry} className="mb-0.5">
+                    {/* Industry header */}
+                    <button
+                      onClick={() => toggleIndustry(industry)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-muted/60 transition-colors group"
+                    >
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <ChevronRight className={cn(
+                          "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+                          !industryCollapsed && "rotate-90"
+                        )} />
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground group-hover:text-foreground truncate">
+                          {industry}
+                        </span>
+                      </span>
+                      <span className="text-[10px] text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 shrink-0 ml-1">
+                        {totalInIndustry}
+                      </span>
+                    </button>
+
+                    {/* Companies */}
+                    {!industryCollapsed && sortedGroupKeys(companies, "Sin empresa").map((company) => {
+                      const companyProspects = companies.get(company)!
+                      const coKey = `${industry}::${company}`
+                      const companyCollapsed = collapsedCompanies.has(coKey)
+                      const sorted = [...companyProspects].sort((a, b) => (b.icp_score ?? -1) - (a.icp_score ?? -1))
+                      return (
+                        <div key={company} className="ml-2">
+                          {/* Company header */}
+                          <button
+                            onClick={() => toggleCompany(industry, company)}
+                            className="w-full flex items-center justify-between px-2 py-1 rounded-md hover:bg-muted/50 transition-colors group"
+                          >
+                            <span className="flex items-center gap-1 min-w-0">
+                              <ChevronRight className={cn(
+                                "size-3 shrink-0 text-muted-foreground/60 transition-transform duration-150",
+                                !companyCollapsed && "rotate-90"
+                              )} />
+                              <span className="text-xs font-medium text-foreground/70 group-hover:text-foreground truncate">
+                                {company}
+                              </span>
+                            </span>
+                            <span className="text-[10px] text-muted-foreground shrink-0 ml-1">{sorted.length}</span>
+                          </button>
+
+                          {/* Prospects */}
+                          {!companyCollapsed && (
+                            <div className="ml-3 space-y-1 pb-1">
+                              {sorted.map((p) => (
+                                <ProspectCard key={p.id} prospect={p} selected={selected?.id === p.id} onClick={() => handleSelect(p)} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })
             )}
           </div>
         </div>
