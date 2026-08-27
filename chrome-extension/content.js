@@ -979,6 +979,20 @@ async function runCreateClientList(appBaseUrl) {
       'x-li-page-instance': 'urn:li:page:sales_navigator_lists;' + Math.random().toString(36).slice(2),
     };
 
+    // Voyager headers (for non-sales-api endpoints)
+    const voyagerHeaders = {
+      'Accept': 'application/vnd.linkedin.normalized+json+2.1',
+      'x-restli-protocol-version': '2.0.0',
+      'csrf-token': csrfToken,
+      'x-requested-with': 'XMLHttpRequest',
+    };
+
+    // Extract numeric ID from any URN string (urn:li:company:123 or urn:li:fs_salesCompany:123)
+    function urnToId(urn) {
+      const m = String(urn || '').match(/(\d+)$/);
+      return m ? m[1] : null;
+    }
+
     // 3. Resolve each company → fs_salesCompany ID
     const resolved = [];
     for (let i = 0; i < companies.length; i++) {
@@ -994,50 +1008,108 @@ async function runCreateClientList(appBaseUrl) {
 
       let foundId = null;
 
-      // Strategy A: LinkedIn company URL → vanity name → Sales Nav profile API
+      // Strategy A: LinkedIn company URL
       if (linkedin_url && linkedin_url.includes('linkedin.com/company/')) {
         try {
           const slug = linkedin_url.replace(/\/$/, '').split('/company/')[1]?.split('/')[0];
           if (slug) {
-            const r = await fetch(`/sales-api/salesApiCompanies/(vanityName:${encodeURIComponent(slug)})`, {
-              credentials: 'include', headers,
-            });
-            if (r.ok) {
-              const data = await r.json();
-              const urn = data.entityUrn ?? data.id ?? '';
-              const match = String(urn).match(/(\d+)$/);
-              if (match) foundId = match[1];
+            // A1: slug is already numeric → use directly
+            if (/^\d+$/.test(slug)) {
+              foundId = slug;
+              console.log('[ProspectOS] A1 numeric slug for', company_name, '→', foundId);
+            }
+
+            // A2: Sales Nav vanityName API
+            if (!foundId) {
+              const r = await fetch(`/sales-api/salesApiCompanies/(vanityName:${encodeURIComponent(slug)})`, {
+                credentials: 'include', headers,
+              });
+              console.log('[ProspectOS] A2 vanityName', slug, 'status:', r.status);
+              if (r.ok) {
+                const data = await r.json();
+                console.log('[ProspectOS] A2 response:', JSON.stringify(data).slice(0, 300));
+                foundId = urnToId(data.entityUrn) ?? urnToId(data.id);
+              }
+            }
+
+            // A3: Voyager universalName API (LinkedIn main site)
+            if (!foundId) {
+              const r = await fetch(`/voyager/api/organizations/companies?q=universalName&universalName=${encodeURIComponent(slug)}`, {
+                credentials: 'include', headers: voyagerHeaders,
+              });
+              console.log('[ProspectOS] A3 universalName', slug, 'status:', r.status);
+              if (r.ok) {
+                const data = await r.json();
+                console.log('[ProspectOS] A3 response:', JSON.stringify(data).slice(0, 300));
+                // normalized+json wraps in { data: { ... } }
+                const co = data?.data ?? data;
+                foundId = urnToId(co?.entityUrn) ?? urnToId(co?.id);
+              }
             }
           }
         } catch (e) {
-          console.warn('[ProspectOS] vanityName lookup failed for', company_name, e.message);
+          console.warn('[ProspectOS] Strategy A failed for', company_name, e.message);
         }
       }
 
-      // Strategy B: typeahead by name
+      // Strategy B: typeahead / company search by name
       if (!foundId) {
         try {
           const q = encodeURIComponent(company_name);
-          const r = await fetch(`/sales-api/typeahead/hits?q=company&query=${q}&types=SF_COMPANY&count=1`, {
-            credentials: 'include', headers,
+
+          // B1: Voyager typeahead (most reliable for company search)
+          const r1 = await fetch(`/voyager/api/typeahead/hitsV2?q=type&type=COMPANY&keywords=${q}&origin=OTHER&count=5`, {
+            credentials: 'include', headers: voyagerHeaders,
           });
-          if (r.ok) {
-            const data = await r.json();
-            const hit = data?.elements?.[0] ?? data?.results?.[0] ?? data?.[0];
-            const urn = hit?.objectUrn ?? hit?.entityUrn ?? hit?.id ?? '';
-            const match = String(urn).match(/(\d+)$/);
-            if (match) foundId = match[1];
+          console.log('[ProspectOS] B1 voyager typeahead for', company_name, 'status:', r1.status);
+          if (r1.ok) {
+            const data = await r1.json();
+            console.log('[ProspectOS] B1 response:', JSON.stringify(data).slice(0, 400));
+            const elements = data?.data?.elements ?? data?.elements ?? [];
+            const hit = elements[0];
+            foundId = urnToId(hit?.objectUrn) ?? urnToId(hit?.entityUrn);
+          }
+
+          // B2: Sales Nav typeahead
+          if (!foundId) {
+            const r2 = await fetch(`/sales-api/typeahead/hits?q=sf_company&query=${q}&count=5`, {
+              credentials: 'include', headers,
+            });
+            console.log('[ProspectOS] B2 salesnav typeahead for', company_name, 'status:', r2.status);
+            if (r2.ok) {
+              const data = await r2.json();
+              console.log('[ProspectOS] B2 response:', JSON.stringify(data).slice(0, 400));
+              const elements = data?.elements ?? data?.results ?? data?.hits ?? (Array.isArray(data) ? data : []);
+              const hit = elements[0];
+              foundId = urnToId(hit?.objectUrn) ?? urnToId(hit?.entityUrn) ?? urnToId(hit?.id);
+            }
+          }
+
+          // B3: Sales Nav company search (original endpoint with types param)
+          if (!foundId) {
+            const r3 = await fetch(`/sales-api/typeahead/hits?q=company&query=${q}&types=SF_COMPANY&count=5`, {
+              credentials: 'include', headers,
+            });
+            console.log('[ProspectOS] B3 typeahead/types for', company_name, 'status:', r3.status);
+            if (r3.ok) {
+              const data = await r3.json();
+              console.log('[ProspectOS] B3 response:', JSON.stringify(data).slice(0, 400));
+              const elements = data?.elements ?? data?.results ?? data?.hits ?? (Array.isArray(data) ? data : []);
+              const hit = elements[0];
+              foundId = urnToId(hit?.objectUrn) ?? urnToId(hit?.entityUrn) ?? urnToId(hit?.id);
+            }
           }
         } catch (e) {
-          console.warn('[ProspectOS] typeahead failed for', company_name, e.message);
+          console.warn('[ProspectOS] Strategy B failed for', company_name, e.message);
         }
       }
 
+      console.log('[ProspectOS] resolved', company_name, '→', foundId ?? 'NOT FOUND');
       if (foundId) resolved.push({ company_name, sales_nav_id: foundId });
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 400));
     }
 
-    if (resolved.length === 0) throw new Error('No se pudo resolver ninguna empresa en Sales Navigator.');
+    if (resolved.length === 0) throw new Error(`No se pudo resolver ninguna empresa en Sales Navigator. Revisá la consola del navegador (F12 → Console) para ver el detalle de cada intento.`);
 
     // 4. Create the list
     const listName = 'Lista de clientes';
