@@ -106,6 +106,11 @@
     return;
   }
 
+  if (params.get('prospectOS') === 'create_client_list' && params.get('_cb')) {
+    await runCreateClientList(decodeURIComponent(params.get('_cb')));
+    return;
+  }
+
   if (mode === 'create_client_list' && scrapeCb) {
     await runCreateClientList(decodedCb);
     return;

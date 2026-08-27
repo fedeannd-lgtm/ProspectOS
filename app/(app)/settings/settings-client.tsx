@@ -435,7 +435,7 @@ function ClientListCard({
 
   function buildTriggerUrl() {
     const cb = encodeURIComponent(APP_URL)
-    return `https://www.linkedin.com/sales/lists/people#_mode=create_client_list&_cb=${cb}`
+    return `https://www.linkedin.com/sales/lists/people?prospectOS=create_client_list&_cb=${cb}`
   }
 
   const resolved = companies.filter((c) => c.sales_nav_id).length
