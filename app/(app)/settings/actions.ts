@@ -178,6 +178,17 @@ export async function updateClientCompanySalesNavIds(
   }
 }
 
+export async function updateClientCompanyLinkedinUrl(
+  id: string,
+  linkedin_url: string | null
+): Promise<void> {
+  await supabaseAdmin
+    .from("client_companies")
+    .update({ linkedin_url: linkedin_url || null })
+    .eq("id", id)
+  revalidatePath("/settings")
+}
+
 export async function getCampaignIndustries(): Promise<string[]> {
   const { data } = await supabase
     .from("campaigns")

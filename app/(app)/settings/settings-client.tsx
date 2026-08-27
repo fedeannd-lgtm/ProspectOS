@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
-import { createSavedUrl, deleteSavedUrl, saveClientCompanies, type SavedUrl, type ClientCompany } from "./actions"
+import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, type SavedUrl, type ClientCompany } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
@@ -440,6 +440,38 @@ function ClientListCard({
 
   const resolved = companies.filter((c) => c.sales_nav_id).length
   const total = companies.length
+  // Companies the extension couldn't find (only meaningful once some ARE found)
+  const notFound = companies.filter((c) => !c.sales_nav_id)
+  const showNotFound = notFound.length > 0 && resolved > 0
+
+  // Inline LinkedIn URL edits for unfound companies
+  const [urlEdits, setUrlEdits] = useState<Record<string, string>>({})
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  async function handleSaveUrl(company: ClientCompany) {
+    const url = (urlEdits[company.id] ?? company.linkedin_url ?? "").trim() || null
+    setSavingId(company.id)
+    await updateClientCompanyLinkedinUrl(company.id, url)
+    setCompanies((prev) =>
+      prev.map((c) => (c.id === company.id ? { ...c, linkedin_url: url } : c))
+    )
+    // Also update raw textarea so it stays in sync
+    setRaw((prev) => {
+      const lines = prev.split("\n").map((line) => {
+        const parts = line.split(",").map((p) => p.trim())
+        if ((parts[0] ?? "") === company.company_name) {
+          const newParts = [company.company_name]
+          if (url) newParts.push(url)
+          if (parts[2]) newParts.push(parts[2])
+          return newParts.join(", ")
+        }
+        return line
+      })
+      return lines.join("\n")
+    })
+    setSavingId(null)
+    setUrlEdits((prev) => { const next = { ...prev }; delete next[company.id]; return next })
+  }
 
   return (
     <Card>
@@ -500,6 +532,52 @@ function ClientListCard({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Not-found section — appears after extension has run (some found, some not) */}
+        {showNotFound && (
+          <div className="rounded-md border border-amber-200 bg-amber-50/40 dark:border-amber-900 dark:bg-amber-950/20 overflow-hidden">
+            <div className="px-3 py-2 border-b border-amber-200 dark:border-amber-900 flex items-center gap-2">
+              <AlertTriangle className="size-3.5 text-amber-600 shrink-0" />
+              <span className="text-xs font-medium text-amber-800 dark:text-amber-300 flex-1">
+                No encontradas en Sales Nav ({notFound.length})
+              </span>
+              <span className="text-[10px] text-amber-700 dark:text-amber-400">
+                Agregá la URL de LinkedIn para mejorar la búsqueda
+              </span>
+            </div>
+            <div className="divide-y divide-amber-100 dark:divide-amber-900">
+              {notFound.map((c) => {
+                const currentUrl = urlEdits[c.id] ?? c.linkedin_url ?? ""
+                const dirty = c.id in urlEdits && urlEdits[c.id] !== (c.linkedin_url ?? "")
+                return (
+                  <div key={c.id} className="flex items-center gap-2 px-3 py-2">
+                    <span className="text-sm flex-1 min-w-0 truncate text-amber-900 dark:text-amber-200">
+                      {c.company_name}
+                    </span>
+                    <input
+                      type="url"
+                      value={currentUrl}
+                      onChange={(e) => setUrlEdits((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                      placeholder="https://linkedin.com/company/..."
+                      className="text-xs border border-amber-200 dark:border-amber-800 rounded px-2 py-1 w-60 bg-white dark:bg-amber-950/50 focus:outline-none focus:ring-1 focus:ring-amber-400 placeholder:text-amber-400"
+                    />
+                    <button
+                      onClick={() => handleSaveUrl(c)}
+                      disabled={savingId === c.id || !dirty}
+                      className={`text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                        dirty
+                          ? "bg-amber-600 text-white hover:bg-amber-700"
+                          : "bg-amber-100 text-amber-400 dark:bg-amber-900 dark:text-amber-600 cursor-not-allowed"
+                      }`}
+                    >
+                      {savingId === c.id ? "…" : "Guardar"}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 
