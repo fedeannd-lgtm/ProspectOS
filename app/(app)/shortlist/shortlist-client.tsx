@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send } from "lucide-react"
+import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -169,6 +169,9 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [adding, startAdd] = useTransition()
   const [saving, startSave] = useTransition()
   const [savedOk, setSavedOk] = useState(false)
+  const [enrichingEmail, startEnrichEmail] = useTransition()
+  const [enrichingPhone, startEnrichPhone] = useTransition()
+  const [normalizing, startNormalize] = useTransition()
   const [pushing, startPush] = useTransition()
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[] | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState("")
@@ -309,6 +312,39 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     })
   }
 
+  function handleEnrichEmail() {
+    if (!selected) return
+    startEnrichEmail(async () => {
+      const result = await enrichEmailForShortlist(selected.id)
+      if (result.email) {
+        setSelected((prev) => prev ? { ...prev, email: result.email } : prev)
+        setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, email: result.email } : p))
+      }
+    })
+  }
+
+  function handleEnrichPhone() {
+    if (!selected) return
+    startEnrichPhone(async () => {
+      const phone = await enrichPhoneForShortlist(selected.id)
+      if (phone) {
+        setSelected((prev) => prev ? { ...prev, phone } : prev)
+        setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, phone } : p))
+      }
+    })
+  }
+
+  function handleNormalize() {
+    if (!selected) return
+    startNormalize(async () => {
+      const result = await normalizeNameForShortlist(selected.id)
+      if (result) {
+        setSelected((prev) => prev ? { ...prev, ...result } : prev)
+        setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, ...result } : p))
+      }
+    })
+  }
+
   const icpCls = selected?.icp_category ? (ICP_COLORS[selected.icp_category] ?? "bg-zinc-100 text-zinc-600") : ""
 
   return (
@@ -418,11 +454,25 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                   )}
                 </div>
               </div>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive shrink-0"
-                onClick={handleRemove} disabled={removing}>
-                {removing ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                <span className="ml-1.5">Quitar</span>
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button variant="outline" size="sm" onClick={handleEnrichEmail} disabled={enrichingEmail}
+                  title="Buscar email">
+                  {enrichingEmail ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleEnrichPhone} disabled={enrichingPhone}
+                  title="Buscar teléfono">
+                  {enrichingPhone ? <Loader2 className="size-3.5 animate-spin" /> : <Phone className="size-3.5" />}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleNormalize} disabled={normalizing}
+                  title="Normalizar nombre">
+                  {normalizing ? <Loader2 className="size-3.5 animate-spin" /> : <Type className="size-3.5" />}
+                </Button>
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive"
+                  onClick={handleRemove} disabled={removing}>
+                  {removing ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                  <span className="ml-1.5">Quitar</span>
+                </Button>
+              </div>
             </div>
 
             {/* Status selector */}

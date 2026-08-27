@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { generateSequences, type Sequences } from "@/lib/ai-sequences"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
+import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
+import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-results"
 
 export { fetchSmartleadCampaigns }
 
@@ -111,6 +113,55 @@ export async function saveEditedSequences(prospectId: string, sequences: Sequenc
       .eq("id", data.id)
   }
   revalidatePath("/shortlist")
+}
+
+// ── Enrichment shortcuts (reuse enrichment module logic) ─────────────────────
+
+export async function enrichEmailForShortlist(
+  prospectId: string
+): Promise<{ email: string | null; provider: string | null; zbStatus: string | null }> {
+  const result = await enrichOneProspect(prospectId)
+  revalidatePath("/shortlist")
+  return { email: result.email, provider: result.provider, zbStatus: result.zbStatus }
+}
+
+export async function enrichPhoneForShortlist(
+  prospectId: string
+): Promise<string | null> {
+  const phone = await enrichPhoneForProspect(prospectId)
+  revalidatePath("/shortlist")
+  return phone
+}
+
+export async function normalizeNameForShortlist(
+  prospectId: string
+): Promise<{ first_name: string; last_name: string; full_name: string } | null> {
+  const { data: p } = await supabaseAdmin
+    .from("prospects")
+    .select("id, first_name, last_name, full_name, company_name")
+    .eq("id", prospectId)
+    .single()
+  if (!p) return null
+
+  const patch: Record<string, string> = {}
+  const firstName = normalizePersonName(p.first_name ?? "")
+  if (firstName && firstName !== p.first_name) patch.first_name = firstName
+  const lastName = normalizePersonName(p.last_name ?? "")
+  if (lastName && lastName !== p.last_name) patch.last_name = lastName
+  const fullName = normalizePersonName(p.full_name ?? "")
+  if (fullName && fullName !== p.full_name) patch.full_name = fullName
+  const company = normalizeCompanyName(p.company_name ?? "")
+  if (company && company !== p.company_name) patch.company_name = company
+
+  if (Object.keys(patch).length > 0) {
+    await supabaseAdmin.from("prospects").update(patch).eq("id", prospectId)
+  }
+  revalidatePath("/shortlist")
+  return {
+    first_name: (patch.first_name ?? p.first_name) || "",
+    last_name: (patch.last_name ?? p.last_name) || "",
+    full_name: (patch.full_name ?? p.full_name) || "",
+  }
 }
 
 export async function pushToSmartlead(
