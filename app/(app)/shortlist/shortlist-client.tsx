@@ -25,6 +25,7 @@ const INDUSTRIES = [
   "BPO & Professional Services",
   "Health & Entertainment",
   "Consulting & Telco",
+  "Logística & Almacenamiento",
 ] as const
 type ShortlistStatus = typeof STATUSES[number]
 
