@@ -92,6 +92,24 @@ export async function generateAndSaveSequences(
   }
 }
 
+export async function saveEditedSequences(prospectId: string, sequences: Sequences): Promise<void> {
+  // Update the most recent shortlist_sequences row for this prospect
+  const { data } = await supabaseAdmin
+    .from("shortlist_sequences")
+    .select("id")
+    .eq("prospect_id", prospectId)
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .single()
+  if (data?.id) {
+    await supabaseAdmin
+      .from("shortlist_sequences")
+      .update({ sequences })
+      .eq("id", data.id)
+  }
+  revalidatePath("/shortlist")
+}
+
 export async function updateShortlistStatus(prospectId: string, status: string): Promise<void> {
   await supabaseAdmin
     .from("prospects")

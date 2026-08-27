@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ function CopyButton({ text }: { text: string }) {
 
 // ── email step card ────────────────────────────────────────────────────────────
 
-function EmailStepCard({ step }: { step: EmailStep }) {
+function EmailStepCard({ step, onChange }: { step: EmailStep; onChange: (updated: EmailStep) => void }) {
   return (
     <div className="rounded-lg border p-4 space-y-3">
       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Paso {step.step}</span>
@@ -64,14 +64,23 @@ function EmailStepCard({ step }: { step: EmailStep }) {
           <p className="text-xs font-medium text-muted-foreground">Asunto</p>
           <CopyButton text={step.subject} />
         </div>
-        <p className="text-sm font-medium">{step.subject}</p>
+        <input
+          value={step.subject}
+          onChange={(e) => onChange({ ...step, subject: e.target.value })}
+          className="w-full text-sm font-medium bg-transparent border-0 border-b border-transparent hover:border-input focus:border-input focus:outline-none transition-colors py-0.5"
+        />
       </div>
       <div className="space-y-1">
         <div className="flex items-start justify-between gap-2">
           <p className="text-xs font-medium text-muted-foreground">Cuerpo</p>
           <CopyButton text={step.body} />
         </div>
-        <p className="text-sm whitespace-pre-wrap leading-relaxed">{step.body}</p>
+        <textarea
+          value={step.body}
+          onChange={(e) => onChange({ ...step, body: e.target.value })}
+          rows={Math.max(4, step.body.split("\n").length + 1)}
+          className="w-full text-sm leading-relaxed bg-transparent border-0 border-b border-transparent hover:border-input focus:border-input focus:outline-none resize-none transition-colors py-0.5"
+        />
       </div>
     </div>
   )
@@ -79,14 +88,19 @@ function EmailStepCard({ step }: { step: EmailStep }) {
 
 // ── linkedin step card ─────────────────────────────────────────────────────────
 
-function LinkedinStepCard({ step }: { step: LinkedinStep }) {
+function LinkedinStepCard({ step, onChange }: { step: LinkedinStep; onChange: (updated: LinkedinStep) => void }) {
   return (
     <div className="rounded-lg border p-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Paso {step.step}</span>
         <CopyButton text={step.message} />
       </div>
-      <p className="text-sm whitespace-pre-wrap leading-relaxed">{step.message}</p>
+      <textarea
+        value={step.message}
+        onChange={(e) => onChange({ ...step, message: e.target.value })}
+        rows={Math.max(3, step.message.split("\n").length + 1)}
+        className="w-full text-sm leading-relaxed bg-transparent border-0 border-b border-transparent hover:border-input focus:border-input focus:outline-none resize-none transition-colors py-0.5"
+      />
       <p className="text-xs text-muted-foreground">{step.message.length} caracteres</p>
     </div>
   )
@@ -153,6 +167,8 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [removing, startRemove] = useTransition()
   const [updatingStatus, startUpdateStatus] = useTransition()
   const [adding, startAdd] = useTransition()
+  const [saving, startSave] = useTransition()
+  const [savedOk, setSavedOk] = useState(false)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState("")
@@ -175,6 +191,21 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
     setResearch(p.latest_sequences?.research_context ?? "")
     setSequences(p.latest_sequences?.sequences ?? null)
     setError("")
+    setSavedOk(false)
+  }
+
+  function handleSequenceChange(updated: Sequences) {
+    setSequences(updated)
+    setSavedOk(false)
+  }
+
+  function handleSaveEdits() {
+    if (!selected || !sequences) return
+    startSave(async () => {
+      await saveEditedSequences(selected.id, sequences)
+      setSavedOk(true)
+      setTimeout(() => setSavedOk(false), 3000)
+    })
   }
 
   function handleRemove() {
@@ -424,7 +455,16 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
             {/* Sequences */}
             {sequences && (
               <div className="border-t pt-4 space-y-4">
-                <h3 className="text-sm font-semibold">Secuencias generadas</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Secuencias generadas</h3>
+                  <div className="flex items-center gap-2">
+                    {savedOk && <span className="text-xs text-green-600 flex items-center gap-1"><Check className="size-3" /> Guardado</span>}
+                    <Button size="sm" variant="outline" onClick={handleSaveEdits} disabled={saving}>
+                      {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+                      Guardar ediciones
+                    </Button>
+                  </div>
+                </div>
                 <Tabs defaultValue="email">
                   <TabsList>
                     <TabsTrigger value="email" className="gap-1.5">
@@ -433,10 +473,28 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                     <TabsTrigger value="linkedin">LinkedIn (5 pasos)</TabsTrigger>
                   </TabsList>
                   <TabsContent value="email" className="space-y-3 mt-4">
-                    {sequences.email.map((step) => <EmailStepCard key={step.step} step={step} />)}
+                    {sequences.email.map((step, i) => (
+                      <EmailStepCard
+                        key={step.step}
+                        step={step}
+                        onChange={(updated) => handleSequenceChange({
+                          ...sequences,
+                          email: sequences.email.map((s, j) => j === i ? updated : s),
+                        })}
+                      />
+                    ))}
                   </TabsContent>
                   <TabsContent value="linkedin" className="space-y-3 mt-4">
-                    {sequences.linkedin.map((step) => <LinkedinStepCard key={step.step} step={step} />)}
+                    {sequences.linkedin.map((step, i) => (
+                      <LinkedinStepCard
+                        key={step.step}
+                        step={step}
+                        onChange={(updated) => handleSequenceChange({
+                          ...sequences,
+                          linkedin: sequences.linkedin.map((s, j) => j === i ? updated : s),
+                        })}
+                      />
+                    ))}
                   </TabsContent>
                 </Tabs>
               </div>
