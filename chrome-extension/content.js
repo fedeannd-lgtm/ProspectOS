@@ -106,6 +106,11 @@
     return;
   }
 
+  if (mode === 'create_client_list' && scrapeCb) {
+    await runCreateClientList(decodedCb);
+    return;
+  }
+
   // ── Mode: create account list ────────────────────────────────────────────────
   if (!params.has('prospectOS')) return;
   if (params.get('prospectOS') !== 'create') return;
@@ -930,6 +935,175 @@ function extractWebsiteFromDOM() {
   } catch (e) {}
 
   return '';
+}
+
+// ── Create client list ────────────────────────────────────────────────────────
+
+async function runCreateClientList(appBaseUrl) {
+  const overlay = createOverlay();
+  const { setStatus, setProgress } = overlay;
+
+  try {
+    // 1. Fetch company list from ProspectOS
+    setStatus('Cargando lista de clientes…');
+    const res = await fetch(`${appBaseUrl}/api/extension/client-companies`);
+    if (!res.ok) throw new Error(`No se pudo cargar la lista (${res.status})`);
+    const { companies } = await res.json();
+    if (!companies || companies.length === 0) throw new Error('No hay empresas en la Lista de clientes. Agregá empresas en Settings primero.');
+
+    // 2. Build CSRF headers (same as create-list flow)
+    const jsessionRaw = document.cookie.split(';')
+      .map(c => c.trim().split('='))
+      .find(([k]) => k === 'JSESSIONID')?.[1]?.replace(/"/g, '') || '';
+    const csrfToken = jsessionRaw.startsWith('ajax:') ? jsessionRaw : `ajax:${jsessionRaw}`;
+    if (!csrfToken || csrfToken === 'ajax:') throw new Error('No se encontró el CSRF token. Asegurate de estar logueado en LinkedIn.');
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'csrf-token': csrfToken,
+      'x-restli-protocol-version': '2.0.0',
+      'x-requested-with': 'XMLHttpRequest',
+      'x-li-lang': 'es_AR',
+      'x-li-track': JSON.stringify({
+        clientVersion: '1.13.9787', mpVersion: '1.13.9787', osName: 'web',
+        timezoneOffset: -3, timezone: 'America/Argentina/Buenos_Aires',
+        deviceFormFactor: 'DESKTOP', mpName: 'sales-navigator-web',
+        displayDensity: 1, displayWidth: 1920, displayHeight: 1080,
+      }),
+      'x-li-page-instance': 'urn:li:page:sales_navigator_lists;' + Math.random().toString(36).slice(2),
+    };
+
+    // 3. Resolve each company → fs_salesCompany ID
+    const resolved = [];
+    for (let i = 0; i < companies.length; i++) {
+      const { company_name, linkedin_url, sales_nav_id } = companies[i];
+      setStatus(`Resolviendo empresas… (${i + 1}/${companies.length})`);
+      setProgress(company_name);
+
+      // Already known — skip lookup
+      if (sales_nav_id) {
+        resolved.push({ company_name, sales_nav_id });
+        continue;
+      }
+
+      let foundId = null;
+
+      // Strategy A: LinkedIn company URL → vanity name → Sales Nav profile API
+      if (linkedin_url && linkedin_url.includes('linkedin.com/company/')) {
+        try {
+          const slug = linkedin_url.replace(/\/$/, '').split('/company/')[1]?.split('/')[0];
+          if (slug) {
+            const r = await fetch(`/sales-api/salesApiCompanies/(vanityName:${encodeURIComponent(slug)})`, {
+              credentials: 'include', headers,
+            });
+            if (r.ok) {
+              const data = await r.json();
+              const urn = data.entityUrn ?? data.id ?? '';
+              const match = String(urn).match(/(\d+)$/);
+              if (match) foundId = match[1];
+            }
+          }
+        } catch (e) {
+          console.warn('[ProspectOS] vanityName lookup failed for', company_name, e.message);
+        }
+      }
+
+      // Strategy B: typeahead by name
+      if (!foundId) {
+        try {
+          const q = encodeURIComponent(company_name);
+          const r = await fetch(`/sales-api/typeahead/hits?q=company&query=${q}&types=SF_COMPANY&count=1`, {
+            credentials: 'include', headers,
+          });
+          if (r.ok) {
+            const data = await r.json();
+            const hit = data?.elements?.[0] ?? data?.results?.[0] ?? data?.[0];
+            const urn = hit?.objectUrn ?? hit?.entityUrn ?? hit?.id ?? '';
+            const match = String(urn).match(/(\d+)$/);
+            if (match) foundId = match[1];
+          }
+        } catch (e) {
+          console.warn('[ProspectOS] typeahead failed for', company_name, e.message);
+        }
+      }
+
+      if (foundId) resolved.push({ company_name, sales_nav_id: foundId });
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    if (resolved.length === 0) throw new Error('No se pudo resolver ninguna empresa en Sales Navigator.');
+
+    // 4. Create the list
+    const listName = 'Lista de clientes';
+    setStatus(`Creando lista "${listName}"…`);
+    setProgress('');
+
+    let listId = null;
+    for (const body of [
+      { name: listName, listType: 'ACCOUNT', role: 'OWNER' },
+      { name: listName, listType: 'ACCOUNT' },
+    ]) {
+      const r = await fetch('/sales-api/salesApiLists', {
+        method: 'POST', credentials: 'include', headers, body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        let rawId = data.id ?? data.listId ?? data.entityUrn ?? '';
+        if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+        if (rawId && String(rawId) !== 'undefined') { listId = String(rawId); break; }
+      }
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    if (!listId) {
+      const r = await fetch('/sales-api/salesApiAccountLists', {
+        method: 'POST', credentials: 'include', headers, body: JSON.stringify({ name: listName }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        let rawId = data.id ?? data.listId ?? data.entityUrn ?? '';
+        if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+        if (rawId) listId = String(rawId);
+      }
+    }
+
+    if (!listId) throw new Error('No se pudo crear la lista en Sales Navigator.');
+
+    // 5. Add companies to the list
+    let ok = 0; let fail = 0;
+    for (let i = 0; i < resolved.length; i++) {
+      const { company_name, sales_nav_id } = resolved[i];
+      setStatus(`Agregando empresas… (${i + 1}/${resolved.length})`);
+      setProgress(company_name);
+
+      const r = await fetch('/sales-api/salesApiListEntities?action=edit', {
+        method: 'POST', credentials: 'include', headers,
+        body: JSON.stringify({
+          entity: `urn:li:fs_salesCompany:${sales_nav_id}`,
+          addToLists: [listId],
+          removeFromLists: [],
+        }),
+      });
+      if (r.ok) { ok++; } else { fail++; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    // 6. Report IDs back to ProspectOS
+    await fetch(`${appBaseUrl}/api/extension/client-companies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ results: resolved }),
+    }).catch(() => {});
+
+    setStatus(`✅ Listo — ${ok}/${resolved.length} empresas agregadas a "${listName}"`);
+    setProgress(`${companies.length - resolved.length} no encontradas en Sales Nav`);
+
+  } catch (err) {
+    setStatus('❌ Error: ' + err.message);
+    setProgress('Cerrá esta pestaña y revisá la configuración en ProspectOS.');
+    console.error('[ProspectOS create_client_list]', err);
+  }
 }
 
 async function runCompanyProfileVisit(state) {

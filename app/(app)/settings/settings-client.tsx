@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { CheckCircle2, XCircle, Loader2, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity, ChevronsUpDown } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity, ChevronsUpDown, Users, ExternalLink } from "lucide-react"
 import type { ProviderStatus } from "./provider-status"
 import type { ProviderUsage } from "./actions"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
-import { createSavedUrl, deleteSavedUrl, type SavedUrl } from "./actions"
+import { createSavedUrl, deleteSavedUrl, saveClientCompanies, type SavedUrl, type ClientCompany } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
@@ -362,6 +362,185 @@ function ProviderRow({ p }: { p: ProviderStatus }) {
   )
 }
 
+// ── Client list card ──────────────────────────────────────────────────────────
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://prospect-os-nine.vercel.app"
+
+function ClientListCard({
+  initialCompanies,
+  initialExclude,
+}: {
+  initialCompanies: ClientCompany[]
+  initialExclude: boolean
+}) {
+  const [companies, setCompanies] = useState<ClientCompany[]>(initialCompanies)
+  const [excludeClients, setExcludeClients] = useState(initialExclude)
+  const [isPending, startTransition] = useTransition()
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState("")
+
+  // Parse textarea: "Nombre, https://linkedin.com/company/slug/" or "Nombre"
+  const [raw, setRaw] = useState(() =>
+    initialCompanies
+      .map((c) => (c.linkedin_url ? `${c.company_name}, ${c.linkedin_url}` : c.company_name))
+      .join("\n")
+  )
+
+  function parseRaw(text: string): { company_name: string; linkedin_url: string | null }[] {
+    return text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const commaIdx = line.indexOf(",")
+        if (commaIdx === -1) return { company_name: line.trim(), linkedin_url: null }
+        const name = line.slice(0, commaIdx).trim()
+        const url = line.slice(commaIdx + 1).trim()
+        const isLinkedIn = url.includes("linkedin.com/company/")
+        return { company_name: name, linkedin_url: isLinkedIn ? url : null }
+      })
+      .filter((e) => e.company_name)
+  }
+
+  function handleSave() {
+    setError("")
+    const entries = parseRaw(raw)
+    if (!entries.length) { setError("Ingresá al menos una empresa"); return }
+    startTransition(async () => {
+      await saveClientCompanies(entries)
+      // Optimistic update
+      setCompanies(entries.map((e, i) => ({ id: String(i), ...e, sales_nav_id: null, domain: null })))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    })
+  }
+
+  function handleToggleExclude() {
+    const next = !excludeClients
+    setExcludeClients(next)
+    startTransition(async () => {
+      const { saveInboxConfig, getInboxConfig } = await import("../inbox/actions")
+      const current = await getInboxConfig()
+      await saveInboxConfig({ ...current, exclude_clients: next })
+    })
+  }
+
+  function buildTriggerUrl() {
+    const cb = encodeURIComponent(APP_URL)
+    return `https://www.linkedin.com/sales/lists/people#_mode=create_client_list&_cb=${cb}`
+  }
+
+  const resolved = companies.filter((c) => c.sales_nav_id).length
+  const total = companies.length
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="size-4" /> Lista de clientes
+            </CardTitle>
+            <CardDescription>
+              Empresas que ya son clientes. La extensión crea la lista en Sales Navigator y pueden excluirse de búsquedas futuras.
+            </CardDescription>
+          </div>
+          {total > 0 && (
+            <span className="text-xs text-muted-foreground shrink-0 pt-0.5">
+              {resolved}/{total} en Sales Nav
+            </span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Empresas <span className="normal-case font-normal">(una por línea — opcionalmente agregá la URL de LinkedIn separada por coma)</span>
+          </label>
+          <textarea
+            rows={8}
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            placeholder={"Ransa\nCencosud, https://www.linkedin.com/company/cencosud/\nFalabella"}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono leading-relaxed resize-y focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+          />
+          <p className="text-xs text-muted-foreground">
+            Formato: <code className="bg-muted px-1 rounded">Nombre de empresa</code> o <code className="bg-muted px-1 rounded">Nombre, https://linkedin.com/company/slug/</code>
+          </p>
+        </div>
+
+        {/* Company list preview */}
+        {companies.length > 0 && (
+          <div className="rounded-md border divide-y max-h-48 overflow-y-auto">
+            {companies.map((c, i) => (
+              <div key={c.id ?? i} className="flex items-center gap-2 px-3 py-2">
+                <span className="text-sm flex-1 truncate">{c.company_name}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {c.linkedin_url && (
+                    <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-foreground">
+                      <ExternalLink className="size-3" />
+                    </a>
+                  )}
+                  {c.sales_nav_id ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-medium">En Sales Nav</span>
+                  ) : c.linkedin_url ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">Con LinkedIn</span>
+                  ) : (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">Solo nombre</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button size="sm" onClick={handleSave} disabled={isPending}>
+            {isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+            Guardar lista
+          </Button>
+          {companies.length > 0 && (
+            <a href={buildTriggerUrl()} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="outline" type="button">
+                <ExternalLink className="mr-1.5 size-3.5" /> Crear en Sales Navigator
+              </Button>
+            </a>
+          )}
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs text-green-700">
+              <CheckCircle2 className="size-3" /> Guardado
+            </span>
+          )}
+        </div>
+
+        {/* Exclusion toggle */}
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Excluir de company search</p>
+            <p className="text-xs text-muted-foreground">
+              Las empresas de esta lista no se guardarán en búsquedas futuras
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={excludeClients}
+            onClick={handleToggleExclude}
+            disabled={isPending}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              excludeClients ? "bg-primary" : "bg-input"
+            }`}
+          >
+            <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-background shadow-lg transform transition-transform ${excludeClients ? "translate-x-4" : "translate-x-0"}`} />
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   const [productContext, setProductContext] = useState(initialConfig.product_context ?? "")
   const [calendlyLink, setCalendlyLink] = useState(initialConfig.calendly_link ?? "")
@@ -370,7 +549,7 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
 
   function handleSave() {
     startTransition(async () => {
-      await saveInboxConfig({ product_context: productContext || null, calendly_link: calendlyLink || null })
+      await saveInboxConfig({ product_context: productContext || null, calendly_link: calendlyLink || null, exclude_clients: null })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     })
@@ -423,12 +602,13 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   )
 }
 
-export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries }: {
+export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies }: {
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
   providerUsage: ProviderUsage[]
   inboxConfig: InboxConfig
   campaignIndustries: string[]
+  clientCompanies: ClientCompany[]
 }) {
   // Merge predefined industries with custom ones from campaigns, deduplicated and sorted
   const allIndustries = useMemo(() => {
@@ -506,6 +686,11 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
       )}
 
       <SavedUrlsCard initialUrls={savedUrls} allIndustries={allIndustries} />
+
+      <ClientListCard
+        initialCompanies={clientCompanies}
+        initialExclude={inboxConfig.exclude_clients ?? false}
+      />
 
       <InboxSettingsCard initialConfig={inboxConfig} />
     </div>
