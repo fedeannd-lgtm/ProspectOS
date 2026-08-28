@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
   if (!job) return NextResponse.json({ error: "Job no encontrado" }, { status: 404 })
 
   if (job.job_type === "company_search") {
-    const campaignIndustry = (job.campaigns as { industry: string } | null)?.industry ?? null
+    const campaignData = Array.isArray(job.campaigns) ? job.campaigns[0] : job.campaigns
+    const campaignIndustry = (campaignData as { industry?: string } | null)?.industry ?? null
 
     // Config + clients in parallel
     const [{ data: cfg }, { data: clients }] = await Promise.all([
