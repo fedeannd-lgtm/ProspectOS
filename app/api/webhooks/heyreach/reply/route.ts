@@ -14,6 +14,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
+  // Temporary: log full payload so we can see HeyReach's actual structure
+  console.log("[heyreach-webhook] payload:", JSON.stringify(body, null, 2))
+
   // HeyReach sends eventType like "First Message Reply Received"
   // Accept any event that contains "reply" in the name (case-insensitive)
   // or has no event type (don't skip unknown events with body)
