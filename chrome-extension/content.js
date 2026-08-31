@@ -403,7 +403,20 @@ async function checkAndRunPendingJob() {
 
 // ── People Scrape ────────────────────────────────────────────────────────────
 
+/**
+ * Wraps a scraping function in a Web Locks request so Chrome does not apply
+ * "intensive throttling" (timers clamped to 1 min) when the tab is backgrounded.
+ * Allows scraping to run uninterrupted even when the user switches to another tab.
+ */
+async function withScrapeLock(name, fn) {
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return navigator.locks.request(`pos-${name}`, fn)
+  }
+  return fn()
+}
+
 async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
+  return withScrapeLock('people', async () => {
   const overlay = createOverlay();
   const { setStatus, setProgress } = overlay;
 
@@ -494,6 +507,7 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
     setProgress('Cerrá esta pestaña y volvé a intentar desde ProspectOS.');
     console.error('[ProspectOS]', err);
   }
+  }) // end withScrapeLock('people')
 }
 
 function findScrollContainer() {
@@ -711,6 +725,7 @@ function scrapePeopleFromPage(seen = new Set()) {
 // ── Company Scrape ───────────────────────────────────────────────────────────
 
 async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage = 1) {
+  return withScrapeLock('company-scrape', async () => {
   const overlay = createOverlay();
   const { setStatus, setProgress } = overlay;
 
@@ -787,6 +802,7 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage
     setProgress('Cerrá esta pestaña y volvé a intentar desde ProspectOS.');
     console.error('[ProspectOS]', err);
   }
+  }) // end withScrapeLock('company-scrape')
 }
 
 function findCompanyScrollContainer() {
@@ -1248,6 +1264,7 @@ async function doCreateList(resolved, appBaseUrl, { setStatus, setProgress }, to
 }
 
 async function runCompanyProfileVisit(state) {
+  return withScrapeLock('company-visit', async () => {
   const { jobId, callbackUrl, companies, currentIndex } = state;
   const overlay = createOverlay();
   const { setStatus, setProgress } = overlay;
@@ -1315,6 +1332,7 @@ async function runCompanyProfileVisit(state) {
     setProgress('Cerrá esta pestaña y volvé a intentar desde ProspectOS.');
     console.error('[ProspectOS]', err);
   }
+  }) // end withScrapeLock('company-visit')
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
