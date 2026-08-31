@@ -736,14 +736,14 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage
     // ── Navigate to starting page ─────────────────────────────────────────────
     if (startAtPage > 1) {
       setStatus(`Navegando a página ${startAtPage}…`);
-      await waitForSelector('a[href*="/sales/company/"]', 30000);
+      await waitForSelector('a[href*="/sales/company/"]', 60000);
       for (let p = 1; p < startAtPage; p++) {
         const nextBtn = findNextButton();
         if (!nextBtn) { setStatus(`⚠️ No se encontró botón siguiente en página ${p}`); break; }
         nextBtn.click();
         setProgress(`Saltando a pág. ${p + 1} de ${startAtPage}…`);
         await new Promise(r => setTimeout(r, 3500));
-        await waitForSelector('a[href*="/sales/company/"]', 30000);
+        await waitForSelector('a[href*="/sales/company/"]', 60000);
       }
     }
 
@@ -755,7 +755,7 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage
 
     while (page <= MAX_PAGES && allCompanies.length < maxResults) {
       setStatus(`Leyendo página ${startAtPage + page - 1}…`);
-      await waitForSelector('a[href*="/sales/company/"]', 30000);
+      await waitForSelector('a[href*="/sales/company/"]', 60000);
 
       const pageCompanies = await scrapeCompaniesWhileScrolling(globalSeen);
       allCompanies.push(...pageCompanies);
@@ -1395,7 +1395,15 @@ function queryAllDocs(selector) {
 
 async function waitForSelector(selector, timeout = 10000) {
   const deadline = Date.now() + timeout;
+  let lastLog = 0;
   while (Date.now() < deadline) {
+    const now = Date.now();
+    // Log progress every 5 s so DevTools shows what's happening
+    if (now - lastLog >= 5000) {
+      const lightCount = (() => { try { return document.querySelectorAll(selector).length; } catch(e) { return 0; } })();
+      console.log(`[ProspectOS] waitForSelector "${selector}" — light DOM: ${lightCount}, remaining: ${Math.round((deadline - now) / 1000)}s`);
+      lastLog = now;
+    }
     if (queryAllDocs(selector).length > 0) return;
     await new Promise(r => setTimeout(r, 500));
   }
