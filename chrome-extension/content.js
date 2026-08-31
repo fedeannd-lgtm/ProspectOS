@@ -736,14 +736,14 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage
     // ── Navigate to starting page ─────────────────────────────────────────────
     if (startAtPage > 1) {
       setStatus(`Navegando a página ${startAtPage}…`);
-      await waitForSelector('a[href*="/sales/company/"]', 60000);
+      await waitForSelector('a[href*="/sales/company/"]', 120000);
       for (let p = 1; p < startAtPage; p++) {
         const nextBtn = findNextButton();
         if (!nextBtn) { setStatus(`⚠️ No se encontró botón siguiente en página ${p}`); break; }
         nextBtn.click();
         setProgress(`Saltando a pág. ${p + 1} de ${startAtPage}…`);
         await new Promise(r => setTimeout(r, 3500));
-        await waitForSelector('a[href*="/sales/company/"]', 60000);
+        await waitForSelector('a[href*="/sales/company/"]', 120000);
       }
     }
 
@@ -755,7 +755,7 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage
 
     while (page <= MAX_PAGES && allCompanies.length < maxResults) {
       setStatus(`Leyendo página ${startAtPage + page - 1}…`);
-      await waitForSelector('a[href*="/sales/company/"]', 60000);
+      await waitForSelector('a[href*="/sales/company/"]', 120000);
 
       const pageCompanies = await scrapeCompaniesWhileScrolling(globalSeen);
       allCompanies.push(...pageCompanies);
@@ -1379,6 +1379,8 @@ function getAllDocs() {
 function queryShadowAll(selector, root = document) {
   const results = [];
   try { results.push(...root.querySelectorAll(selector)); } catch (e) {}
+  // Only traverse shadow roots if nothing found in light DOM (avoids forced reflows)
+  if (results.length > 0) return results;
   root.querySelectorAll('*').forEach(el => {
     if (el.shadowRoot) results.push(...queryShadowAll(selector, el.shadowRoot));
   });
