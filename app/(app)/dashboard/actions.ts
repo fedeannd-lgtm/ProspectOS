@@ -224,7 +224,8 @@ export async function getAutoActionMap(): Promise<Record<string, { autoStatus: s
 
   const appUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : (process.env.NEXT_PUBLIC_APP_URL ?? `https://${process.env.VERCEL_URL}` ?? "http://localhost:3000")
+    : process.env.NEXT_PUBLIC_APP_URL
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
   const result: Record<string, { autoStatus: string; jobUrl: string | null }> = {}
   for (const a of autos) {
