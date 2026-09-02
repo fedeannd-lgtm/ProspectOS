@@ -14,8 +14,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  // Advance automated campaigns (state machine) — siempre, antes de cualquier otra lógica
+  await advanceAutoCampaigns().catch((err) =>
+    console.error("[Cron] Error advancing auto campaigns:", err)
+  )
+
   if (!MAKE_EXTRACTION_WEBHOOK) {
-    return NextResponse.json({ error: "MAKE_COMPANY_EXTRACTION_WEBHOOK_URL no configurado" }, { status: 500 })
+    return NextResponse.json({ ok: true, triggered: 0, note: "MAKE_COMPANY_EXTRACTION_WEBHOOK_URL no configurado" })
   }
 
   // Buscar jobs running con datasetId listo y estimated_ready_at ya pasado
@@ -30,11 +35,6 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
-  // Advance automated campaigns (state machine) — siempre, independiente de si hay jobs
-  await advanceAutoCampaigns().catch((err) =>
-    console.error("[Cron] Error advancing auto campaigns:", err)
-  )
 
   if (!jobs || jobs.length === 0) {
     return NextResponse.json({ ok: true, triggered: 0 })
