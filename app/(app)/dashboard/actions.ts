@@ -230,7 +230,7 @@ export async function getAutoActionMap(): Promise<Record<string, { autoStatus: s
 
     // For creating_list, generate the extension URL dynamically (no search_job)
     if (a.status === "creating_list") {
-      jobUrl = `https://www.linkedin.com/sales/lists/accounts#_mode=create_account_list&_campaign=${a.campaign_id}&_app=${encodeURIComponent(appUrl)}`
+      jobUrl = `https://www.linkedin.com/sales/home#_mode=create_account_list&_campaign=${a.campaign_id}&_app=${encodeURIComponent(appUrl)}`
     }
 
     result[a.campaign_id] = { autoStatus: a.status, jobUrl }
