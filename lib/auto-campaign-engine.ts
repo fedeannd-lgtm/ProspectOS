@@ -408,7 +408,10 @@ async function advanceEnriching(auto: AutoCampaign) {
       current_step_detail: `Enriqueciendo ${newOffset} de ${totalCount} personas…`,
     })
     // Trigger next batch immediately (fire-and-forget HTTP call so this function can return)
-    fetch(`${APP_URL}/api/cron/trigger-extraction`).catch((err) =>
+    const cronSecret = process.env.CRON_SECRET
+    fetch(`${APP_URL}/api/cron/trigger-extraction`, {
+      headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
+    }).catch((err) =>
       console.error("[AutoCampaign] Error triggering next enrichment batch:", err)
     )
   }
