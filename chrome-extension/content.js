@@ -136,12 +136,13 @@
 
   // ── Mode: people_scrape ──────────────────────────────────────────────────────
   // Params are appended to the existing Sales Nav hash (e.g. #query=(...)&_mode=people_scrape&_job=xxx)
-  const mode = hashParams.get('_mode');
-  const jobId = hashParams.get('_job');
-  const scrapeCb = hashParams.get('_cb');
+  // Fallback to query params for modes that open a fresh page (e.g. create_account_list → /sales/home)
+  const mode = hashParams.get('_mode') || params.get('_mode');
+  const jobId = hashParams.get('_job') || params.get('_job');
+  const scrapeCb = hashParams.get('_cb') || params.get('_cb');
 
   const decodedCb = scrapeCb ? decodeURIComponent(scrapeCb) : scrapeCb;
-  const maxResults = parseInt(hashParams.get('_max') || '500', 10);
+  const maxResults = parseInt(hashParams.get('_max') || params.get('_max') || '500', 10);
   const startAtPage = parseInt(hashParams.get('page') || '1', 10);
   console.log('[ProspectOS] scrape params:', { mode, jobId, maxResults, startAtPage, decodedCb });
 
@@ -173,8 +174,9 @@
 
   // ── Mode: auto create account list (auto campaign flow) ──────────────────────
   if (mode === 'create_account_list') {
-    const autoCampaignId = hashParams.get('_campaign');
-    const appBase = hashParams.get('_app') ? decodeURIComponent(hashParams.get('_app')) : null;
+    const autoCampaignId = hashParams.get('_campaign') || params.get('_campaign');
+    const rawApp = hashParams.get('_app') || params.get('_app');
+    const appBase = rawApp ? decodeURIComponent(rawApp) : null;
     if (autoCampaignId && appBase) {
       await runAutoCreateAccountList(autoCampaignId, appBase);
     }
