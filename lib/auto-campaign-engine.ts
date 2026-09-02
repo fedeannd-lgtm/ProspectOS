@@ -16,7 +16,6 @@ import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-
 import { runDistribution } from "@/app/(app)/distribution/actions"
 
 const APP_URL =
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null) ||
   process.env.NEXT_PUBLIC_APP_URL ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
