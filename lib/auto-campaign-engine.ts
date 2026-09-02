@@ -407,6 +407,10 @@ async function advanceEnriching(auto: AutoCampaign) {
       enrichment_offset: newOffset,
       current_step_detail: `Enriqueciendo ${newOffset} de ${totalCount} personas…`,
     })
+    // Trigger next batch immediately (fire-and-forget HTTP call so this function can return)
+    fetch(`${APP_URL}/api/cron/trigger-extraction`).catch((err) =>
+      console.error("[AutoCampaign] Error triggering next enrichment batch:", err)
+    )
   }
 }
 

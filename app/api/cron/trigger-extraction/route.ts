@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
 import { advanceAutoCampaigns } from "@/lib/auto-campaign-engine"
 
+export const maxDuration = 60
+
 const MAKE_EXTRACTION_WEBHOOK = process.env.MAKE_COMPANY_EXTRACTION_WEBHOOK_URL!
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
 const CRON_SECRET = process.env.CRON_SECRET
