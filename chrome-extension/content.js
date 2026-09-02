@@ -32,12 +32,8 @@
 
         try {
           const base = new URL(storedCb).origin;
-          const r = await fetch(`${base}/api/extension/register-list`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ campaignId: storedCampaignId, listId, listName }),
-          });
-          if (r.ok) {
+          const r = await posApiFetch(`${base}/api/extension/register-list`, 'POST', { campaignId: storedCampaignId, listId, listName });
+          if (r?.ok) {
             badge.style.background = 'rgba(22,163,74,0.92)';
             badge.textContent = `✅ Lista "${listName}" registrada en ProspectOS`;
             localStorage.removeItem('_pos_campaign_id');
@@ -126,11 +122,7 @@
       badge.textContent = `⚡ ProspectOS: enviando ${count.toLocaleString()} resultados…`;
 
       try {
-        await fetch(decodeURIComponent(cb), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ repName, industry, count, urlIndex }),
-        });
+        await posApiFetch(decodeURIComponent(cb), 'POST', { repName, industry, count, urlIndex });
         badge.style.background = 'rgba(22,163,74,0.92)';
         badge.textContent = `✅ ProspectOS: ${count.toLocaleString()} resultados guardados`;
       } catch {
@@ -176,6 +168,16 @@
 
   if (mode === 'create_client_list' && scrapeCb) {
     await runCreateClientList(decodedCb);
+    return;
+  }
+
+  // ── Mode: auto create account list (auto campaign flow) ──────────────────────
+  if (mode === 'create_account_list') {
+    const autoCampaignId = hashParams.get('_campaign');
+    const appBase = hashParams.get('_app') ? decodeURIComponent(hashParams.get('_app')) : null;
+    if (autoCampaignId && appBase) {
+      await runAutoCreateAccountList(autoCampaignId, appBase);
+    }
     return;
   }
 
@@ -380,12 +382,9 @@ async function checkAndRunPendingJob() {
 
   let job = null;
   try {
-    const res = await fetch(`${baseUrl}/api/extension/pending-job`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.jobId) job = { jobId: data.jobId, callbackUrl: `${baseUrl}/api/extension/results` };
+    const res = await posApiFetch(`${baseUrl}/api/extension/pending-job`);
+    if (res?.ok && res?.data?.jobId) {
+      job = { jobId: res.data.jobId, callbackUrl: `${baseUrl}/api/extension/results` };
     }
   } catch (e) {
     console.log('[ProspectOS] no pending job found:', e.message);
@@ -453,11 +452,7 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
       if (!loaded) {
         setStatus(`⚠️ Timeout en página ${page} — cerrando job con ${totalScraped} personas scrapeadas.`);
         setProgress('Podés cerrar esta pestaña.');
-        await fetch(`${callbackUrl}?jobId=${jobId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: [], done: true }),
-        }).catch(() => {});
+        await posApiFetch(`${callbackUrl}?jobId=${jobId}`, 'POST', { items: [], done: true }).catch(() => {});
         setTimeout(() => window.close(), 4000);
         return;
       }
@@ -474,12 +469,8 @@ async function runPeopleScrape(jobId, callbackUrl, maxResults = 500) {
       const fetchUrl = `${callbackUrl}?jobId=${jobId}`;
       console.log('[ProspectOS] posting to:', fetchUrl);
       try {
-        const res = await fetch(fetchUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: people, done }),
-        });
-        console.log('[ProspectOS] response status:', res.status);
+        const res = await posApiFetch(fetchUrl, 'POST', { items: people, done });
+        console.log('[ProspectOS] response status:', res?.status);
       } catch (fetchErr) {
         throw new Error(`Fetch falló → ${fetchUrl}\n${fetchErr.message}`);
       }
@@ -772,11 +763,7 @@ async function runCompanyScrape(jobId, callbackUrl, maxResults = 50, startAtPage
     }
 
     if (allCompanies.length === 0) {
-      await fetch(`${callbackUrl}?jobId=${jobId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: [], done: true }),
-      });
+      await posApiFetch(`${callbackUrl}?jobId=${jobId}`, 'POST', { items: [], done: true });
       setStatus('No se encontraron empresas.');
       setTimeout(() => window.close(), 3000);
       return;
@@ -1027,6 +1014,144 @@ function extractWebsiteFromDOM() {
   return '';
 }
 
+// ── Auto: create account list from scraped campaign companies ─────────────────
+// Called when the dashboard "Crear Lista de Cuentas" button opens Sales Nav with
+// _mode=create_account_list in the hash. Fetches company IDs from ProspectOS,
+// creates the Sales Nav list, then POSTs the list_id back so the engine can advance.
+
+async function runAutoCreateAccountList(campaignId, appBase) {
+  const overlay = createOverlay();
+  const { setStatus, setProgress } = overlay;
+
+  try {
+    setStatus('Obteniendo empresas de ProspectOS…');
+    setProgress('');
+
+    const dataRes = await posApiFetch(`${appBase}/api/extension/auto-account-list?campaignId=${campaignId}`);
+    if (!dataRes?.ok || !dataRes?.data) {
+      throw new Error('No se pudieron obtener las empresas de la campaña.');
+    }
+
+    const { listName, companyIds } = dataRes.data;
+    if (!companyIds?.length) {
+      throw new Error('La campaña no tiene empresas scrapeadas aún.');
+    }
+
+    setProgress(`${companyIds.length} empresas encontradas`);
+
+    // ── Create Sales Nav list (same logic as prospectOS=create flow) ──────────
+    const jsessionRaw = document.cookie.split(';')
+      .map(c => c.trim().split('='))
+      .find(([k]) => k === 'JSESSIONID')?.[1]?.replace(/"/g, '') || '';
+    const csrfToken = jsessionRaw.startsWith('ajax:') ? jsessionRaw : `ajax:${jsessionRaw}`;
+
+    if (!csrfToken || csrfToken === 'ajax:') {
+      throw new Error('No se encontró el CSRF token. Asegurate de estar logueado en LinkedIn.');
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
+      'csrf-token': csrfToken,
+      'x-restli-protocol-version': '2.0.0',
+      'x-requested-with': 'XMLHttpRequest',
+      'x-li-lang': 'es_AR',
+      'x-li-track': JSON.stringify({
+        clientVersion: '1.13.9787', mpVersion: '1.13.9787', osName: 'web',
+        timezoneOffset: -3, timezone: 'America/Argentina/Buenos_Aires',
+        deviceFormFactor: 'DESKTOP', mpName: 'sales-navigator-web',
+        displayDensity: 1, displayWidth: 1920, displayHeight: 1080,
+      }),
+      'x-li-page-instance': 'urn:li:page:sales_navigator_lists;' + Math.random().toString(36).slice(2),
+    };
+
+    setStatus(`Creando lista "${listName}"…`);
+
+    let listId = null;
+    const createBodies = [
+      { name: listName, listType: 'ACCOUNT', role: 'OWNER' },
+      { name: listName, listType: 'ACCOUNT' },
+    ];
+
+    for (const body of createBodies) {
+      const createRes = await fetch('/sales-api/salesApiLists', {
+        method: 'POST', credentials: 'include', headers,
+        body: JSON.stringify(body),
+      });
+      const responseText = await createRes.text();
+      if (createRes.status === 401 || createRes.status === 403) {
+        throw new Error('Sesión expirada — volvé a loguearte en LinkedIn.');
+      }
+      if (createRes.ok) {
+        try {
+          const created = JSON.parse(responseText);
+          let rawId = created.id ?? created.listId ?? created.entityUrn ?? '';
+          if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+          if (rawId && String(rawId) !== 'undefined') { listId = String(rawId); break; }
+        } catch {}
+      }
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    if (!listId) {
+      // Fallback endpoint
+      const altRes = await fetch('/sales-api/salesApiAccountLists', {
+        method: 'POST', credentials: 'include', headers,
+        body: JSON.stringify({ name: listName }),
+      });
+      if (altRes.ok) {
+        try {
+          const created = JSON.parse(await altRes.text());
+          let rawId = created.id ?? created.listId ?? created.entityUrn ?? '';
+          if (typeof rawId === 'string' && rawId.includes(':')) rawId = rawId.split(':').pop();
+          if (rawId && String(rawId) !== 'undefined') listId = String(rawId);
+        } catch {}
+      }
+    }
+
+    if (!listId) throw new Error('No se pudo crear la lista en Sales Navigator.');
+
+    // ── Add companies to the list ─────────────────────────────────────────────
+    let ok = 0, fail = 0;
+    for (let i = 0; i < companyIds.length; i++) {
+      const id = companyIds[i];
+      setStatus(`Agregando empresas… (${i + 1}/${companyIds.length})`);
+      setProgress(`ID: ${id}`);
+      const r = await fetch('/sales-api/salesApiListEntities?action=edit', {
+        method: 'POST', credentials: 'include', headers,
+        body: JSON.stringify({
+          entity: `urn:li:fs_salesCompany:${id}`,
+          addToLists: [listId],
+          removeFromLists: [],
+        }),
+      });
+      if (r.ok) { ok++; } else { fail++; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    setStatus(`✅ Lista creada — ${ok}/${companyIds.length} empresas. Guardando en ProspectOS…`);
+    setProgress('');
+
+    // ── Report back to ProspectOS ─────────────────────────────────────────────
+    const saveRes = await posApiFetch(`${appBase}/api/extension/register-list`, 'POST', {
+      campaignId, listId, listName,
+    });
+
+    if (saveRes?.ok) {
+      setStatus(`✅ Listo — lista "${listName}" registrada. Podés cerrar esta pestaña.`);
+    } else {
+      setStatus(`⚠️ Lista creada pero no se pudo guardar en ProspectOS. Registrala manualmente.`);
+      setProgress(`listId: ${listId}`);
+    }
+
+  } catch (err) {
+    setStatus('❌ Error: ' + err.message);
+    setProgress('Cerrá esta pestaña y volvé a intentar desde ProspectOS.');
+    console.error('[ProspectOS auto create_account_list]', err);
+  }
+}
+
 // ── Create client list ────────────────────────────────────────────────────────
 // Flow: for each company we navigate to Sales Nav company search, wait for DOM
 // results, grab the ID from the first result link (/sales/company/ID/), then
@@ -1039,9 +1164,9 @@ async function runCreateClientList(appBaseUrl) {
   try {
     // 1. Fetch company list from ProspectOS
     setStatus('Cargando lista de clientes…');
-    const res = await fetch(`${appBaseUrl}/api/extension/client-companies`);
-    if (!res.ok) throw new Error(`No se pudo cargar la lista (${res.status})`);
-    const { companies } = await res.json();
+    const res = await posApiFetch(`${appBaseUrl}/api/extension/client-companies`);
+    if (!res?.ok) throw new Error(`No se pudo cargar la lista (${res?.status})`);
+    const companies = res?.data?.companies;
     if (!companies || companies.length === 0) throw new Error('No hay empresas en la Lista de clientes. Agregá empresas en Settings primero.');
 
     // 2. Split: already-resolved vs need search navigation
@@ -1257,11 +1382,7 @@ async function doCreateList(resolved, appBaseUrl, { setStatus, setProgress }, to
   }
 
   // Report resolved IDs back to ProspectOS (saves them so next run skips lookup)
-  await fetch(`${appBaseUrl}/api/extension/client-companies`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ results: resolved }),
-  }).catch(() => {});
+  await posApiFetch(`${appBaseUrl}/api/extension/client-companies`, 'POST', { results: resolved }).catch(() => {});
 
   const notFound = totalCount - resolved.length;
   setStatus(`✅ Listo — ${ok}/${resolved.length} empresas agregadas a "${listName}"`);
@@ -1320,11 +1441,7 @@ async function runCompanyProfileVisit(state) {
       setStatus(`Enviando ${companies.length} empresas a ProspectOS…`);
       setProgress('');
 
-      await fetch(`${callbackUrl}?jobId=${jobId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: companies, done: true }),
-      });
+      await posApiFetch(`${callbackUrl}?jobId=${jobId}`, 'POST', { items: companies, done: true });
 
       const withWebsite = companies.filter(c => c.website).length;
       setStatus(`✅ Listo — ${companies.length} empresas enviadas (${withWebsite} con website)`);
@@ -1365,6 +1482,21 @@ function createOverlay() {
     setStatus: (msg) => { statusEl.textContent = msg; },
     setProgress: (msg) => { progressEl.textContent = msg; },
   };
+}
+
+// ── ProspectOS API helper ─────────────────────────────────────────────────────
+// Routes all requests to our server through the background service worker,
+// bypassing LinkedIn's page-level CSP and mixed-content restrictions.
+function posApiFetch(url, method = 'GET', body = undefined) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'pos_fetch', url, method, body }, (res) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message || 'Extension messaging error'));
+        return;
+      }
+      resolve(res ?? { ok: false, status: 0, error: 'No response' });
+    });
+  });
 }
 
 // Returns all accessible documents: main frame + same-origin iframes

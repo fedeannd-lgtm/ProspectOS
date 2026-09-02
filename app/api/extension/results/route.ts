@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
 import { processCompanySearch, processPeopleSearch, extractDomain, normalizeCompanyName, type RawCompany, type RawPerson } from "@/lib/process-search-results"
+import { advanceAutoCampaigns } from "@/lib/auto-campaign-engine"
 
 // normalizeCompanyName used only for client exclusion filter below
 
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
 
     if (body.done) {
       await processCompanySearch(jobId, job, applyFilters(body.items as RawCompany[]))
+      // Advance auto campaign immediately (no need to wait for cron)
+      advanceAutoCampaigns().catch((err) => console.error("[results] advanceAutoCampaigns:", err))
     } else {
       // Partial batch — mark running, insert without closing job
       const { data: existing } = await supabaseAdmin
@@ -69,6 +72,8 @@ export async function POST(req: NextRequest) {
   } else {
     if (body.done) {
       await processPeopleSearch(jobId, job, body.items as RawPerson[])
+      // Advance auto campaign immediately (no need to wait for cron)
+      advanceAutoCampaigns().catch((err) => console.error("[results] advanceAutoCampaigns:", err))
     } else {
       // Batch parcial — insertar sin cerrar el job
       // Reutilizar processPeopleSearch con done=false sería complejo,

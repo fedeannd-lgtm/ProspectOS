@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
+import { advanceAutoCampaigns } from "@/lib/auto-campaign-engine"
 
 const MAKE_EXTRACTION_WEBHOOK = process.env.MAKE_COMPANY_EXTRACTION_WEBHOOK_URL!
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -27,6 +28,11 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Advance automated campaigns (state machine) — siempre, independiente de si hay jobs
+  await advanceAutoCampaigns().catch((err) =>
+    console.error("[Cron] Error advancing auto campaigns:", err)
+  )
 
   if (!jobs || jobs.length === 0) {
     return NextResponse.json({ ok: true, triggered: 0 })
