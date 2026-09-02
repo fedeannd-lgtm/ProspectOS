@@ -263,6 +263,7 @@ async function advancePeopleSearch(auto: AutoCampaign) {
     }
   }
 
+  await supabaseAdmin.from("campaigns").update({ status: "enriching" }).eq("id", auto.campaign_id)
   await setStatus(auto.id, "enriching", {
     enrichment_offset: 0,
     current_step_detail: "Iniciando enriquecimiento…",
@@ -464,6 +465,7 @@ async function finalizeEnrichment(auto: AutoCampaign, totalCount: number) {
     }
   }
 
+  await supabaseAdmin.from("campaigns").update({ status: "distributing" }).eq("id", auto.campaign_id)
   await setStatus(auto.id, "distributing", {
     enrichment_offset: totalCount,
     current_step_detail: `Enriquecimiento completado. ${uniqueIds.length} personas enviadas a Shortlist.`,

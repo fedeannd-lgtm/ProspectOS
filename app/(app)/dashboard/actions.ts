@@ -63,16 +63,31 @@ export async function getIcpCategoryStats(): Promise<IcpCategoryStat[]> {
 export async function getCampaigns() {
   const { data, error } = await supabase
     .from("campaigns")
-    .select("*, accounts(count), prospects(count)")
+    .select("*, accounts(count), prospects(count), sent:prospects(count).not.is.null(sent_at)")
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
-  // Replace stored counts with live counts from related tables
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((c: any) => ({
-    ...c,
-    accounts_found: c.accounts?.[0]?.count ?? c.accounts_found ?? 0,
-    prospects_found: c.prospects?.[0]?.count ?? c.prospects_found ?? 0,
-  }))
+  return (data ?? []).map((c: any) => {
+    const accountsFound = c.accounts?.[0]?.count ?? c.accounts_found ?? 0
+    const prospectsFound = c.prospects?.[0]?.count ?? c.prospects_found ?? 0
+    const sentCount = c.sent?.[0]?.count ?? 0
+
+    // Derive status from real data when the stored value is stale ('pending' but there's activity)
+    let status = c.status as string
+    if (status === "pending" || status === "searching") {
+      if (sentCount > 0) status = "done"
+      else if (prospectsFound > 0) status = "enriching"
+      else if (accountsFound > 0) status = "searching"
+      else status = "pending"
+    }
+
+    return {
+      ...c,
+      status,
+      accounts_found: accountsFound,
+      prospects_found: prospectsFound,
+    }
+  })
 }
 
 export async function createCampaign(form: {
