@@ -19,7 +19,7 @@ const APP_URL =
   process.env.APP_BASE_URL ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
-const BATCH_SIZE = 20
+const BATCH_SIZE = 5
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -261,11 +261,9 @@ async function advancePeopleSearch(auto: AutoCampaign) {
     current_step_detail: "Iniciando enriquecimiento…",
   })
 
-  // Kick first enrichment batch via cron (separate invocation, avoids timeout in caller)
-  const cronSecret = process.env.CRON_SECRET
-  fetch(`${APP_URL}/api/cron/trigger-extraction`, {
-    headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
-  }).catch((err) => console.error("[AutoCampaign] Error triggering first enrichment batch:", err))
+  // Run first enrichment batch inline — avoids unreliable fire-and-forget from within after()
+  // BATCH_SIZE=5 so ~15s per batch; well within the 60s maxDuration
+  await advanceEnriching({ ...auto, status: "enriching", enrichment_offset: 0 })
 }
 
 // ─── Step 5: enriching (runs multiple ticks) ──────────────────────────────────
@@ -401,17 +399,15 @@ async function advanceEnriching(auto: AutoCampaign) {
   const newOffset = auto.enrichment_offset + batch.length
   if (newOffset >= totalCount) {
     await finalizeEnrichment(auto, totalCount)
-    // Trigger distribution step
-    const cronSecret = process.env.CRON_SECRET
-    fetch(`${APP_URL}/api/cron/trigger-extraction`, {
-      headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
-    }).catch((err) => console.error("[AutoCampaign] Error triggering distribution:", err))
+    // Run distribution inline — no fire-and-forget needed since finalizeEnrichment sets status="distributing"
+    // and advanceDistributing is idempotent (reads status from DB via advanceAutoCampaigns loop)
+    await advanceDistributing({ ...auto, status: "distributing" })
   } else {
     await setStatus(auto.id, "enriching", {
       enrichment_offset: newOffset,
       current_step_detail: `Enriqueciendo ${newOffset} de ${totalCount} personas…`,
     })
-    // Trigger next batch immediately (fire-and-forget HTTP call so this function can return)
+    // Trigger next batch as a new Vercel invocation (runs independently, no timeout risk)
     const cronSecret = process.env.CRON_SECRET
     fetch(`${APP_URL}/api/cron/trigger-extraction`, {
       headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
