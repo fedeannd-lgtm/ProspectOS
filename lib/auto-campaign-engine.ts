@@ -249,17 +249,9 @@ async function advancePeopleSearch(auto: AutoCampaign) {
       company_name: p.company_name ? normalizeCompanyName(p.company_name) : p.company_name,
     }))
 
-    // Batch update in chunks of 50
+    // Batch upsert in chunks of 50 (single query per chunk, much faster than individual updates)
     for (let i = 0; i < updates.length; i += 50) {
-      const chunk = updates.slice(i, i + 50)
-      for (const u of chunk) {
-        await supabaseAdmin.from("prospects").update({
-          first_name: u.first_name,
-          last_name: u.last_name,
-          full_name: u.full_name,
-          company_name: u.company_name,
-        }).eq("id", u.id)
-      }
+      await supabaseAdmin.from("prospects").upsert(updates.slice(i, i + 50), { onConflict: "id" })
     }
   }
 
