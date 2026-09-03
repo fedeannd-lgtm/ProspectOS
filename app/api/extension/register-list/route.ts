@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
 import { advanceAutoCampaigns } from "@/lib/auto-campaign-engine"
 
@@ -24,8 +24,8 @@ export async function POST(req: NextRequest) {
     .eq("id", campaignId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: CORS })
 
-  // Advance auto campaign immediately (creating_list → people_search)
-  advanceAutoCampaigns().catch((err) => console.error("[register-list] advanceAutoCampaigns:", err))
+  // Advance after response (after() is guaranteed by Vercel, unlike fire-and-forget)
+  after(async () => { await advanceAutoCampaigns().catch((err) => console.error("[register-list] advanceAutoCampaigns:", err)) })
 
   return NextResponse.json({ ok: true }, { headers: CORS })
 }
