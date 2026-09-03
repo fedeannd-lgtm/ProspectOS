@@ -404,6 +404,11 @@ async function advanceEnriching(auto: AutoCampaign) {
   const newOffset = auto.enrichment_offset + batch.length
   if (newOffset >= totalCount) {
     await finalizeEnrichment(auto, totalCount)
+    // Trigger distribution step
+    const cronSecret = process.env.CRON_SECRET
+    fetch(`${APP_URL}/api/cron/trigger-extraction`, {
+      headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
+    }).catch((err) => console.error("[AutoCampaign] Error triggering distribution:", err))
   } else {
     await setStatus(auto.id, "enriching", {
       enrichment_offset: newOffset,
