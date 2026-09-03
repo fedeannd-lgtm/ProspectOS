@@ -74,11 +74,8 @@ export async function POST(req: NextRequest) {
   } else {
     if (body.done) {
       await processPeopleSearch(jobId, job, body.items as RawPerson[])
-      // Two advances: 1) people_search→enriching  2) kick first enriching batch
-      after(async () => {
-        await advanceAutoCampaigns().catch((err) => console.error("[results] advance 1:", err))
-        await advanceAutoCampaigns().catch((err) => console.error("[results] advance 2:", err))
-      })
+      // Advance after response — transitions people_search→enriching (self-trigger fires first batch)
+      after(async () => { await advanceAutoCampaigns().catch((err) => console.error("[results] advanceAutoCampaigns:", err)) })
     } else {
       // Batch parcial — insertar sin cerrar el job
       // Reutilizar processPeopleSearch con done=false sería complejo,

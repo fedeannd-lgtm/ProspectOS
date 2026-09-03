@@ -269,6 +269,11 @@ async function advancePeopleSearch(auto: AutoCampaign) {
     current_step_detail: "Iniciando enriquecimiento…",
   })
 
+  // Kick first enrichment batch via cron (separate invocation, avoids timeout in caller)
+  const cronSecret = process.env.CRON_SECRET
+  fetch(`${APP_URL}/api/cron/trigger-extraction`, {
+    headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
+  }).catch((err) => console.error("[AutoCampaign] Error triggering first enrichment batch:", err))
 }
 
 // ─── Step 5: enriching (runs multiple ticks) ──────────────────────────────────
