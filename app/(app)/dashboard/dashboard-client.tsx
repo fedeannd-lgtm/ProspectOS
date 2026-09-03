@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition, useMemo, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { REPS as BASE_REPS, INDUSTRIES } from "@/lib/reps"
 const REPS = ["Todos", ...BASE_REPS]
 const REP_OPTIONS = BASE_REPS
@@ -770,6 +771,16 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
   const [industryOpen, setIndustryOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const searchRef = useRef<HTMLInputElement>(null)
+  const router = useRouter()
+
+  // Auto-refresh when there are active auto campaigns
+  const activeAutoStatuses = ["pending", "company_search", "creating_list", "people_search", "enriching", "distributing"]
+  const hasActiveAuto = Object.values(autoActionMap).some((a) => activeAutoStatuses.includes(a.autoStatus))
+  useEffect(() => {
+    if (!hasActiveAuto) return
+    const interval = setInterval(() => router.refresh(), 10000)
+    return () => clearInterval(interval)
+  }, [hasActiveAuto, router])
 
   // Auto campaign wizard state
   const [campaignMode, setCampaignMode] = useState<"manual" | "auto">("manual")
