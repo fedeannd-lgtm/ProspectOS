@@ -412,17 +412,17 @@ async function advanceEnriching(auto: AutoCampaign) {
 
     offset += batch.length
 
-    if (offset < totalCount) {
-      await setStatus(auto.id, "enriching", {
-        enrichment_offset: offset,
-        current_step_detail: `Enriqueciendo ${offset} de ${totalCount} personas…`,
-      })
-    }
+    // Actualizar siempre (incluso en el último batch) para mostrar el total correcto
+    await setStatus(auto.id, "enriching", {
+      enrichment_offset: offset,
+      current_step_detail: `Enriqueciendo ${offset} de ${totalCount} personas…`,
+    })
   }
 
-  // Todos los prospects procesados → shortlist + pasar a distributing
-  // (el cron retoma distributing en el próximo tick, sin necesidad de self-trigger)
+  // Todos los prospects procesados → shortlist → distribución inline
+  // (no esperamos el cron; el budget restante es suficiente para distribución)
   await finalizeEnrichment(auto, totalCount)
+  await advanceDistributing({ ...auto, status: "distributing" })
 }
 
 async function finalizeEnrichment(auto: AutoCampaign, totalCount: number) {
