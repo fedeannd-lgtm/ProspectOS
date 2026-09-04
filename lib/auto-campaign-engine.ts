@@ -19,7 +19,8 @@ const APP_URL =
   process.env.APP_BASE_URL ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
-const BATCH_SIZE = 5
+const PARALLEL_SIZE = 10   // prospects procesados en paralelo por iteración
+const TIME_BUDGET_MS = 50_000  // detener a 50s para no agotar el maxDuration de 60s
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -266,155 +267,162 @@ async function advancePeopleSearch(auto: AutoCampaign) {
   await advanceEnriching({ ...auto, status: "enriching", enrichment_offset: 0 })
 }
 
-// ─── Step 5: enriching (runs multiple ticks) ──────────────────────────────────
+// ─── Step 5: enriching (loop paralelo, sin self-triggers) ────────────────────
+
+async function enrichOneProspect(
+  auto: AutoCampaign,
+  prospect: { id: string; job_title: string | null; email: string | null; email_status: string | null }
+) {
+  if (auto.enrich_emails) {
+    const { data: p } = await supabaseAdmin
+      .from("prospects")
+      .select("id, first_name, last_name, full_name, company_name, company_domain, linkedin_url, job_title, email, email_status, accounts(linkedin_url, domain)")
+      .eq("id", prospect.id)
+      .single()
+
+    if (p) {
+      const osScore = calculateOsScore(p.job_title ?? "")
+      const skip =
+        p.email &&
+        (p.email_status === "valid" ||
+          p.email_status === "catch-all" ||
+          p.email_status === "unknown")
+
+      if (!skip) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const acct = (p as any).accounts
+        const accountLinkedIn = acct?.linkedin_url ?? null
+        const accountDomain = acct?.domain ?? null
+        const result = await enrichProspect({
+          first_name: p.first_name ?? "",
+          last_name: p.last_name ?? "",
+          full_name: p.full_name ?? "",
+          company_name: p.company_name ?? "",
+          company_domain: p.company_domain ?? accountDomain ?? null,
+          linkedin_url: p.linkedin_url ?? "",
+          company_linkedin_url: accountLinkedIn,
+        })
+        const { category, score } = classifyIcp(p.job_title ?? "")
+        await supabaseAdmin.from("prospects").update({
+          email: result.email,
+          email_status: result.zbStatus,
+          email_provider: result.provider,
+          email_validated: result.enriched,
+          icp_category: category,
+          icp_score: score,
+          os_score: osScore,
+          apollo_id: result.apolloId ?? null,
+        }).eq("id", p.id)
+      } else if (auto.classify_icp) {
+        const { category, score } = classifyIcp(p.job_title ?? "")
+        await supabaseAdmin.from("prospects").update({
+          icp_category: category,
+          icp_score: score,
+          os_score: osScore,
+        }).eq("id", p.id)
+      }
+    }
+  } else if (auto.classify_icp) {
+    const { data: p } = await supabaseAdmin
+      .from("prospects")
+      .select("id, job_title")
+      .eq("id", prospect.id)
+      .single()
+    if (p) {
+      const { category, score } = classifyIcp(p.job_title ?? "")
+      const osScore = calculateOsScore(p.job_title ?? "")
+      await supabaseAdmin.from("prospects").update({
+        icp_category: category,
+        icp_score: score,
+        os_score: osScore,
+      }).eq("id", p.id)
+    }
+  }
+
+  if (auto.enrich_phones) {
+    const { data: p } = await supabaseAdmin
+      .from("prospects")
+      .select("id, phone, first_name, last_name, full_name, company_name, linkedin_url")
+      .eq("id", prospect.id)
+      .single()
+    if (p && !p.phone) {
+      let phone: string | null = null
+      if (p.linkedin_url) {
+        phone = await findPhoneDatagma({
+          linkedinUrl: p.linkedin_url,
+          firstName: p.first_name ?? "",
+          lastName: p.last_name ?? "",
+          companyName: p.company_name,
+        })
+      }
+      if (!phone) {
+        phone = await findPhoneProspeo({
+          linkedinUrl: p.linkedin_url,
+          firstName: p.first_name ?? undefined,
+          lastName: p.last_name ?? undefined,
+        })
+      }
+      if (phone) {
+        await supabaseAdmin.from("prospects").update({ phone }).eq("id", p.id)
+      }
+    }
+  }
+}
 
 async function advanceEnriching(auto: AutoCampaign) {
-  // Total count
   const { count: total } = await supabaseAdmin
     .from("prospects")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", auto.campaign_id)
 
   const totalCount = total ?? 0
+  let offset = auto.enrichment_offset
+  const deadline = Date.now() + TIME_BUDGET_MS
 
-  // Fetch next batch
-  const { data: batch } = await supabaseAdmin
-    .from("prospects")
-    .select("id, job_title, email, email_status")
-    .eq("campaign_id", auto.campaign_id)
-    .order("created_at", { ascending: true })
-    .range(auto.enrichment_offset, auto.enrichment_offset + BATCH_SIZE - 1)
+  while (offset < totalCount) {
+    // Time guard: si se agota el presupuesto, guardar progreso y dejar que el cron retome
+    if (Date.now() > deadline) {
+      await setStatus(auto.id, "enriching", {
+        enrichment_offset: offset,
+        current_step_detail: `Enriqueciendo ${offset} de ${totalCount} personas…`,
+      })
+      console.log(`[AutoCampaign] Time budget reached at ${offset}/${totalCount}, cron will resume`)
+      return  // sin self-trigger — el cron de 5 min retoma desde el offset guardado
+    }
 
-  if (!batch?.length) {
-    // All done → apply shortlist rules and move on
-    await finalizeEnrichment(auto, totalCount)
-    return
-  }
+    const { data: batch } = await supabaseAdmin
+      .from("prospects")
+      .select("id, job_title, email, email_status")
+      .eq("campaign_id", auto.campaign_id)
+      .order("created_at", { ascending: true })
+      .range(offset, offset + PARALLEL_SIZE - 1)
 
-  // Process batch
-  for (const prospect of batch) {
-    try {
-      if (auto.enrich_emails) {
-        // Full email enrichment pipeline (Apollo → Findymail → ZB, + ICP scoring)
-        const { data: p } = await supabaseAdmin
-          .from("prospects")
-          .select("id, first_name, last_name, full_name, company_name, company_domain, linkedin_url, job_title, email, email_status, accounts(linkedin_url, domain)")
-          .eq("id", prospect.id)
-          .single()
+    if (!batch?.length) break
 
-        if (p) {
-          const osScore = calculateOsScore(p.job_title ?? "")
-          const skip =
-            p.email &&
-            (p.email_status === "valid" ||
-              p.email_status === "catch-all" ||
-              p.email_status === "unknown")
-
-          if (!skip) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const acct = (p as any).accounts
-            const accountLinkedIn = acct?.linkedin_url ?? null
-            const accountDomain = acct?.domain ?? null
-            const result = await enrichProspect({
-              first_name: p.first_name ?? "",
-              last_name: p.last_name ?? "",
-              full_name: p.full_name ?? "",
-              company_name: p.company_name ?? "",
-              company_domain: p.company_domain ?? accountDomain ?? null,
-              linkedin_url: p.linkedin_url ?? "",
-              company_linkedin_url: accountLinkedIn,
-            })
-            const { category, score } = classifyIcp(p.job_title ?? "")
-            await supabaseAdmin.from("prospects").update({
-              email: result.email,
-              email_status: result.zbStatus,
-              email_provider: result.provider,
-              email_validated: result.enriched,
-              icp_category: category,
-              icp_score: score,
-              os_score: osScore,
-              apollo_id: result.apolloId ?? null,
-            }).eq("id", p.id)
-          } else if (auto.classify_icp) {
-            const { category, score } = classifyIcp(p.job_title ?? "")
-            await supabaseAdmin.from("prospects").update({
-              icp_category: category,
-              icp_score: score,
-              os_score: osScore,
-            }).eq("id", p.id)
-          }
+    // Procesar todos los prospects del batch en paralelo (10x más rápido que secuencial)
+    await Promise.all(
+      batch.map(async (prospect) => {
+        try {
+          await enrichOneProspect(auto, prospect)
+        } catch (err) {
+          console.error(`[AutoCampaign] Error enriching prospect ${prospect.id}:`, err)
         }
-      } else if (auto.classify_icp) {
-        // ICP only — no email enrichment
-        const { data: p } = await supabaseAdmin
-          .from("prospects")
-          .select("id, job_title")
-          .eq("id", prospect.id)
-          .single()
-        if (p) {
-          const { category, score } = classifyIcp(p.job_title ?? "")
-          const osScore = calculateOsScore(p.job_title ?? "")
-          await supabaseAdmin.from("prospects").update({
-            icp_category: category,
-            icp_score: score,
-            os_score: osScore,
-          }).eq("id", p.id)
-        }
-      }
+      })
+    )
 
-      if (auto.enrich_phones) {
-        const { data: p } = await supabaseAdmin
-          .from("prospects")
-          .select("id, phone, first_name, last_name, full_name, company_name, linkedin_url")
-          .eq("id", prospect.id)
-          .single()
-        if (p && !p.phone) {
-          let phone: string | null = null
-          if (p.linkedin_url) {
-            phone = await findPhoneDatagma({
-              linkedinUrl: p.linkedin_url,
-              firstName: p.first_name ?? "",
-              lastName: p.last_name ?? "",
-              companyName: p.company_name,
-            })
-          }
-          if (!phone) {
-            phone = await findPhoneProspeo({
-              linkedinUrl: p.linkedin_url,
-              firstName: p.first_name ?? undefined,
-              lastName: p.last_name ?? undefined,
-            })
-          }
-          if (phone) {
-            await supabaseAdmin.from("prospects").update({ phone }).eq("id", p.id)
-          }
-        }
-      }
-    } catch (err) {
-      // Log but don't fail the entire batch for one prospect error
-      console.error(`[AutoCampaign] Error enriching prospect ${prospect.id}:`, err)
+    offset += batch.length
+
+    if (offset < totalCount) {
+      await setStatus(auto.id, "enriching", {
+        enrichment_offset: offset,
+        current_step_detail: `Enriqueciendo ${offset} de ${totalCount} personas…`,
+      })
     }
   }
 
-  const newOffset = auto.enrichment_offset + batch.length
-  if (newOffset >= totalCount) {
-    await finalizeEnrichment(auto, totalCount)
-    // Run distribution inline — no fire-and-forget needed since finalizeEnrichment sets status="distributing"
-    // and advanceDistributing is idempotent (reads status from DB via advanceAutoCampaigns loop)
-    await advanceDistributing({ ...auto, status: "distributing" })
-  } else {
-    await setStatus(auto.id, "enriching", {
-      enrichment_offset: newOffset,
-      current_step_detail: `Enriqueciendo ${newOffset} de ${totalCount} personas…`,
-    })
-    // Trigger next batch as a new Vercel invocation (runs independently, no timeout risk)
-    const cronSecret = process.env.CRON_SECRET
-    fetch(`${APP_URL}/api/cron/trigger-extraction`, {
-      headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
-    }).catch((err) =>
-      console.error("[AutoCampaign] Error triggering next enrichment batch:", err)
-    )
-  }
+  // Todos los prospects procesados → shortlist + pasar a distributing
+  // (el cron retoma distributing en el próximo tick, sin necesidad de self-trigger)
+  await finalizeEnrichment(auto, totalCount)
 }
 
 async function finalizeEnrichment(auto: AutoCampaign, totalCount: number) {
