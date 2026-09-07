@@ -302,7 +302,8 @@ export async function previewDistribution(campaignId: string): Promise<{
 export async function runDistribution(
   templateId: string,
   sourceCampaignId: string,
-  includePreviouslySent: boolean
+  includePreviouslySent: boolean,
+  shortlistFilter: "all" | "only" | "exclude" = "all"
 ): Promise<string> {
   // Fetch template + routes
   const { data: t } = await supabaseAdmin
@@ -345,7 +346,14 @@ export async function runDistribution(
     }
 
     const { data: prospects } = await query
-    const allProspects = (prospects ?? []) as ProspectForDistribution[]
+    let allProspects = (prospects ?? []) as ProspectForDistribution[]
+
+    // Global shortlist pre-filter (applied before route conditions)
+    if (shortlistFilter === "only") {
+      allProspects = allProspects.filter((p) => p.shortlisted === true)
+    } else if (shortlistFilter === "exclude") {
+      allProspects = allProspects.filter((p) => p.shortlisted !== true)
+    }
 
     // Evaluate each route
     const routeResults: RunResults["routes"] = []

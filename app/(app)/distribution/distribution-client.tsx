@@ -554,10 +554,11 @@ function RunModal({ template, campaigns, onClose, onRun }: {
   template: DistributionTemplate
   campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
   onClose: () => void
-  onRun: (campaignId: string, includePrev: boolean) => void
+  onRun: (campaignId: string, includePrev: boolean, shortlistFilter: "all" | "only" | "exclude") => void
 }) {
   const [campaignId, setCampaignId] = useState("")
   const [includePrev, setIncludePrev] = useState(false)
+  const [shortlistFilter, setShortlistFilter] = useState<"all" | "only" | "exclude">("all")
   const [preview, setPreview] = useState<{ total: number; previouslySent: number } | null>(null)
   const [loadingPreview, startPreview] = useTransition()
 
@@ -589,6 +590,20 @@ function RunModal({ template, campaigns, onClose, onRun }: {
                     {c.week_label} · {c.rep_name} · {c.industry}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Alcance — Shortlist</label>
+            <Select value={shortlistFilter} onValueChange={(v) => setShortlistFilter(v as "all" | "only" | "exclude")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los prospectos</SelectItem>
+                <SelectItem value="only">Solo los que están en shortlist</SelectItem>
+                <SelectItem value="exclude">Excluir los que están en shortlist</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -627,7 +642,7 @@ function RunModal({ template, campaigns, onClose, onRun }: {
             <Button
               className="flex-1"
               disabled={!campaignId}
-              onClick={() => { onClose(); onRun(campaignId, includePrev) }}
+              onClick={() => { onClose(); onRun(campaignId, includePrev, shortlistFilter) }}
             >
               <Play className="size-3.5 mr-1.5" /> Correr
             </Button>
@@ -785,10 +800,10 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
     })
   }
 
-  function handleRun(campaignId: string, includePrev: boolean) {
+  function handleRun(campaignId: string, includePrev: boolean, shortlistFilter: "all" | "only" | "exclude") {
     if (!template?.id) return
     startRun(async () => {
-      await runDistribution(template.id, campaignId, includePrev)
+      await runDistribution(template.id, campaignId, includePrev, shortlistFilter)
       setRunSuccess("Distribución completada.")
       handleLoadRuns()
     })
