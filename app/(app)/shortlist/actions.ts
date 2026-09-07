@@ -71,10 +71,16 @@ export async function getShortlistedProspects(): Promise<ShortlistedProspect[]> 
     if (!seqMap.has(seq.prospect_id)) seqMap.set(seq.prospect_id, seq)
   }
 
-  return prospects.map((p) => ({
-    ...p,
-    latest_sequences: (seqMap.get(p.id) ?? null) as ShortlistedProspect["latest_sequences"],
-  }))
+  return prospects
+    .map((p) => ({
+      ...p,
+      latest_sequences: (seqMap.get(p.id) ?? null) as ShortlistedProspect["latest_sequences"],
+    }))
+    .sort((a, b) => {
+      const indA = (a.accounts as { industry?: string | null } | null)?.industry ?? ""
+      const indB = (b.accounts as { industry?: string | null } | null)?.industry ?? ""
+      return indA.localeCompare(indB, "es", { sensitivity: "base" })
+    })
 }
 
 export async function removeFromShortlist(prospectId: string): Promise<void> {
