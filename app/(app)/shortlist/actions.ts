@@ -299,6 +299,7 @@ export type ManualProspectInput = {
   job_title?: string
   company_name?: string
   company_domain?: string
+  industry?: string
   email?: string
   linkedin_url?: string
   phone?: string
@@ -311,6 +312,21 @@ export async function addManualProspect(input: ManualProspectInput): Promise<{ i
   const first_name = parts[0] ?? ""
   const last_name = parts.slice(1).join(" ") || ""
 
+  // Si hay empresa o industria, crear un account y linkear el prospecto
+  let accountId: string | null = null
+  if (input.company_name || input.industry) {
+    const { data: account } = await supabaseAdmin
+      .from("accounts")
+      .insert({
+        company_name: input.company_name || "Manual",
+        domain: input.company_domain || null,
+        industry: input.industry || null,
+      })
+      .select("id")
+      .single()
+    accountId = account?.id ?? null
+  }
+
   const { data, error } = await supabaseAdmin
     .from("prospects")
     .insert({
@@ -320,6 +336,7 @@ export async function addManualProspect(input: ManualProspectInput): Promise<{ i
       job_title: input.job_title || null,
       company_name: input.company_name || null,
       company_domain: input.company_domain || null,
+      account_id: accountId,
       email: input.email || null,
       linkedin_url: input.linkedin_url || null,
       phone: input.phone || null,

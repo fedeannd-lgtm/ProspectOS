@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { INDUSTRIES } from "@/lib/reps"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
 import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
@@ -235,7 +236,7 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState("")
-  const emptyForm = (): ManualProspectInput => ({ full_name: "", job_title: "", company_name: "", company_domain: "", email: "", linkedin_url: "", phone: "", location: "", notes: "" })
+  const emptyForm = (): ManualProspectInput => ({ full_name: "", job_title: "", company_name: "", company_domain: "", industry: "", email: "", linkedin_url: "", phone: "", location: "", notes: "" })
   const [form, setForm] = useState<ManualProspectInput>(emptyForm)
 
   // Derived filter options
@@ -913,6 +914,21 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                 <label className="text-xs font-medium text-muted-foreground">Dominio</label>
                 <Input placeholder="acme.com" value={form.company_domain} onChange={(e) => setForm((f) => ({ ...f, company_domain: e.target.value }))} />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Industria</label>
+                <select
+                  value={form.industry}
+                  onChange={(e) => setForm((f) => ({ ...f, industry: e.target.value }))}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="">Sin industria</option>
+                  {[...INDUSTRIES, "Otros"].map((ind) => (
+                    <option key={ind} value={ind}>{ind}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">Email</label>
                 <Input placeholder="maria@acme.com" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
