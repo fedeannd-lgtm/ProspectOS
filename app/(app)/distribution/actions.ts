@@ -216,6 +216,7 @@ type ProspectForDistribution = {
   company_name: string
   started_role_months: number | null
   sent_at: string | null
+  shortlisted: boolean
 }
 
 function evaluateCondition(prospect: ProspectForDistribution, cond: Condition): boolean {
@@ -261,6 +262,9 @@ function evaluateCondition(prospect: ProspectForDistribution, cond: Condition): 
     if (operator === "gte") return prospect.started_role_months >= v
     if (operator === "lte") return prospect.started_role_months <= v
     if (operator === "eq") return prospect.started_role_months === v
+  }
+  if (field === "shortlisted") {
+    return value === "true" ? prospect.shortlisted === true : prospect.shortlisted !== true
   }
   return false
 }
@@ -333,7 +337,7 @@ export async function runDistribution(
     // Fetch prospects
     let query = supabaseAdmin
       .from("prospects")
-      .select("id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, started_role_months, sent_at")
+      .select("id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, started_role_months, sent_at, shortlisted")
       .eq("campaign_id", sourceCampaignId)
 
     if (!includePreviouslySent) {
@@ -474,7 +478,7 @@ export async function previewDistributionRoutes(
 ): Promise<RoutePreviewResult> {
   const { data: prospects } = await supabaseAdmin
     .from("prospects")
-    .select("id, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, started_role_months, sent_at")
+    .select("id, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, started_role_months, sent_at, shortlisted")
     .eq("campaign_id", campaignId)
 
   const all = (prospects ?? []) as ProspectForDistribution[]
