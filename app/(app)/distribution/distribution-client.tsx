@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition, useEffect } from "react"
+import { cn } from "@/lib/utils"
 import { Plus, Play, Copy, Trash2, ChevronUp, ChevronDown, X, Loader2, CheckCircle2, AlertCircle, RotateCcw, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -554,11 +555,10 @@ function RunModal({ template, campaigns, onClose, onRun }: {
   template: DistributionTemplate
   campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
   onClose: () => void
-  onRun: (campaignId: string, includePrev: boolean, shortlistFilter: "all" | "only" | "exclude") => void
+  onRun: (campaignId: string, includePrev: boolean) => void
 }) {
   const [campaignId, setCampaignId] = useState("")
   const [includePrev, setIncludePrev] = useState(false)
-  const [shortlistFilter, setShortlistFilter] = useState<"all" | "only" | "exclude">("all")
   const [preview, setPreview] = useState<{ total: number; previouslySent: number } | null>(null)
   const [loadingPreview, startPreview] = useTransition()
 
@@ -590,20 +590,6 @@ function RunModal({ template, campaigns, onClose, onRun }: {
                     {c.week_label} · {c.rep_name} · {c.industry}
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Alcance — Shortlist</label>
-            <Select value={shortlistFilter} onValueChange={(v) => setShortlistFilter(v as "all" | "only" | "exclude")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los prospectos</SelectItem>
-                <SelectItem value="only">Solo los que están en shortlist</SelectItem>
-                <SelectItem value="exclude">Excluir los que están en shortlist</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -642,7 +628,7 @@ function RunModal({ template, campaigns, onClose, onRun }: {
             <Button
               className="flex-1"
               disabled={!campaignId}
-              onClick={() => { onClose(); onRun(campaignId, includePrev, shortlistFilter) }}
+              onClick={() => { onClose(); onRun(campaignId, includePrev) }}
             >
               <Play className="size-3.5 mr-1.5" /> Correr
             </Button>
@@ -721,6 +707,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
   const isNew = !template?.id
   const [name, setName] = useState(template?.name ?? "")
   const [industry, setIndustry] = useState(template?.industry ?? "")
+  const [shortlistFilter, setShortlistFilter] = useState<"all" | "only" | "exclude">(template?.shortlist_filter ?? "all")
   const [routes, setRoutes] = useState<DistributionRoute[]>(template?.routes ?? [])
   const [saving, startSave] = useTransition()
   const [running, startRun] = useTransition()
@@ -779,7 +766,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
 
   function handleSave() {
     startSave(async () => {
-      const id = await saveTemplate({ id: template?.id, name, industry: industry || null, notes: null, routes })
+      const id = await saveTemplate({ id: template?.id, name, industry: industry || null, notes: null, shortlist_filter: shortlistFilter, routes })
       onSaved(id)
     })
   }
@@ -800,10 +787,10 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
     })
   }
 
-  function handleRun(campaignId: string, includePrev: boolean, shortlistFilter: "all" | "only" | "exclude") {
+  function handleRun(campaignId: string, includePrev: boolean) {
     if (!template?.id) return
     startRun(async () => {
-      await runDistribution(template.id, campaignId, includePrev, shortlistFilter)
+      await runDistribution(template.id, campaignId, includePrev)
       setRunSuccess("Distribución completada.")
       handleLoadRuns()
     })
@@ -820,12 +807,34 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <Input
-            className="text-xs border-0 px-0 h-6 focus-visible:ring-0 text-muted-foreground"
-            placeholder="Industria (opcional)"
-            value={industry}
-            onChange={(e) => setIndustry(e.target.value)}
-          />
+          <div className="flex items-center gap-3">
+            <Input
+              className="text-xs border-0 px-0 h-6 focus-visible:ring-0 text-muted-foreground flex-1"
+              placeholder="Industria (opcional)"
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+            />
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[10px] text-muted-foreground">Shortlist:</span>
+              <div className="flex rounded border overflow-hidden text-[10px]">
+                {(["all", "only", "exclude"] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setShortlistFilter(opt)}
+                    className={cn(
+                      "px-1.5 py-0.5 transition-colors",
+                      shortlistFilter === opt
+                        ? "bg-primary text-primary-foreground font-medium"
+                        : "hover:bg-muted/50 text-muted-foreground"
+                    )}
+                  >
+                    {opt === "all" ? "Todos" : opt === "only" ? "Solo" : "Sin"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setShowPreview(true)} disabled={routes.length === 0} title="Vista previa del flujo">
