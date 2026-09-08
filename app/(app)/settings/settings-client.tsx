@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, type SavedUrl, type ClientCompany } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
-import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
+import { getInboxConfig, saveInboxConfig, type InboxConfig, type LinkedinSequenceConfig, type EmailSequenceConfig, DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "../inbox/actions"
 const URL_TYPE_LABELS: Record<string, string> = {
   company_search: "Company Search",
   people_search: "People Search",
@@ -661,17 +661,255 @@ function ClientListCard({
   )
 }
 
+// ─── Toggle helper ────────────────────────────────────────────────────────────
+
+function Toggle({ checked, onToggle, disabled }: { checked: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={onToggle}
+      disabled={disabled}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${checked ? "bg-primary" : "bg-input"}`}
+    >
+      <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-background shadow-lg transform transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`} />
+    </button>
+  )
+}
+
+// ─── NumInput helper ──────────────────────────────────────────────────────────
+
+function NumInput({ value, onChange, min, max, label }: { value: number; onChange: (v: number) => void; min: number; max: number; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-xs text-muted-foreground w-40 shrink-0">{label}</label>
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => {
+          const n = parseInt(e.target.value)
+          if (!isNaN(n) && n >= min && n <= max) onChange(n)
+        }}
+        className="h-7 w-20 text-sm text-right"
+      />
+    </div>
+  )
+}
+
+// ─── LinkedinSequenceCard ─────────────────────────────────────────────────────
+
+function LinkedinSequenceCard({ initialConfig }: { initialConfig: LinkedinSequenceConfig | null }) {
+  const init = initialConfig ?? DEFAULT_LINKEDIN_CONFIG
+  const [cfg, setCfg] = useState<LinkedinSequenceConfig>(init)
+  const [isPending, startTransition] = useTransition()
+  const [saved, setSaved] = useState(false)
+
+  function update(partial: Partial<LinkedinSequenceConfig>) {
+    setCfg((c) => ({ ...c, ...partial }))
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      const current = await getInboxConfig()
+      await saveInboxConfig({ ...current, linkedin_sequence_config: cfg })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Mensajes de LinkedIn</CardTitle>
+        <CardDescription>
+          Configuración para los mensajes de LinkedIn generados en Shortlist.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Numeric settings */}
+        <div className="space-y-2.5">
+          <NumInput label="Cantidad de mensajes" value={cfg.step_count} onChange={(v) => update({ step_count: v })} min={1} max={10} />
+          <NumInput label="Caracteres paso 1 (conexión)" value={cfg.step1_chars} onChange={(v) => update({ step1_chars: v })} min={50} max={500} />
+          {cfg.step_count > 1 && (
+            <NumInput label="Caracteres follow-ups" value={cfg.followup_chars} onChange={(v) => update({ followup_chars: v })} min={50} max={500} />
+          )}
+        </div>
+
+        {/* Prompt mode toggle */}
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Instrucción por paso</p>
+            <p className="text-xs text-muted-foreground">
+              {cfg.prompt_mode === "per_step" ? "Instrucción distinta para cada paso" : "Una instrucción general para todos los pasos"}
+            </p>
+          </div>
+          <Toggle checked={cfg.prompt_mode === "per_step"} onToggle={() => update({ prompt_mode: cfg.prompt_mode === "per_step" ? "general" : "per_step" })} />
+        </div>
+
+        {/* Prompt textarea(s) */}
+        {cfg.prompt_mode === "general" ? (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Instrucción general</label>
+            <textarea
+              value={cfg.general_prompt}
+              onChange={(e) => update({ general_prompt: e.target.value })}
+              rows={4}
+              placeholder="ej: Tono conversacional, sin buzzwords. Siempre mencioná algo concreto del perfil del prospecto. Nunca uses 'solución' ni 'sinergias'."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-y focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+            />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Instrucciones por paso</label>
+            {Array.from({ length: cfg.step_count }, (_, i) => {
+              const stepNum = String(i + 1)
+              const isFirst = i === 0
+              return (
+                <div key={stepNum} className="flex gap-3 items-start">
+                  <span className="text-xs font-medium text-muted-foreground mt-2 w-14 shrink-0">
+                    Paso {stepNum}{isFirst ? " (conexión)" : ""}
+                  </span>
+                  <textarea
+                    value={cfg.step_prompts[stepNum] ?? ""}
+                    onChange={(e) => update({ step_prompts: { ...cfg.step_prompts, [stepNum]: e.target.value } })}
+                    rows={2}
+                    placeholder={isFirst ? "Solicitud de conexión breve y personalizada…" : "Follow-up paso " + stepNum + "…"}
+                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={handleSave} disabled={isPending}>
+            {isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+            Guardar
+          </Button>
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs text-green-700">
+              <CheckCircle2 className="size-3" /> Guardado
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── EmailSequenceCard ────────────────────────────────────────────────────────
+
+function EmailSequenceCard({ initialConfig }: { initialConfig: EmailSequenceConfig | null }) {
+  const init = initialConfig ?? DEFAULT_EMAIL_CONFIG
+  const [cfg, setCfg] = useState<EmailSequenceConfig>(init)
+  const [isPending, startTransition] = useTransition()
+  const [saved, setSaved] = useState(false)
+
+  function update(partial: Partial<EmailSequenceConfig>) {
+    setCfg((c) => ({ ...c, ...partial }))
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      const current = await getInboxConfig()
+      await saveInboxConfig({ ...current, email_sequence_config: cfg })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Cold Emails</CardTitle>
+        <CardDescription>
+          Configuración para la secuencia de emails generada en Shortlist.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Numeric settings */}
+        <div className="space-y-2.5">
+          <NumInput label="Cantidad de pasos" value={cfg.step_count} onChange={(v) => update({ step_count: v })} min={1} max={10} />
+        </div>
+
+        {/* Prompt mode toggle */}
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Instrucción por paso</p>
+            <p className="text-xs text-muted-foreground">
+              {cfg.prompt_mode === "per_step" ? "Instrucción distinta para cada paso" : "Una instrucción general para todos los pasos"}
+            </p>
+          </div>
+          <Toggle checked={cfg.prompt_mode === "per_step"} onToggle={() => update({ prompt_mode: cfg.prompt_mode === "per_step" ? "general" : "per_step" })} />
+        </div>
+
+        {/* Prompt textarea(s) */}
+        {cfg.prompt_mode === "general" ? (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Instrucción general</label>
+            <textarea
+              value={cfg.general_prompt}
+              onChange={(e) => update({ general_prompt: e.target.value })}
+              rows={4}
+              placeholder="ej: Emails cortos y directos. Primer email enfocado en un pain concreto de la industria. Follow-ups con ángulos diferentes."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-y focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+            />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Instrucciones por paso</label>
+            {Array.from({ length: cfg.step_count }, (_, i) => {
+              const stepNum = String(i + 1)
+              const isFirst = i === 0
+              return (
+                <div key={stepNum} className="flex gap-3 items-start">
+                  <span className="text-xs font-medium text-muted-foreground mt-2 w-14 shrink-0">
+                    Paso {stepNum}{isFirst ? " (email 1)" : ""}
+                  </span>
+                  <textarea
+                    value={cfg.step_prompts[stepNum] ?? ""}
+                    onChange={(e) => update({ step_prompts: { ...cfg.step_prompts, [stepNum]: e.target.value } })}
+                    rows={2}
+                    placeholder={isFirst ? "Primer contacto: hook + propuesta de valor…" : "Follow-up paso " + stepNum + "…"}
+                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={handleSave} disabled={isPending}>
+            {isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+            Guardar
+          </Button>
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs text-green-700">
+              <CheckCircle2 className="size-3" /> Guardado
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── InboxSettingsCard ────────────────────────────────────────────────────────
+
 function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   const [productContext, setProductContext] = useState(initialConfig.product_context ?? "")
   const [calendlyLink, setCalendlyLink] = useState(initialConfig.calendly_link ?? "")
-  const [linkedinInstructions, setLinkedinInstructions] = useState(initialConfig.linkedin_instructions ?? "")
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
 
   function handleSave() {
     startTransition(async () => {
       const current = await getInboxConfig()
-      await saveInboxConfig({ ...current, product_context: productContext || null, calendly_link: calendlyLink || null, linkedin_instructions: linkedinInstructions || null })
+      await saveInboxConfig({ ...current, product_context: productContext || null, calendly_link: calendlyLink || null })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     })
@@ -706,19 +944,6 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
           />
           <p className="text-xs text-muted-foreground">
             Incluí features por industria, objeciones comunes y cómo responderlas, y el tono de voz del equipo.
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Instrucciones para mensajes de LinkedIn</label>
-          <textarea
-            value={linkedinInstructions}
-            onChange={(e) => setLinkedinInstructions(e.target.value)}
-            rows={4}
-            placeholder="ej: Siempre empezá mencionando algo concreto del perfil. Tono conversacional. Nunca uses palabras como 'solución' o 'sinergias'. Máx 2 frases por mensaje."
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
-          />
-          <p className="text-xs text-muted-foreground">
-            Se aplica a todos los mensajes de LinkedIn generados en Shortlist, tanto en generación completa como al regenerar solo LinkedIn.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -828,6 +1053,8 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
         initialExcludePrevious={inboxConfig.exclude_previous ?? false}
       />
 
+      <LinkedinSequenceCard initialConfig={inboxConfig.linkedin_sequence_config ?? null} />
+      <EmailSequenceCard initialConfig={inboxConfig.email_sequence_config ?? null} />
       <InboxSettingsCard initialConfig={inboxConfig} />
     </div>
   )

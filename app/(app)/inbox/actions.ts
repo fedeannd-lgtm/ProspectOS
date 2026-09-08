@@ -37,10 +37,44 @@ export type ProspectReply = {
   } | null
 }
 
+export type LinkedinSequenceConfig = {
+  step_count: number
+  step1_chars: number
+  followup_chars: number
+  prompt_mode: "general" | "per_step"
+  general_prompt: string
+  step_prompts: Record<string, string>
+}
+
+export type EmailSequenceConfig = {
+  step_count: number
+  prompt_mode: "general" | "per_step"
+  general_prompt: string
+  step_prompts: Record<string, string>
+}
+
+export const DEFAULT_LINKEDIN_CONFIG: LinkedinSequenceConfig = {
+  step_count: 5,
+  step1_chars: 300,
+  followup_chars: 150,
+  prompt_mode: "general",
+  general_prompt: "",
+  step_prompts: {},
+}
+
+export const DEFAULT_EMAIL_CONFIG: EmailSequenceConfig = {
+  step_count: 5,
+  prompt_mode: "general",
+  general_prompt: "",
+  step_prompts: {},
+}
+
 export type InboxConfig = {
   product_context: string | null
   calendly_link: string | null
   linkedin_instructions: string | null
+  linkedin_sequence_config: LinkedinSequenceConfig | null
+  email_sequence_config: EmailSequenceConfig | null
   exclude_clients: boolean | null
   exclude_previous: boolean | null
 }
@@ -80,13 +114,15 @@ export async function getPendingCount(): Promise<number> {
 export async function getInboxConfig(): Promise<InboxConfig> {
   const { data } = await supabase
     .from("inbox_config")
-    .select("product_context, calendly_link, linkedin_instructions, exclude_clients, exclude_previous")
+    .select("product_context, calendly_link, linkedin_instructions, linkedin_sequence_config, email_sequence_config, exclude_clients, exclude_previous")
     .eq("id", 1)
     .single()
   return {
     product_context: data?.product_context ?? null,
     calendly_link: data?.calendly_link ?? null,
     linkedin_instructions: data?.linkedin_instructions ?? null,
+    linkedin_sequence_config: (data?.linkedin_sequence_config as LinkedinSequenceConfig | null) ?? null,
+    email_sequence_config: (data?.email_sequence_config as EmailSequenceConfig | null) ?? null,
     exclude_clients: data?.exclude_clients ?? false,
     exclude_previous: data?.exclude_previous ?? false,
   }
