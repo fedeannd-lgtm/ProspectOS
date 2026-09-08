@@ -38,12 +38,13 @@ export async function generateSequences(
   // Fetch product context from inbox_config
   const { data: config } = await supabaseAdmin
     .from("inbox_config")
-    .select("product_context, calendly_link")
+    .select("product_context, calendly_link, linkedin_instructions")
     .eq("id", 1)
     .single()
 
   const productContext = config?.product_context || PRODUCT_CONTEXT_FALLBACK || "(sin contexto de producto configurado)"
   const calendlyLink = config?.calendly_link ?? ""
+  const linkedinInstructions = config?.linkedin_instructions ?? ""
 
   const p = prospect as typeof prospect & { accounts: { industry: string | null; headcount_range: string | null; country: string | null } | null }
 
@@ -78,7 +79,7 @@ Instrucciones para las secuencias:
 - NO incluyas placeholders como [NOMBRE] — usá el nombre real del prospecto
 - NO uses doble guión (--) en ningún lugar del texto
 - NO firmes los emails ni mensajes con nombre propio (sin "Federico", sin "Saludos, X", sin firma de ningún tipo)
-
+${linkedinInstructions ? `\nInstrucciones adicionales para mensajes de LinkedIn:\n${linkedinInstructions}` : ""}
 Devolvé ÚNICAMENTE un JSON válido sin markdown, sin texto adicional, con este formato exacto:
 {
   "email": [
@@ -131,4 +132,85 @@ ${researchContext ? `\nResearch adicional sobre este prospecto:\n${researchConte
     })
 
   return sequences
+}
+
+export async function generateLinkedinOnly(
+  prospectId: string,
+  linkedinContext: string
+): Promise<LinkedinStep[]> {
+  // Fetch prospect + account
+  const { data: prospect, error } = await supabaseAdmin
+    .from("prospects")
+    .select(`
+      id, first_name, last_name, full_name, job_title, company_name,
+      company_domain, linkedin_url, icp_category, highlights, location,
+      accounts ( industry, headcount_range, country )
+    `)
+    .eq("id", prospectId)
+    .single()
+
+  if (error || !prospect) throw new Error("Prospecto no encontrado")
+
+  const { data: config } = await supabaseAdmin
+    .from("inbox_config")
+    .select("product_context, linkedin_instructions")
+    .eq("id", 1)
+    .single()
+
+  const productContext = config?.product_context || PRODUCT_CONTEXT_FALLBACK || "(sin contexto de producto configurado)"
+  const linkedinInstructions = config?.linkedin_instructions ?? ""
+
+  const p = prospect as typeof prospect & { accounts: { industry: string | null; headcount_range: string | null; country: string | null } | null }
+  const prospectName = (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()) || "el prospecto"
+
+  const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en outreach por LinkedIn.
+Tu tarea es generar 5 mensajes de LinkedIn para un prospecto específico.
+
+Contexto del producto:
+${productContext}
+
+Instrucciones:
+- Generá exactamente 5 mensajes: paso 1 es la solicitud de conexión o primer mensaje, pasos 2-5 son follow-ups
+- Cada mensaje debe ser progresivamente más conciso y directo
+- Paso 1: máx 300 caracteres. Pasos 2-5: máx 150 caracteres cada uno
+- Personalizá usando el nombre, cargo, empresa e industria del prospecto
+- Escribí en español (o en el idioma del contexto si se indica)
+- Sé concreto, nada de frases genéricas
+- NO incluyas placeholders como [NOMBRE] — usá el nombre real
+- NO uses doble guión (--)
+- NO firmes con nombre propio
+${linkedinInstructions ? `\nInstrucciones adicionales:\n${linkedinInstructions}` : ""}
+
+Devolvé ÚNICAMENTE un JSON válido sin markdown, con este formato exacto:
+{
+  "linkedin": [
+    {"step": 1, "message": "..."},
+    {"step": 2, "message": "..."},
+    {"step": 3, "message": "..."},
+    {"step": 4, "message": "..."},
+    {"step": 5, "message": "..."}
+  ]
+}`
+
+  const userPrompt = `Prospecto: ${prospectName}${p.job_title ? `, ${p.job_title}` : ""}${p.company_name ? ` en ${p.company_name}` : ""}
+${p.accounts?.industry ? `Industria: ${p.accounts.industry}` : ""}
+${p.accounts?.headcount_range ? `Tamaño empresa: ${p.accounts.headcount_range} empleados` : ""}
+${p.location ? `Ubicación: ${p.location}` : ""}
+${p.icp_category ? `Categoría ICP: ${p.icp_category}` : ""}
+${p.highlights ? `LinkedIn highlights: ${p.highlights}` : ""}
+${linkedinContext ? `\nContexto adicional para LinkedIn:\n${linkedinContext}` : ""}`
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: userPrompt }],
+    system: systemPrompt,
+  })
+
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error("No JSON in response")
+
+  const parsed = JSON.parse(jsonMatch[0]) as { linkedin: LinkedinStep[] }
+  return parsed.linkedin
 }

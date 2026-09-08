@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -232,6 +232,9 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [hrCampaigns, setHrCampaigns] = useState<{ id: string; name: string; linkedInAccountId?: number }[] | null>(null)
   const [selectedHrCampaign, setSelectedHrCampaign] = useState("")
   const [hrPushResult, setHrPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
+  const [linkedinContext, setLinkedinContext] = useState("")
+  const [regenLi, startRegenLi] = useTransition()
+  const [regenLiError, setRegenLiError] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState("")
@@ -327,6 +330,16 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
       setSelected(next)
       setResearch(next?.latest_sequences?.research_context ?? "")
       setSequences(next?.latest_sequences?.sequences ?? null)
+    })
+  }
+
+  function handleRegenLinkedin() {
+    if (!selected) return
+    setRegenLiError(null)
+    startRegenLi(async () => {
+      const result = await regenerateLinkedinOnly(selected.id, linkedinContext)
+      if ("error" in result) { setRegenLiError(result.error); return }
+      setSequences((prev) => prev ? { ...prev, linkedin: result.linkedin } : { email: [], linkedin: result.linkedin })
     })
   }
 
@@ -869,6 +882,26 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                     ))}
                   </TabsContent>
                   <TabsContent value="linkedin" className="space-y-3 mt-4">
+                    <div className="space-y-2 pb-2 border-b">
+                      <label className="text-xs font-medium text-muted-foreground">Contexto LinkedIn (opcional)</label>
+                      <textarea
+                        value={linkedinContext}
+                        onChange={(e) => setLinkedinContext(e.target.value)}
+                        rows={3}
+                        placeholder="ej: tono más informal, mencionar que vi su post sobre X, enfocarse en el pain de onboarding..."
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={handleRegenLinkedin} disabled={regenLi}>
+                          {regenLi ? (
+                            <><Loader2 className="mr-1.5 size-3.5 animate-spin" /> Regenerando…</>
+                          ) : (
+                            <><RefreshCw className="mr-1.5 size-3.5" /> Regenerar LinkedIn</>
+                          )}
+                        </Button>
+                        {regenLiError && <span className="text-xs text-red-500">{regenLiError}</span>}
+                      </div>
+                    </div>
                     {sequences.linkedin.map((step, i) => (
                       <LinkedinStepCard
                         key={step.step}

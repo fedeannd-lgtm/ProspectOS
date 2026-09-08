@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
-import { generateSequences, type Sequences } from "@/lib/ai-sequences"
+import { generateSequences, generateLinkedinOnly, type Sequences, type LinkedinStep } from "@/lib/ai-sequences"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
@@ -120,6 +120,45 @@ export async function saveEditedSequences(prospectId: string, sequences: Sequenc
       .eq("id", data.id)
   }
   revalidatePath("/shortlist")
+}
+
+export async function regenerateLinkedinOnly(
+  prospectId: string,
+  linkedinContext: string
+): Promise<{ linkedin: LinkedinStep[] } | { error: string }> {
+  try {
+    const linkedin = await generateLinkedinOnly(prospectId, linkedinContext)
+
+    // Merge into latest shortlist_sequences row (preserve email steps)
+    const { data: existing } = await supabaseAdmin
+      .from("shortlist_sequences")
+      .select("id, sequences")
+      .eq("prospect_id", prospectId)
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (existing?.id) {
+      const currentSequences = (existing.sequences ?? {}) as Sequences
+      await supabaseAdmin
+        .from("shortlist_sequences")
+        .update({ sequences: { ...currentSequences, linkedin } })
+        .eq("id", existing.id)
+    } else {
+      // No row yet — create one with empty emails
+      await supabaseAdmin.from("shortlist_sequences").insert({
+        prospect_id: prospectId,
+        sequences: { email: [], linkedin },
+        model_used: "claude-sonnet-4-6",
+        generated_at: new Date().toISOString(),
+      })
+    }
+
+    revalidatePath("/shortlist")
+    return { linkedin }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error regenerando LinkedIn" }
+  }
 }
 
 // ── Enrichment shortcuts (reuse enrichment module logic) ─────────────────────

@@ -664,13 +664,14 @@ function ClientListCard({
 function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   const [productContext, setProductContext] = useState(initialConfig.product_context ?? "")
   const [calendlyLink, setCalendlyLink] = useState(initialConfig.calendly_link ?? "")
+  const [linkedinInstructions, setLinkedinInstructions] = useState(initialConfig.linkedin_instructions ?? "")
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
 
   function handleSave() {
     startTransition(async () => {
       const current = await getInboxConfig()
-      await saveInboxConfig({ ...current, product_context: productContext || null, calendly_link: calendlyLink || null })
+      await saveInboxConfig({ ...current, product_context: productContext || null, calendly_link: calendlyLink || null, linkedin_instructions: linkedinInstructions || null })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     })
@@ -705,6 +706,19 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
           />
           <p className="text-xs text-muted-foreground">
             Incluí features por industria, objeciones comunes y cómo responderlas, y el tono de voz del equipo.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Instrucciones para mensajes de LinkedIn</label>
+          <textarea
+            value={linkedinInstructions}
+            onChange={(e) => setLinkedinInstructions(e.target.value)}
+            rows={4}
+            placeholder="ej: Siempre empezá mencionando algo concreto del perfil. Tono conversacional. Nunca uses palabras como 'solución' o 'sinergias'. Máx 2 frases por mensaje."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+          />
+          <p className="text-xs text-muted-foreground">
+            Se aplica a todos los mensajes de LinkedIn generados en Shortlist, tanto en generación completa como al regenerar solo LinkedIn.
           </p>
         </div>
         <div className="flex items-center gap-3">

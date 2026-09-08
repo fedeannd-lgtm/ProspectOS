@@ -40,6 +40,7 @@ export type ProspectReply = {
 export type InboxConfig = {
   product_context: string | null
   calendly_link: string | null
+  linkedin_instructions: string | null
   exclude_clients: boolean | null
   exclude_previous: boolean | null
 }
@@ -79,12 +80,13 @@ export async function getPendingCount(): Promise<number> {
 export async function getInboxConfig(): Promise<InboxConfig> {
   const { data } = await supabase
     .from("inbox_config")
-    .select("product_context, calendly_link, exclude_clients, exclude_previous")
+    .select("product_context, calendly_link, linkedin_instructions, exclude_clients, exclude_previous")
     .eq("id", 1)
     .single()
   return {
     product_context: data?.product_context ?? null,
     calendly_link: data?.calendly_link ?? null,
+    linkedin_instructions: data?.linkedin_instructions ?? null,
     exclude_clients: data?.exclude_clients ?? false,
     exclude_previous: data?.exclude_previous ?? false,
   }
