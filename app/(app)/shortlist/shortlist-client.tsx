@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
 import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
-import type { InboxConfig, LinkedinSequenceConfig, EmailSequenceConfig } from "@/app/(app)/inbox/actions"
-import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/app/(app)/inbox/actions"
+import type { InboxConfig } from "@/app/(app)/inbox/actions"
+import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
+import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/lib/sequence-configs"
 
 // ── constants ──────────────────────────────────────────────────────────────────
 

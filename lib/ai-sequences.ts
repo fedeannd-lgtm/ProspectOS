@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk"
 import { readFileSync } from "fs"
 import { join } from "path"
 import { supabaseAdmin } from "./supabase"
-import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/app/(app)/inbox/actions"
-import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/app/(app)/inbox/actions"
+import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
+import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/lib/sequence-configs"
 
 // Product context fallback: read from lib/product-context.md at startup
 let PRODUCT_CONTEXT_FALLBACK = ""

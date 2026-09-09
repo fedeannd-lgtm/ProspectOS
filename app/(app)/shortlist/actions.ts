@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { generateSequences, generateLinkedinOnly, generateEmailOnly, type Sequences, type LinkedinStep, type EmailStep } from "@/lib/ai-sequences"
-import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/app/(app)/inbox/actions"
+import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"

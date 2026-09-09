@@ -14,7 +14,9 @@ import { Badge } from "@/components/ui/badge"
 import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, type SavedUrl, type ClientCompany } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
-import { getInboxConfig, saveInboxConfig, type InboxConfig, type LinkedinSequenceConfig, type EmailSequenceConfig, DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "../inbox/actions"
+import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
+import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
+import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/lib/sequence-configs"
 const URL_TYPE_LABELS: Record<string, string> = {
   company_search: "Company Search",
   people_search: "People Search",
