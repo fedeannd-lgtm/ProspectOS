@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
+import type { InboxConfig, LinkedinSequenceConfig, EmailSequenceConfig } from "@/app/(app)/inbox/actions"
+import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/app/(app)/inbox/actions"
 
 // ── constants ──────────────────────────────────────────────────────────────────
 
@@ -199,15 +201,187 @@ function ProspectCard({ prospect, selected, onClick }: { prospect: ShortlistedPr
   )
 }
 
+// ── channel config box ─────────────────────────────────────────────────────────
+
+type LiCfg = LinkedinSequenceConfig
+type EmailCfg = EmailSequenceConfig
+
+function NumField({ label, value, onChange, min, max }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number }) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      <span className="w-40 shrink-0">{label}</span>
+      <Input
+        type="number" min={min} max={max} value={value}
+        onChange={(e) => { const n = parseInt(e.target.value); if (!isNaN(n) && n >= min && n <= max) onChange(n) }}
+        className="h-7 w-16 text-xs text-right"
+      />
+    </label>
+  )
+}
+
+function ChannelBox({
+  channel,
+  config,
+  onConfigChange,
+  context,
+  onContextChange,
+  onGenerate,
+  generating,
+  error,
+  hasSequences,
+}: {
+  channel: "email" | "linkedin"
+  config: LiCfg | EmailCfg
+  onConfigChange: (c: LiCfg | EmailCfg) => void
+  context: string
+  onContextChange: (v: string) => void
+  onGenerate: () => void
+  generating: boolean
+  error: string | null
+  hasSequences: boolean
+}) {
+  const [configOpen, setConfigOpen] = useState(false)
+  const isLi = channel === "linkedin"
+  const liCfg = config as LiCfg
+  const emailCfg = config as EmailCfg
+
+  function updateCfg(partial: Partial<LiCfg | EmailCfg>) {
+    onConfigChange({ ...config, ...partial } as LiCfg | EmailCfg)
+  }
+
+  const label = isLi ? "LinkedIn" : "Cold Email"
+  const contextPlaceholder = isLi
+    ? "ej: tono informal, mencionar su post sobre X, enfocarse en el pain de onboarding..."
+    : "ej: empresa en plena expansión, dolor en retención de clientes, mencionó que usan Zendesk..."
+
+  return (
+    <div className="rounded-lg border overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b">
+        <span className="text-sm font-semibold">{label}</span>
+        <button
+          onClick={() => setConfigOpen((v) => !v)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <svg className={`size-3.5 transition-transform ${configOpen ? "rotate-90" : ""}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M6 12l4-4-4-4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Configurar
+        </button>
+      </div>
+
+      {/* Config section (collapsible) */}
+      {configOpen && (
+        <div className="px-4 py-3 border-b bg-muted/20 space-y-3">
+          <div className="space-y-2">
+            <NumField label={isLi ? "Cantidad de mensajes" : "Cantidad de pasos"} value={config.step_count} onChange={(v) => updateCfg({ step_count: v })} min={1} max={10} />
+            {isLi && (
+              <>
+                <NumField label="Caracteres paso 1 (conexión)" value={liCfg.step1_chars} onChange={(v) => updateCfg({ step1_chars: v })} min={50} max={500} />
+                {liCfg.step_count > 1 && (
+                  <NumField label="Caracteres follow-ups" value={liCfg.followup_chars} onChange={(v) => updateCfg({ followup_chars: v })} min={50} max={500} />
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Prompt mode */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground w-40 shrink-0">Modo de instrucciones</span>
+              <div className="flex gap-2">
+                {(["general", "per_step"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => updateCfg({ prompt_mode: mode })}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      config.prompt_mode === mode
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-input text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {mode === "general" ? "General" : "Por paso"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {config.prompt_mode === "general" ? (
+              <textarea
+                value={config.general_prompt}
+                onChange={(e) => updateCfg({ general_prompt: e.target.value })}
+                rows={3}
+                placeholder={isLi ? "Instrucción para todos los mensajes de LinkedIn..." : "Instrucción para todos los emails..."}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+              />
+            ) : (
+              <div className="space-y-2">
+                {Array.from({ length: config.step_count }, (_, i) => {
+                  const stepNum = String(i + 1)
+                  const isFirst = i === 0
+                  return (
+                    <div key={stepNum} className="flex gap-2 items-start">
+                      <span className="text-[10px] text-muted-foreground mt-2 w-16 shrink-0 text-right">
+                        {isLi ? (isFirst ? "Paso 1 (cnx)" : `Paso ${stepNum}`) : (isFirst ? "Email 1" : `Follow-up ${stepNum}`)}
+                      </span>
+                      <textarea
+                        value={config.step_prompts[stepNum] ?? ""}
+                        onChange={(e) => updateCfg({ step_prompts: { ...config.step_prompts, [stepNum]: e.target.value } })}
+                        rows={2}
+                        placeholder={`Instrucciones para el paso ${stepNum}...`}
+                        className="flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Context + action */}
+      <div className="p-4 space-y-3">
+        <textarea
+          value={context}
+          onChange={(e) => onContextChange(e.target.value)}
+          rows={3}
+          placeholder={contextPlaceholder}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onGenerate} disabled={generating}>
+            {generating ? (
+              <><Loader2 className="mr-1.5 size-3.5 animate-spin" /> Generando…</>
+            ) : hasSequences ? (
+              <><RefreshCw className="mr-1.5 size-3.5" /> Regenerar {label}</>
+            ) : (
+              <><Sparkles className="mr-1.5 size-3.5" /> Generar {label}</>
+            )}
+          </Button>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── main component ─────────────────────────────────────────────────────────────
 
-export function ShortlistClient({ initialProspects }: { initialProspects: ShortlistedProspect[] }) {
+export function ShortlistClient({ initialProspects, inboxConfig }: { initialProspects: ShortlistedProspect[]; inboxConfig: InboxConfig }) {
   const [prospects, setProspects] = useState<ShortlistedProspect[]>(initialProspects)
   const [repFilter, setRepFilter] = useState("all")
   const [weekFilter, setWeekFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selected, setSelected] = useState<ShortlistedProspect | null>(initialProspects[0] ?? null)
-  const [research, setResearch] = useState(selected?.latest_sequences?.research_context ?? "")
+  const [emailContext, setEmailContext] = useState("")
+  const [linkedinContext, setLinkedinContext] = useState("")
+  const [emailCfg, setEmailCfg] = useState<EmailSequenceConfig>(
+    (inboxConfig.email_sequence_config as EmailSequenceConfig | null) ?? DEFAULT_EMAIL_CONFIG
+  )
+  const [liCfg, setLiCfg] = useState<LinkedinSequenceConfig>(
+    (inboxConfig.linkedin_sequence_config as LinkedinSequenceConfig | null) ?? DEFAULT_LINKEDIN_CONFIG
+  )
   const [sequences, setSequences] = useState<Sequences | null>(selected?.latest_sequences?.sequences ?? null)
   const [generating, startGenerate] = useTransition()
   const [removing, startRemove] = useTransition()
@@ -215,6 +389,10 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [adding, startAdd] = useTransition()
   const [saving, startSave] = useTransition()
   const [savedOk, setSavedOk] = useState(false)
+  const [generatingEmail, startGenerateEmail] = useTransition()
+  const [generatingLi, startGenerateLi] = useTransition()
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [liError, setLiError] = useState<string | null>(null)
   const [enrichingEmail, startEnrichEmail] = useTransition()
   const [enrichingPhone, startEnrichPhone] = useTransition()
   const [normalizing, startNormalize] = useTransition()
@@ -232,9 +410,6 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
   const [hrCampaigns, setHrCampaigns] = useState<{ id: string; name: string; linkedInAccountId?: number }[] | null>(null)
   const [selectedHrCampaign, setSelectedHrCampaign] = useState("")
   const [hrPushResult, setHrPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
-  const [linkedinContext, setLinkedinContext] = useState("")
-  const [regenLi, startRegenLi] = useTransition()
-  const [regenLiError, setRegenLiError] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState("")
@@ -254,9 +429,12 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
 
   function handleSelect(p: ShortlistedProspect) {
     setSelected(p)
-    setResearch(p.latest_sequences?.research_context ?? "")
+    setEmailContext("")
+    setLinkedinContext("")
     setSequences(p.latest_sequences?.sequences ?? null)
     setError("")
+    setEmailError(null)
+    setLiError(null)
     setSavedOk(false)
     setPushResult(null)
     setHrPushResult(null)
@@ -328,35 +506,46 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
       setProspects(updated)
       const next = filtered.find((p) => p.id !== selected.id) ?? null
       setSelected(next)
-      setResearch(next?.latest_sequences?.research_context ?? "")
+      setEmailContext("")
+      setLinkedinContext("")
       setSequences(next?.latest_sequences?.sequences ?? null)
     })
   }
 
-  function handleRegenLinkedin() {
-    if (!selected) return
-    setRegenLiError(null)
-    startRegenLi(async () => {
-      const result = await regenerateLinkedinOnly(selected.id, linkedinContext)
-      if ("error" in result) { setRegenLiError(result.error); return }
-      setSequences((prev) => prev ? { ...prev, linkedin: result.linkedin } : { email: [], linkedin: result.linkedin })
-    })
-  }
-
-  function handleGenerate() {
+  function handleGenerateBoth() {
     if (!selected) return
     setError("")
     startGenerate(async () => {
-      const result = await generateAndSaveSequences(selected.id, research)
+      const result = await generateAndSaveSequences(selected.id, emailContext, linkedinContext, liCfg, emailCfg)
       if ("error" in result) { setError(result.error); return }
       setSequences(result.sequences)
       setProspects((prev) =>
         prev.map((p) =>
           p.id === selected.id
-            ? { ...p, latest_sequences: { id: "", research_context: research, sequences: result.sequences, generated_at: new Date().toISOString() } }
+            ? { ...p, latest_sequences: { id: "", research_context: null, sequences: result.sequences, generated_at: new Date().toISOString() } }
             : p
         )
       )
+    })
+  }
+
+  function handleGenerateEmail() {
+    if (!selected) return
+    setEmailError(null)
+    startGenerateEmail(async () => {
+      const result = await regenerateEmailOnly(selected.id, emailContext, emailCfg)
+      if ("error" in result) { setEmailError(result.error); return }
+      setSequences((prev) => prev ? { ...prev, email: result.email } : { email: result.email, linkedin: [] })
+    })
+  }
+
+  function handleGenerateLi() {
+    if (!selected) return
+    setLiError(null)
+    startGenerateLi(async () => {
+      const result = await regenerateLinkedinOnly(selected.id, linkedinContext, liCfg)
+      if ("error" in result) { setLiError(result.error); return }
+      setSequences((prev) => prev ? { ...prev, linkedin: result.linkedin } : { email: [], linkedin: result.linkedin })
     })
   }
 
@@ -389,7 +578,8 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
       }
       setProspects((prev) => [newProspect, ...prev])
       setSelected(newProspect)
-      setResearch("")
+      setEmailContext("")
+      setLinkedinContext("")
       setSequences(null)
       setForm(emptyForm())
       setAddOpen(false)
@@ -746,31 +936,42 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
               </div>
             </div>
 
-            {/* Research context */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Research adicional</label>
-              <p className="text-xs text-muted-foreground">
-                Agregá notas sobre este prospecto: su situación actual, pain points detectados, contexto de LinkedIn, etc.
-              </p>
-              <textarea
-                value={research}
-                onChange={(e) => setResearch(e.target.value)}
-                rows={5}
-                placeholder="Ej: Trabaja en empresa de retail con 500+ empleados. Mencionó en LinkedIn que están expandiendo el equipo de CS..."
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
-              />
-              <div className="flex items-center gap-3">
-                <Button onClick={handleGenerate} disabled={generating}>
-                  {generating ? (
-                    <><Loader2 className="mr-2 size-4 animate-spin" /> Generando…</>
-                  ) : sequences ? (
-                    <><RefreshCw className="mr-2 size-4" /> Regenerar secuencias</>
-                  ) : (
-                    <><Sparkles className="mr-2 size-4" /> Generar secuencias</>
-                  )}
-                </Button>
-                {error && <p className="text-sm text-destructive">{error}</p>}
-              </div>
+            {/* Channel boxes */}
+            <ChannelBox
+              channel="email"
+              config={emailCfg}
+              onConfigChange={(c) => setEmailCfg(c as EmailSequenceConfig)}
+              context={emailContext}
+              onContextChange={setEmailContext}
+              onGenerate={handleGenerateEmail}
+              generating={generatingEmail}
+              error={emailError}
+              hasSequences={!!sequences?.email?.length}
+            />
+            <ChannelBox
+              channel="linkedin"
+              config={liCfg}
+              onConfigChange={(c) => setLiCfg(c as LinkedinSequenceConfig)}
+              context={linkedinContext}
+              onContextChange={setLinkedinContext}
+              onGenerate={handleGenerateLi}
+              generating={generatingLi}
+              error={liError}
+              hasSequences={!!sequences?.linkedin?.length}
+            />
+
+            {/* Generar ambos */}
+            <div className="flex items-center gap-3">
+              <Button onClick={handleGenerateBoth} disabled={generating}>
+                {generating ? (
+                  <><Loader2 className="mr-2 size-4 animate-spin" /> Generando ambos…</>
+                ) : sequences ? (
+                  <><RefreshCw className="mr-2 size-4" /> Regenerar ambos</>
+                ) : (
+                  <><Sparkles className="mr-2 size-4" /> Generar ambos</>
+                )}
+              </Button>
+              {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
 
             {/* Push to Smartlead */}
@@ -865,9 +1066,9 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                 <Tabs defaultValue="email">
                   <TabsList>
                     <TabsTrigger value="email" className="gap-1.5">
-                      <Mail className="size-3.5" /> Email (5 pasos)
+                      <Mail className="size-3.5" /> Email ({sequences.email.length} pasos)
                     </TabsTrigger>
-                    <TabsTrigger value="linkedin">LinkedIn (5 pasos)</TabsTrigger>
+                    <TabsTrigger value="linkedin">LinkedIn ({sequences.linkedin.length} pasos)</TabsTrigger>
                   </TabsList>
                   <TabsContent value="email" className="space-y-3 mt-4">
                     {sequences.email.map((step, i) => (
@@ -882,26 +1083,6 @@ export function ShortlistClient({ initialProspects }: { initialProspects: Shortl
                     ))}
                   </TabsContent>
                   <TabsContent value="linkedin" className="space-y-3 mt-4">
-                    <div className="space-y-2 pb-2 border-b">
-                      <label className="text-xs font-medium text-muted-foreground">Contexto LinkedIn (opcional)</label>
-                      <textarea
-                        value={linkedinContext}
-                        onChange={(e) => setLinkedinContext(e.target.value)}
-                        rows={3}
-                        placeholder="ej: tono más informal, mencionar que vi su post sobre X, enfocarse en el pain de onboarding..."
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={handleRegenLinkedin} disabled={regenLi}>
-                          {regenLi ? (
-                            <><Loader2 className="mr-1.5 size-3.5 animate-spin" /> Regenerando…</>
-                          ) : (
-                            <><RefreshCw className="mr-1.5 size-3.5" /> Regenerar LinkedIn</>
-                          )}
-                        </Button>
-                        {regenLiError && <span className="text-xs text-red-500">{regenLiError}</span>}
-                      </div>
-                    </div>
                     {sequences.linkedin.map((step, i) => (
                       <LinkedinStepCard
                         key={step.step}

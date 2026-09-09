@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
-import { generateSequences, generateLinkedinOnly, type Sequences, type LinkedinStep } from "@/lib/ai-sequences"
+import { generateSequences, generateLinkedinOnly, generateEmailOnly, type Sequences, type LinkedinStep, type EmailStep } from "@/lib/ai-sequences"
+import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/app/(app)/inbox/actions"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
@@ -93,10 +94,13 @@ export async function removeFromShortlist(prospectId: string): Promise<void> {
 
 export async function generateAndSaveSequences(
   prospectId: string,
-  researchContext: string
+  emailContext: string,
+  linkedinContext: string,
+  liConfig?: LinkedinSequenceConfig,
+  emailConfig?: EmailSequenceConfig
 ): Promise<{ sequences: Sequences } | { error: string }> {
   try {
-    const sequences = await generateSequences(prospectId, researchContext)
+    const sequences = await generateSequences(prospectId, emailContext, linkedinContext, liConfig, emailConfig)
     revalidatePath("/shortlist")
     return { sequences }
   } catch (e) {
@@ -122,12 +126,51 @@ export async function saveEditedSequences(prospectId: string, sequences: Sequenc
   revalidatePath("/shortlist")
 }
 
+export async function regenerateEmailOnly(
+  prospectId: string,
+  emailContext: string,
+  emailConfig?: EmailSequenceConfig
+): Promise<{ email: EmailStep[] } | { error: string }> {
+  try {
+    const email = await generateEmailOnly(prospectId, emailContext, emailConfig)
+
+    const { data: existing } = await supabaseAdmin
+      .from("shortlist_sequences")
+      .select("id, sequences")
+      .eq("prospect_id", prospectId)
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (existing?.id) {
+      const current = (existing.sequences ?? {}) as Sequences
+      await supabaseAdmin
+        .from("shortlist_sequences")
+        .update({ sequences: { ...current, email } })
+        .eq("id", existing.id)
+    } else {
+      await supabaseAdmin.from("shortlist_sequences").insert({
+        prospect_id: prospectId,
+        sequences: { email, linkedin: [] },
+        model_used: "claude-sonnet-4-6",
+        generated_at: new Date().toISOString(),
+      })
+    }
+
+    revalidatePath("/shortlist")
+    return { email }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error regenerando email" }
+  }
+}
+
 export async function regenerateLinkedinOnly(
   prospectId: string,
-  linkedinContext: string
+  linkedinContext: string,
+  liConfig?: LinkedinSequenceConfig
 ): Promise<{ linkedin: LinkedinStep[] } | { error: string }> {
   try {
-    const linkedin = await generateLinkedinOnly(prospectId, linkedinContext)
+    const linkedin = await generateLinkedinOnly(prospectId, linkedinContext, liConfig)
 
     // Merge into latest shortlist_sequences row (preserve email steps)
     const { data: existing } = await supabaseAdmin

@@ -81,14 +81,10 @@ function buildLinkedinJsonTemplate(stepCount: number): string {
   return `[\n${steps}\n  ]`
 }
 
-// ─── generateSequences ────────────────────────────────────────────────────────
+// ─── Fetch prospect helper ────────────────────────────────────────────────────
 
-export async function generateSequences(
-  prospectId: string,
-  researchContext: string
-): Promise<Sequences> {
-  // Fetch prospect + account
-  const { data: prospect, error } = await supabaseAdmin
+async function fetchProspect(prospectId: string) {
+  const { data, error } = await supabaseAdmin
     .from("prospects")
     .select(`
       id, first_name, last_name, full_name, job_title, company_name,
@@ -98,57 +94,94 @@ export async function generateSequences(
     `)
     .eq("id", prospectId)
     .single()
+  if (error || !data) throw new Error("Prospecto no encontrado")
+  return data as typeof data & {
+    accounts: { industry: string | null; headcount_range: string | null; country: string | null } | null
+  }
+}
 
-  if (error || !prospect) throw new Error("Prospecto no encontrado")
-
-  // Fetch config from inbox_config
-  const { data: config } = await supabaseAdmin
+async function fetchGlobalConfig() {
+  const { data } = await supabaseAdmin
     .from("inbox_config")
     .select("product_context, calendly_link, linkedin_sequence_config, email_sequence_config")
     .eq("id", 1)
     .single()
+  return {
+    productContext: data?.product_context || PRODUCT_CONTEXT_FALLBACK || "(sin contexto de producto configurado)",
+    calendlyLink: data?.calendly_link ?? "",
+    liCfg: (data?.linkedin_sequence_config as LinkedinSequenceConfig | null) ?? DEFAULT_LINKEDIN_CONFIG,
+    emailCfg: (data?.email_sequence_config as EmailSequenceConfig | null) ?? DEFAULT_EMAIL_CONFIG,
+  }
+}
 
-  const productContext = config?.product_context || PRODUCT_CONTEXT_FALLBACK || "(sin contexto de producto configurado)"
-  const calendlyLink = config?.calendly_link ?? ""
-  const liCfg: LinkedinSequenceConfig = (config?.linkedin_sequence_config as LinkedinSequenceConfig | null) ?? DEFAULT_LINKEDIN_CONFIG
-  const emailCfg: EmailSequenceConfig = (config?.email_sequence_config as EmailSequenceConfig | null) ?? DEFAULT_EMAIL_CONFIG
+function prospectUserPromptLines(p: ReturnType<typeof fetchProspect> extends Promise<infer T> ? T : never) {
+  const name = (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()) || "el prospecto"
+  return [
+    `Prospecto: ${name}${p.job_title ? `, ${p.job_title}` : ""}${p.company_name ? ` en ${p.company_name}` : ""}`,
+    p.company_domain ? `Dominio: ${p.company_domain}` : "",
+    p.accounts?.industry ? `Industria: ${p.accounts.industry}` : "",
+    p.accounts?.headcount_range ? `Tamaño empresa: ${p.accounts.headcount_range} empleados` : "",
+    p.location ? `Ubicación: ${p.location}` : "",
+    p.icp_category ? `Categoría ICP: ${p.icp_category}` : "",
+    p.highlights ? `LinkedIn highlights: ${p.highlights}` : "",
+  ].filter(Boolean).join("\n")
+}
 
-  const p = prospect as typeof prospect & { accounts: { industry: string | null; headcount_range: string | null; country: string | null } | null }
+function callClaude(systemPrompt: string, userPrompt: string, maxTokens = 4096) {
+  return client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: maxTokens,
+    messages: [{ role: "user", content: userPrompt }],
+    system: systemPrompt,
+  })
+}
 
-  const prospectName = (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()) || "el prospecto"
-  const jobTitle = p.job_title ?? ""
-  const company = p.company_name ?? ""
-  const domain = p.company_domain ?? ""
-  const industry = p.accounts?.industry ?? ""
-  const headcount = p.accounts?.headcount_range ?? ""
-  const icpCategory = p.icp_category ?? ""
-  const highlights = p.highlights ?? ""
-  const location = p.location ?? ""
+function parseJson<T>(text: string): T {
+  const match = text.match(/\{[\s\S]*\}/)
+  if (!match) throw new Error("No JSON in response")
+  return JSON.parse(match[0]) as T
+}
+
+const GENERAL_RULES = `- Personalizá usando el nombre, cargo, empresa e industria del prospecto
+- Escribí en español (o en el idioma del contexto si se indica)
+- Sé concreto, evitá frases genéricas de relleno
+- NO incluyas placeholders como [NOMBRE] — usá el nombre real del prospecto
+- NO uses doble guión (--) en ningún lugar del texto
+- NO firmes los emails ni mensajes con nombre propio (sin "Federico", sin "Saludos, X", sin firma de ningún tipo)`
+
+// ─── generateSequences (email + LinkedIn juntos) ──────────────────────────────
+
+export async function generateSequences(
+  prospectId: string,
+  emailContext: string,
+  linkedinContext: string,
+  liConfigOverride?: LinkedinSequenceConfig,
+  emailConfigOverride?: EmailSequenceConfig
+): Promise<Sequences> {
+  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig()])
+
+  const liCfg = liConfigOverride ?? global.liCfg
+  const emailCfg = emailConfigOverride ?? global.emailCfg
 
   const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en outreach personalizado.
 Tu tarea es generar secuencias de contacto para un prospecto específico, basándote en su perfil y en el contexto del producto.
 
 Contexto del producto:
-${productContext}
+${global.productContext}
 
-${calendlyLink ? `Link de Calendly para reuniones: ${calendlyLink}` : ""}
+${global.calendlyLink ? `Link de Calendly para reuniones: ${global.calendlyLink}` : ""}
 
 Instrucciones para emails:
 ${buildEmailInstructions(emailCfg)}
 - Los emails deben tener asunto y cuerpo separados
-- Cada secuencia debe ser progresivamente más concisa y directa
+- Cada paso debe ser progresivamente más conciso y directo
 
 Instrucciones para LinkedIn:
 ${buildLinkedinInstructions(liCfg)}
 
 Instrucciones generales:
-- Personalizá usando el nombre, cargo, empresa e industria del prospecto
-- Escribí en español (o en el idioma del contexto si se indica)
-- Sé concreto, evitá frases genéricas de relleno
+${GENERAL_RULES}
 - Usá el contexto de research adicional para personalizar al máximo
-- NO incluyas placeholders como [NOMBRE] — usá el nombre real del prospecto
-- NO uses doble guión (--) en ningún lugar del texto
-- NO firmes los emails ni mensajes con nombre propio (sin "Federico", sin "Saludos, X", sin firma de ningún tipo)
 
 Devolvé ÚNICAMENTE un JSON válido sin markdown, sin texto adicional, con este formato exacto:
 {
@@ -156,112 +189,104 @@ Devolvé ÚNICAMENTE un JSON válido sin markdown, sin texto adicional, con este
   "linkedin": ${buildLinkedinJsonTemplate(liCfg.step_count)}
 }`
 
-  const userPrompt = `Prospecto: ${prospectName}${jobTitle ? `, ${jobTitle}` : ""}${company ? ` en ${company}` : ""}
-${domain ? `Dominio: ${domain}` : ""}
-${industry ? `Industria: ${industry}` : ""}
-${headcount ? `Tamaño empresa: ${headcount} empleados` : ""}
-${location ? `Ubicación: ${location}` : ""}
-${icpCategory ? `Categoría ICP: ${icpCategory}` : ""}
-${highlights ? `LinkedIn highlights: ${highlights}` : ""}
-${researchContext ? `\nResearch adicional sobre este prospecto:\n${researchContext}` : ""}`
+  const userPrompt = [
+    prospectUserPromptLines(prospect),
+    emailContext ? `\nContexto para email:\n${emailContext}` : "",
+    linkedinContext ? `\nContexto para LinkedIn:\n${linkedinContext}` : "",
+  ].filter(Boolean).join("\n")
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    messages: [{ role: "user", content: userPrompt }],
-    system: systemPrompt,
+  const message = await callClaude(systemPrompt, userPrompt)
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+  const sequences = parseJson<Sequences>(text)
+
+  const researchContext = [emailContext, linkedinContext].filter(Boolean).join(" | ") || null
+  await supabaseAdmin.from("shortlist_sequences").insert({
+    prospect_id: prospectId,
+    research_context: researchContext,
+    sequences,
+    model_used: "claude-sonnet-4-6",
+    generated_at: new Date().toISOString(),
   })
 
-  const text = message.content[0].type === "text" ? message.content[0].text : ""
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error("No JSON in response")
-
-  const sequences = JSON.parse(jsonMatch[0]) as Sequences
-
-  // Save to shortlist_sequences
-  await supabaseAdmin
-    .from("shortlist_sequences")
-    .insert({
-      prospect_id: prospectId,
-      research_context: researchContext || null,
-      sequences,
-      model_used: "claude-sonnet-4-6",
-      generated_at: new Date().toISOString(),
-    })
-
   return sequences
+}
+
+// ─── generateEmailOnly ────────────────────────────────────────────────────────
+
+export async function generateEmailOnly(
+  prospectId: string,
+  emailContext: string,
+  emailConfigOverride?: EmailSequenceConfig
+): Promise<EmailStep[]> {
+  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig()])
+  const emailCfg = emailConfigOverride ?? global.emailCfg
+
+  const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en email outreach.
+Tu tarea es generar una secuencia de emails para un prospecto específico.
+
+Contexto del producto:
+${global.productContext}
+
+${global.calendlyLink ? `Link de Calendly para reuniones: ${global.calendlyLink}` : ""}
+
+Instrucciones:
+${buildEmailInstructions(emailCfg)}
+- Los emails deben tener asunto y cuerpo separados
+- Cada paso debe ser progresivamente más conciso y directo
+
+Instrucciones generales:
+${GENERAL_RULES}
+
+Devolvé ÚNICAMENTE un JSON válido sin markdown, con este formato exacto:
+{
+  "email": ${buildEmailJsonTemplate(emailCfg.step_count)}
+}`
+
+  const userPrompt = [
+    prospectUserPromptLines(prospect),
+    emailContext ? `\nContexto adicional:\n${emailContext}` : "",
+  ].filter(Boolean).join("\n")
+
+  const message = await callClaude(systemPrompt, userPrompt)
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+  const parsed = parseJson<{ email: EmailStep[] }>(text)
+  return parsed.email
 }
 
 // ─── generateLinkedinOnly ─────────────────────────────────────────────────────
 
 export async function generateLinkedinOnly(
   prospectId: string,
-  linkedinContext: string
+  linkedinContext: string,
+  liConfigOverride?: LinkedinSequenceConfig
 ): Promise<LinkedinStep[]> {
-  // Fetch prospect + account
-  const { data: prospect, error } = await supabaseAdmin
-    .from("prospects")
-    .select(`
-      id, first_name, last_name, full_name, job_title, company_name,
-      company_domain, linkedin_url, icp_category, highlights, location,
-      accounts ( industry, headcount_range, country )
-    `)
-    .eq("id", prospectId)
-    .single()
-
-  if (error || !prospect) throw new Error("Prospecto no encontrado")
-
-  const { data: config } = await supabaseAdmin
-    .from("inbox_config")
-    .select("product_context, linkedin_sequence_config")
-    .eq("id", 1)
-    .single()
-
-  const productContext = config?.product_context || PRODUCT_CONTEXT_FALLBACK || "(sin contexto de producto configurado)"
-  const liCfg: LinkedinSequenceConfig = (config?.linkedin_sequence_config as LinkedinSequenceConfig | null) ?? DEFAULT_LINKEDIN_CONFIG
-
-  const p = prospect as typeof prospect & { accounts: { industry: string | null; headcount_range: string | null; country: string | null } | null }
-  const prospectName = (p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()) || "el prospecto"
+  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig()])
+  const liCfg = liConfigOverride ?? global.liCfg
 
   const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en outreach por LinkedIn.
 Tu tarea es generar mensajes de LinkedIn para un prospecto específico.
 
 Contexto del producto:
-${productContext}
+${global.productContext}
 
 Instrucciones:
 ${buildLinkedinInstructions(liCfg)}
-- Personalizá usando el nombre, cargo, empresa e industria del prospecto
-- Escribí en español (o en el idioma del contexto si se indica)
-- Sé concreto, nada de frases genéricas
-- NO incluyas placeholders como [NOMBRE] — usá el nombre real
-- NO uses doble guión (--)
-- NO firmes con nombre propio
+
+Instrucciones generales:
+${GENERAL_RULES}
 
 Devolvé ÚNICAMENTE un JSON válido sin markdown, con este formato exacto:
 {
   "linkedin": ${buildLinkedinJsonTemplate(liCfg.step_count)}
 }`
 
-  const userPrompt = `Prospecto: ${prospectName}${p.job_title ? `, ${p.job_title}` : ""}${p.company_name ? ` en ${p.company_name}` : ""}
-${p.accounts?.industry ? `Industria: ${p.accounts.industry}` : ""}
-${p.accounts?.headcount_range ? `Tamaño empresa: ${p.accounts.headcount_range} empleados` : ""}
-${p.location ? `Ubicación: ${p.location}` : ""}
-${p.icp_category ? `Categoría ICP: ${p.icp_category}` : ""}
-${p.highlights ? `LinkedIn highlights: ${p.highlights}` : ""}
-${linkedinContext ? `\nContexto adicional para LinkedIn:\n${linkedinContext}` : ""}`
+  const userPrompt = [
+    prospectUserPromptLines(prospect),
+    linkedinContext ? `\nContexto adicional para LinkedIn:\n${linkedinContext}` : "",
+  ].filter(Boolean).join("\n")
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: userPrompt }],
-    system: systemPrompt,
-  })
-
+  const message = await callClaude(systemPrompt, userPrompt, 1024)
   const text = message.content[0].type === "text" ? message.content[0].text : ""
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error("No JSON in response")
-
-  const parsed = JSON.parse(jsonMatch[0]) as { linkedin: LinkedinStep[] }
+  const parsed = parseJson<{ linkedin: LinkedinStep[] }>(text)
   return parsed.linkedin
 }
