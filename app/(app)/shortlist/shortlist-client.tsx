@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type, ChevronRight } from "lucide-react"
+import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type, ChevronRight, Calendar, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 import type { InboxConfig } from "@/app/(app)/inbox/actions"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
@@ -173,6 +173,7 @@ function StatusBadge({ status }: { status: string | null }) {
 function ProspectCard({ prospect, selected, onClick }: { prospect: ShortlistedProspect; selected: boolean; onClick: () => void }) {
   const icpCls = prospect.icp_category ? (ICP_COLORS[prospect.icp_category] ?? "bg-zinc-100 text-zinc-600") : ""
   const rep = prospect.campaigns?.rep_name
+  const urgency = taskUrgency(prospect.next_task_date)
   return (
     <button
       onClick={onClick}
@@ -182,7 +183,10 @@ function ProspectCard({ prospect, selected, onClick }: { prospect: ShortlistedPr
     >
       <div className="flex items-start justify-between gap-1">
         <p className="text-sm font-medium truncate">{prospectLabel(prospect)}</p>
-        {rep && <span className="text-[10px] text-muted-foreground shrink-0 bg-muted rounded px-1 py-0.5">{rep}</span>}
+        <div className="flex items-center gap-1 shrink-0">
+          {urgency && <span className={`size-2 rounded-full shrink-0 ${TASK_DOT[urgency]}`} title={`Tarea: ${formatTaskDate(prospect.next_task_date!)}`} />}
+          {rep && <span className="text-[10px] text-muted-foreground bg-muted rounded px-1 py-0.5">{rep}</span>}
+        </div>
       </div>
       {prospect.job_title && <p className="text-xs text-muted-foreground truncate">{prospect.job_title}</p>}
       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -367,6 +371,122 @@ function ChannelBox({
   )
 }
 
+// ── task urgency ──────────────────────────────────────────────────────────────
+
+function taskUrgency(dateStr: string | null): "overdue" | "today" | "future" | null {
+  if (!dateStr) return null
+  const today = new Date().toISOString().slice(0, 10)
+  if (dateStr < today) return "overdue"
+  if (dateStr === today) return "today"
+  return "future"
+}
+
+const TASK_DOT: Record<"overdue" | "today" | "future", string> = {
+  overdue: "bg-red-500",
+  today:   "bg-orange-400",
+  future:  "bg-blue-400",
+}
+
+const TASK_CARD_CLS: Record<"overdue" | "today" | "future", string> = {
+  overdue: "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10",
+  today:   "border-orange-200 bg-orange-50 dark:border-orange-900/40 dark:bg-orange-900/10",
+  future:  "border-blue-100 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/10",
+}
+
+function formatTaskDate(dateStr: string): string {
+  const today = new Date().toISOString().slice(0, 10)
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+  if (dateStr === today) return "Hoy"
+  if (dateStr === tomorrow) return "Mañana"
+  const [, m, d] = dateStr.split("-")
+  return `${d}/${m}`
+}
+
+// ── TaskBoard ─────────────────────────────────────────────────────────────────
+
+function TaskBoard({ prospects, onSelect }: { prospects: ShortlistedProspect[]; onSelect: (p: ShortlistedProspect) => void }) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  const withTasks = prospects.filter((p) => p.next_task_date)
+  if (withTasks.length === 0) return null
+
+  // Group by rep
+  const byRep = new Map<string, ShortlistedProspect[]>()
+  for (const p of withTasks) {
+    const rep = p.campaigns?.rep_name ?? "Sin rep"
+    if (!byRep.has(rep)) byRep.set(rep, [])
+    byRep.get(rep)!.push(p)
+  }
+  const reps = Array.from(byRep.keys()).sort()
+
+  const overdueCount = withTasks.filter((p) => taskUrgency(p.next_task_date) === "overdue").length
+  const todayCount   = withTasks.filter((p) => taskUrgency(p.next_task_date) === "today").length
+
+  return (
+    <div className="border-b bg-muted/30 shrink-0">
+      <div className="px-6 py-2.5 flex items-center gap-3">
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="flex items-center gap-2 text-sm font-medium hover:text-foreground transition-colors"
+        >
+          <Calendar className="size-4 text-muted-foreground" />
+          Tareas pendientes
+          {collapsed
+            ? <ChevronRight className="size-3.5 text-muted-foreground" />
+            : <ChevronDown className="size-3.5 text-muted-foreground" />}
+        </button>
+        <div className="flex items-center gap-2">
+          {overdueCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-2 py-0.5 text-[10px] font-medium">
+              {overdueCount} vencida{overdueCount !== 1 ? "s" : ""}
+            </span>
+          )}
+          {todayCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-0.5 text-[10px] font-medium">
+              {todayCount} hoy
+            </span>
+          )}
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div className="px-6 pb-3 space-y-3">
+          {reps.map((rep) => {
+            const repProspects = byRep.get(rep)!.sort((a, b) => (a.next_task_date ?? "").localeCompare(b.next_task_date ?? ""))
+            return (
+              <div key={rep} className="space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {rep} <span className="font-normal">({repProspects.length})</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {repProspects.map((p) => {
+                    const urgency = taskUrgency(p.next_task_date)!
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => onSelect(p)}
+                        className={`text-left rounded-lg border px-3 py-2 text-xs space-y-0.5 hover:shadow-sm transition-shadow max-w-[180px] ${TASK_CARD_CLS[urgency]}`}
+                      >
+                        <p className="font-medium truncate">{p.company_name ?? "Sin empresa"}</p>
+                        <p className="text-muted-foreground truncate">{prospectLabel(p)}</p>
+                        <p className="flex items-center gap-1 mt-1">
+                          <span className={`inline-block size-1.5 rounded-full ${TASK_DOT[urgency]}`} />
+                          <span className="font-medium">{formatTaskDate(p.next_task_date!)}</span>
+                          {p.next_task_note && <span className="text-muted-foreground truncate">· {p.next_task_note}</span>}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── main component ─────────────────────────────────────────────────────────────
 
 export function ShortlistClient({ initialProspects, inboxConfig }: { initialProspects: ShortlistedProspect[]; inboxConfig: InboxConfig }) {
@@ -411,6 +531,10 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
   const [hrCampaigns, setHrCampaigns] = useState<{ id: string; name: string; linkedInAccountId?: number }[] | null>(null)
   const [selectedHrCampaign, setSelectedHrCampaign] = useState("")
   const [hrPushResult, setHrPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
+  const [taskDate, setTaskDate] = useState(selected?.next_task_date ?? "")
+  const [taskNote, setTaskNote] = useState(selected?.next_task_note ?? "")
+  const [savingTask, startSaveTask] = useTransition()
+  const [taskSaved, setTaskSaved] = useState(false)
   const [error, setError] = useState("")
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState("")
@@ -440,6 +564,21 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
     setPushResult(null)
     setHrPushResult(null)
     setEnrichFeedback(null)
+    setTaskDate(p.next_task_date ?? "")
+    setTaskNote(p.next_task_note ?? "")
+    setTaskSaved(false)
+  }
+
+  function handleSaveTask() {
+    if (!selected) return
+    startSaveTask(async () => {
+      await saveProspectTask(selected.id, taskDate || null, taskNote || null)
+      const patch = { next_task_date: taskDate || null, next_task_note: taskNote || null }
+      setSelected((prev) => prev ? { ...prev, ...patch } : prev)
+      setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, ...patch } : p))
+      setTaskSaved(true)
+      setTimeout(() => setTaskSaved(false), 2500)
+    })
   }
 
   function handleLoadCampaigns() {
@@ -575,6 +714,7 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
         icp_score: null, icp_category: null, os_score: null, apollo_id: null,
         accounts: null, campaigns: null,
         shortlist_status: "Pendiente",
+        next_task_date: null, next_task_note: null,
         latest_sequences: null,
       }
       setProspects((prev) => [newProspect, ...prev])
@@ -713,6 +853,8 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
           {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
+
+      <TaskBoard prospects={prospects} onSelect={handleSelect} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel */}
@@ -935,6 +1077,43 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
                   )
                 })}
               </div>
+            </div>
+
+            {/* Próxima tarea */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Calendar className="size-3.5 text-muted-foreground" />
+                Próxima tarea
+              </p>
+              <div className="flex items-start gap-2 flex-wrap">
+                <input
+                  type="date"
+                  value={taskDate}
+                  onChange={(e) => { setTaskDate(e.target.value); setTaskSaved(false) }}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <input
+                  type="text"
+                  value={taskNote}
+                  onChange={(e) => { setTaskNote(e.target.value); setTaskSaved(false) }}
+                  placeholder="Nota opcional..."
+                  className="h-8 flex-1 min-w-[160px] rounded-md border border-input bg-background px-3 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+                />
+                <Button size="sm" variant="outline" onClick={handleSaveTask} disabled={savingTask} className="h-8">
+                  {savingTask ? <Loader2 className="size-3.5 animate-spin" /> : taskSaved ? <Check className="size-3.5 text-green-600" /> : "Guardar"}
+                </Button>
+              </div>
+              {taskDate && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  {(() => {
+                    const u = taskUrgency(taskDate)
+                    if (!u) return null
+                    return <span className={`inline-block size-1.5 rounded-full ${TASK_DOT[u]}`} />
+                  })()}
+                  {formatTaskDate(taskDate)}
+                  {taskNote && ` · ${taskNote}`}
+                </p>
+              )}
             </div>
 
             {/* Channel boxes */}

@@ -31,6 +31,8 @@ export type ShortlistedProspect = {
   accounts: { industry: string | null; headcount_range: string | null } | null
   campaigns: { rep_name: string | null; week_label: string | null } | null
   shortlist_status: string | null
+  next_task_date: string | null
+  next_task_note: string | null
   latest_sequences: {
     id: string
     research_context: string | null
@@ -46,6 +48,7 @@ export async function getShortlistedProspects(): Promise<ShortlistedProspect[]> 
       id, first_name, last_name, full_name, job_title, company_name,
       company_domain, linkedin_url, email, icp_score, icp_category,
       os_score, highlights, location, phone, apollo_id, shortlist_status,
+      next_task_date, next_task_note,
       accounts ( industry, headcount_range ),
       campaigns ( rep_name, week_label )
     `)
@@ -88,6 +91,18 @@ export async function removeFromShortlist(prospectId: string): Promise<void> {
   await supabaseAdmin
     .from("prospects")
     .update({ shortlisted: false })
+    .eq("id", prospectId)
+  revalidatePath("/shortlist")
+}
+
+export async function saveProspectTask(
+  prospectId: string,
+  taskDate: string | null,
+  taskNote: string | null
+): Promise<void> {
+  await supabaseAdmin
+    .from("prospects")
+    .update({ next_task_date: taskDate || null, next_task_note: taskNote || null })
     .eq("id", prospectId)
   revalidatePath("/shortlist")
 }
