@@ -226,9 +226,26 @@ const QUALIFYING_STAGE_LABELS = new Set([
   "On Hold",
 ])
 
+/** Normalize a company name for fuzzy matching:
+ *  - lowercase
+ *  - strip trailing legal suffixes (S.A., S.R.L., II, etc.)
+ *  - strip parenthetical content
+ *  - trim
+ */
+function _normalizeCompanyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s*\(.*?\)\s*/g, " ")       // remove (Junio 2026) etc.
+    .replace(/\s+(i{1,3}|iv|v|vi{0,3}|ix|x)\s*$/i, "") // trailing roman numerals
+    .replace(/\s+(s\.?a\.?s?\.?|s\.?r\.?l\.?|inc\.?|ltd\.?|llc\.?|s\.?p\.?a\.?)\s*$/i, "")
+    .replace(/[^\w\s]/g, " ")             // punctuation → space
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 export async function syncHubspotDeals(): Promise<{ updated: number; error?: string }> {
   try {
-    const { getDealPipelineStages, getAllDeals, getContactEmails } = await import("@/lib/hubspot")
+    const { getDealPipelineStages, getAllDeals, getContactEmails, getCompanyInfo } = await import("@/lib/hubspot")
 
     // Resolve stage label → internal ID
     const stages = await getDealPipelineStages()
@@ -242,27 +259,88 @@ export async function syncHubspotDeals(): Promise<{ updated: number; error?: str
       (d) => d.dealstage && qualifyingIds.has(d.dealstage)
     )
 
-    // Collect unique contact IDs
+    if (qualifying.length === 0) return { updated: 0 }
+
+    let totalUpdated = 0
+
+    // ── Pass 1: match by contact email ────────────────────────────────────────
     const contactIds = [...new Set(qualifying.flatMap((d) => d.associatedContacts))]
-    if (contactIds.length === 0) return { updated: 0 }
+    if (contactIds.length > 0) {
+      const emailMap = await getContactEmails(contactIds)
+      const emails = [...emailMap.values()]
+      if (emails.length > 0) {
+        const { error, count } = await supabaseAdmin
+          .from("prospects")
+          .update({ shortlist_status: "Reunión Agendada" })
+          .in("email", emails)
+          .eq("shortlisted", true)
+          .neq("shortlist_status", "Reunión Agendada")
+        if (error) throw new Error(error.message)
+        totalUpdated += count ?? 0
+      }
+    }
 
-    // Batch-fetch emails from HubSpot
-    const emailMap = await getContactEmails(contactIds)
-    const emails = [...emailMap.values()]
-    if (emails.length === 0) return { updated: 0 }
+    // ── Pass 2: match by company name / domain ────────────────────────────────
+    const companyIds = [...new Set(qualifying.flatMap((d) => d.associatedCompanies))]
+    if (companyIds.length > 0) {
+      const companyMap = await getCompanyInfo(companyIds)
 
-    // Update matching shortlisted prospects
-    const { error, count } = await supabaseAdmin
-      .from("prospects")
-      .update({ shortlist_status: "Reunión Agendada" })
-      .in("email", emails)
-      .eq("shortlisted", true)
-      .neq("shortlist_status", "Reunión Agendada")
+      // Build OR filter for Supabase: one ilike per company name + one eq per domain
+      const orParts: string[] = []
+      const domains: string[] = []
 
-    if (error) throw new Error(error.message)
+      for (const company of companyMap.values()) {
+        if (company.name) {
+          const normalized = _normalizeCompanyName(company.name)
+          if (normalized.length >= 3) {
+            // escape % and _ so they're treated as literals in the LIKE pattern
+            const escaped = normalized.replace(/%/g, "\\%").replace(/_/g, "\\_")
+            orParts.push(`company_name.ilike.%${escaped}%`)
+          }
+        }
+        if (company.domain) {
+          domains.push(company.domain.toLowerCase())
+        }
+      }
+
+      if (orParts.length > 0 || domains.length > 0) {
+        // Fetch candidates — can't do .update + .or directly on Supabase JS,
+        // so select IDs first then bulk update
+        let query = supabaseAdmin
+          .from("prospects")
+          .select("id")
+          .eq("shortlisted", true)
+          .neq("shortlist_status", "Reunión Agendada")
+
+        const allOrParts = [
+          ...orParts,
+          ...(domains.length > 0 ? [`company_domain.in.(${domains.join(",")})`] : []),
+        ]
+
+        if (allOrParts.length > 0) {
+          query = query.or(allOrParts.join(","))
+        }
+
+        const { data: candidates } = await query
+        const ids = (candidates ?? []).map((r: { id: string }) => r.id)
+
+        if (ids.length > 0) {
+          // Update in batches of 500 to avoid URL length limits
+          for (let i = 0; i < ids.length; i += 500) {
+            const batch = ids.slice(i, i + 500)
+            const { error, count } = await supabaseAdmin
+              .from("prospects")
+              .update({ shortlist_status: "Reunión Agendada" })
+              .in("id", batch)
+            if (error) throw new Error(error.message)
+            totalUpdated += count ?? 0
+          }
+        }
+      }
+    }
 
     revalidatePath("/shortlist")
-    return { updated: count ?? 0 }
+    return { updated: totalUpdated }
   } catch (e) {
     return { updated: 0, error: e instanceof Error ? e.message : "Error desconocido" }
   }

@@ -14,6 +14,13 @@ export type HubspotDeal = {
   dealname: string | null
   dealstage: string | null // internal stage ID
   associatedContacts: string[] // contact IDs
+  associatedCompanies: string[] // company IDs
+}
+
+export type HubspotCompany = {
+  id: string
+  name: string | null
+  domain: string | null
 }
 
 export type HubspotPipelineStage = {
@@ -52,7 +59,7 @@ export async function getAllDeals(): Promise<HubspotDeal[]> {
     const params = new URLSearchParams({
       limit: "100",
       properties: "dealname,dealstage",
-      associations: "contacts",
+      associations: "contacts,companies",
     })
     if (after) params.set("after", after)
 
@@ -70,11 +77,15 @@ export async function getAllDeals(): Promise<HubspotDeal[]> {
       const contactIds = (
         deal.associations?.contacts?.results ?? []
       ).map((c: { id: string }) => c.id)
+      const companyIds = (
+        deal.associations?.companies?.results ?? []
+      ).map((c: { id: string }) => c.id)
       deals.push({
         id: deal.id,
         dealname: deal.properties?.dealname ?? null,
         dealstage: deal.properties?.dealstage ?? null,
         associatedContacts: contactIds,
+        associatedCompanies: companyIds,
       })
     }
 
@@ -82,6 +93,40 @@ export async function getAllDeals(): Promise<HubspotDeal[]> {
   } while (after)
 
   return deals
+}
+
+// ── Companies ────────────────────────────────────────────────────────────────
+
+/** Returns map companyId → { name, domain } for the given company IDs */
+export async function getCompanyInfo(
+  companyIds: string[]
+): Promise<Map<string, HubspotCompany>> {
+  const map = new Map<string, HubspotCompany>()
+  if (companyIds.length === 0) return map
+
+  for (let i = 0; i < companyIds.length; i += 100) {
+    const batch = companyIds.slice(i, i + 100)
+    const res = await fetch(`${BASE}/crm/v3/objects/companies/batch/read`, {
+      method: "POST",
+      headers: hs_headers(),
+      body: JSON.stringify({
+        inputs: batch.map((id) => ({ id })),
+        properties: ["name", "domain"],
+      }),
+      cache: "no-store",
+    })
+    if (!res.ok) continue
+    const json = await res.json()
+    for (const company of json.results ?? []) {
+      map.set(company.id, {
+        id: company.id,
+        name: company.properties?.name ?? null,
+        domain: company.properties?.domain ?? null,
+      })
+    }
+  }
+
+  return map
 }
 
 // ── Contacts ─────────────────────────────────────────────────────────────────
