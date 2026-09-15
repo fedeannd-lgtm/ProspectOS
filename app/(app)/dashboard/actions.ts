@@ -129,32 +129,44 @@ export type WeekScorecardRow = {
 }
 
 export async function getScorecardData(): Promise<WeekScorecardRow[]> {
-  const { data, error } = await supabase
+  // Step 1: campaigns → "scraped" comes from prospects_found (same source as Analytics chart)
+  const { data: camps, error: campErr } = await supabase
+    .from("campaigns")
+    .select("id, week_label, rep_name, prospects_found")
+  if (campErr) throw new Error(campErr.message)
+
+  // Step 2: prospects linked to campaigns → shortlist / enriched / status counts
+  const { data: prospects, error: pErr } = await supabase
     .from("prospects")
-    .select("email, shortlisted, shortlist_status, campaigns!inner(week_label, rep_name)")
+    .select("campaign_id, shortlisted, email, shortlist_status")
+    .not("campaign_id", "is", null)
+  if (pErr) throw new Error(pErr.message)
 
-  if (error) throw new Error(error.message)
-
-  const map = new Map<string, WeekScorecardRow>()
-
-  const get = (key: string, week_label: string, rep_name: string): WeekScorecardRow => {
-    if (!map.has(key)) map.set(key, { week_label, rep_name, scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
-    return map.get(key)!
+  // Per-campaign prospect stats
+  type PStats = { shortlisted: number; enriched: number; enviados: number; reuniones: number }
+  const pMap = new Map<string, PStats>()
+  for (const p of prospects ?? []) {
+    if (!p.campaign_id) continue
+    if (!pMap.has(p.campaign_id)) pMap.set(p.campaign_id, { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
+    const s = pMap.get(p.campaign_id)!
+    if (p.shortlisted)                              s.shortlisted++
+    if (p.email)                                    s.enriched++
+    if (p.shortlist_status === "Enviado")           s.enviados++
+    if (p.shortlist_status === "Reunión Agendada")  s.reuniones++
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const p of (data ?? []) as any[]) {
-    const raw = p.campaigns
-    const camp: { week_label: string; rep_name: string } | null = Array.isArray(raw) ? raw[0] : raw
-    if (!camp) continue
-    const { week_label, rep_name } = camp
-
-    const row = get(`${week_label}||${rep_name}`, week_label, rep_name)
-    row.scraped++
-    if (p.shortlisted) row.shortlisted++
-    if (p.email) row.enriched++
-    if (p.shortlist_status === "Enviado") row.enviados++
-    if (p.shortlist_status === "Reunión Agendada") row.reuniones++
+  // Aggregate by week_label + rep_name
+  const map = new Map<string, WeekScorecardRow>()
+  for (const c of camps ?? []) {
+    const key = `${c.week_label}||${c.rep_name}`
+    if (!map.has(key)) map.set(key, { week_label: c.week_label, rep_name: c.rep_name, scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
+    const row = map.get(key)!
+    const ps = pMap.get(c.id) ?? { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 }
+    row.scraped     += c.prospects_found ?? 0
+    row.shortlisted += ps.shortlisted
+    row.enriched    += ps.enriched
+    row.enviados    += ps.enviados
+    row.reuniones   += ps.reuniones
   }
 
   return Array.from(map.values()).sort((a, b) => b.week_label.localeCompare(a.week_label))
