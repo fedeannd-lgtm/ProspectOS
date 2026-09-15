@@ -960,29 +960,30 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
 
         // Build domain → company name from prospects that have both, so prospects
         // with no company_name but a matching email domain get grouped correctly.
-        const domainToCompany = new Map<string, string>()
-        for (const m of dedupedMeetings) {
-          if (m.company_name && m.email) {
-            const domain = m.email.split("@")[1]?.toLowerCase()
-            if (domain && !domainToCompany.has(domain)) domainToCompany.set(domain, m.company_name)
-          }
+        // Group key: email domain (canonical) — falls back to company_name or id
+        function groupKey(m: MeetingProspect): string {
+          return m.email?.split("@")[1]?.toLowerCase() ?? m.company_name?.toLowerCase() ?? m.id
         }
-        // Derive company label for a prospect: company_name → same-domain company → domain word → "Sin empresa"
-        function companyLabel(m: MeetingProspect): string {
-          if (m.company_name) return m.company_name
-          const domain = m.email?.split("@")[1]?.toLowerCase()
-          if (!domain) return "Sin empresa"
-          if (domainToCompany.has(domain)) return domainToCompany.get(domain)!
-          // Capitalize the first part of the domain (e.g. "solfran.com" → "Solfran")
-          const word = domain.split(".")[0]
+
+        const byDomain = new Map<string, MeetingProspect[]>()
+        for (const m of dedupedMeetings) {
+          const key = groupKey(m)
+          if (!byDomain.has(key)) byDomain.set(key, [])
+          byDomain.get(key)!.push(m)
+        }
+
+        // Display label: shortest company_name in the group (avoids "Grupo X" vs "X"),
+        // fallback to capitalized domain word
+        function displayLabel(prospects: MeetingProspect[], key: string): string {
+          const names = prospects.map(p => p.company_name).filter(Boolean) as string[]
+          if (names.length > 0) return names.reduce((a, b) => a.length <= b.length ? a : b)
+          const word = key.split(".")[0]
           return word.charAt(0).toUpperCase() + word.slice(1)
         }
 
-        const byCompany = new Map<string, MeetingProspect[]>()
-        for (const m of dedupedMeetings) {
-          const co = companyLabel(m)
-          if (!byCompany.has(co)) byCompany.set(co, [])
-          byCompany.get(co)!.push(m)
+        const byCompany = new Map<string, { label: string; prospects: MeetingProspect[] }>()
+        for (const [key, prospects] of byDomain) {
+          byCompany.set(key, { label: displayLabel(prospects, key), prospects })
         }
         return (
           <Card>
@@ -993,9 +994,9 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0 divide-y">
-              {Array.from(byCompany.entries()).map(([company, contacts]) => (
-                <div key={company} className="px-4 py-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{company}</p>
+              {Array.from(byCompany.entries()).map(([key, { label, prospects: contacts }]) => (
+                <div key={key} className="px-4 py-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{label}</p>
                   <div className="space-y-2">
                     {contacts.map((m) => (
                       <div key={m.id} className="flex items-center gap-4 text-sm">
