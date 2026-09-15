@@ -779,7 +779,6 @@ type NormalizedWeek = {
 }
 
 function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meetings?: MeetingProspect[] }) {
-  const [repFilter, setRepFilter] = useState("Todos")
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null)
   const meetingsRef = useRef<HTMLDivElement>(null)
 
@@ -816,14 +815,11 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
       }
 
       const entry = map.get(key)!
-      // Only add scraped for matching rep (or all reps)
-      if (repFilter === "Todos" || row.rep_name === repFilter) {
-        entry.scraped += row.scraped
-      }
+      entry.scraped += row.scraped
     }
 
     return Array.from(map.values()).sort((a, b) => b.isoKey.localeCompare(a.isoKey))
-  }, [data, repFilter])
+  }, [data])
 
   // KPI totals
   const totals = useMemo(() => weeks.reduce(
@@ -854,23 +850,6 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
 
   return (
     <div className="space-y-4">
-      {/* Rep filter */}
-      <div className="flex gap-1.5 flex-wrap">
-        {REPS_SCORECARD.map((r) => (
-          <button
-            key={r}
-            onClick={() => setRepFilter(r)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              repFilter === r
-                ? "bg-foreground text-background border-foreground"
-                : "border-border hover:bg-muted/50"
-            }`}
-          >
-            {r}
-          </button>
-        ))}
-      </div>
-
       {/* KPI summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
