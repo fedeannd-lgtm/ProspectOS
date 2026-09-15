@@ -208,7 +208,7 @@ export async function getScorecardData(): Promise<WeekScorecardRow[]> {
       enriched:        Number(r.enriched),
       enviados:        Number(r.enviados),
       reuniones:       Number(r.reuniones),
-      reuniones_total: Number(r.reuniones_total),
+      reuniones_total: Number(r.reuniones_total ?? 0),
     })
   }
 
