@@ -780,27 +780,37 @@ type NormalizedWeek = {
 function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
   const [repFilter, setRepFilter] = useState("Todos")
 
-  // Normalize week_label → ISO week key, then aggregate
+  // Aggregate by iso_week.
+  // scraped: sum for the selected rep (or all reps)
+  // shortlisted/enriched/etc: team totals — stored identically on every rep row,
+  //   so we take the value from the FIRST row seen for each iso_week.
   const weeks = useMemo(() => {
     const map = new Map<string, NormalizedWeek>()
 
     for (const row of data) {
-      if (repFilter !== "Todos" && row.rep_name !== repFilter) continue
-
       const date = parseCampaignDate(row.week_label)
-      if (!date) continue  // skip rows with unparseable labels
+      if (!date) continue
       const { key, monday } = getISOWeekInfo(date)
       const label = `${monday.getDate()} ${MONTHS[monday.getMonth()]}`
 
       if (!map.has(key)) {
-        map.set(key, { isoKey: key, label, scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
+        // First time we see this week: seed metrics from this row (team totals)
+        map.set(key, {
+          isoKey: key,
+          label,
+          scraped: 0,
+          shortlisted: row.shortlisted,
+          enriched:    row.enriched,
+          enviados:    row.enviados,
+          reuniones:   row.reuniones,
+        })
       }
+
       const entry = map.get(key)!
-      entry.scraped     += row.scraped
-      entry.shortlisted += row.shortlisted
-      entry.enriched    += row.enriched
-      entry.enviados    += row.enviados
-      entry.reuniones   += row.reuniones
+      // Only add scraped for matching rep (or all reps)
+      if (repFilter === "Todos" || row.rep_name === repFilter) {
+        entry.scraped += row.scraped
+      }
     }
 
     return Array.from(map.values()).sort((a, b) => b.isoKey.localeCompare(a.isoKey))

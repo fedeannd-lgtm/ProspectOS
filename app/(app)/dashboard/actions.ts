@@ -119,66 +119,84 @@ export async function getCampaignIndustries(): Promise<string[]> {
 // ── Scorecard ─────────────────────────────────────────────────────────────────
 
 export type WeekScorecardRow = {
-  week_label: string
-  rep_name: string
-  scraped: number
+  iso_week: string   // "2026-W22" — sort key & dedup key for client
+  week_label: string // raw campaign label — client parses date for display
+  rep_name: string   // for per-rep scraped filter in client
+  scraped: number    // from campaigns.prospects_found
+  // Team totals for the week — sourced from prospects.created_at (not FK chain)
   shortlisted: number
-  enriched: number    // prospects with email
-  enviados: number    // shortlist_status = 'Enviado'
-  reuniones: number   // shortlist_status = 'Reunión Agendada'
+  enriched: number
+  enviados: number
+  reuniones: number
+}
+
+/** Extract the first YYYY-MM-DD date found in a campaign week_label string */
+function _extractDate(label: string): Date | null {
+  const m = label.match(/(\d{4}-\d{2}-\d{2})/)
+  if (!m) return null
+  const d = new Date(m[1] + "T12:00:00Z")
+  return isNaN(d.getTime()) ? null : d
+}
+
+/** Compute ISO 8601 week key ("2026-W22") for a given date */
+function _isoWeekKey(date: Date): string {
+  const d = new Date(date)
+  d.setUTCHours(12, 0, 0, 0)
+  const day = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - day)
+  const year = d.getUTCFullYear()
+  const jan4 = Date.UTC(year, 0, 4)
+  const week = 1 + Math.round(((d.getTime() - jan4) / 86400000 - 3 + (new Date(jan4).getUTCDay() || 7)) / 7)
+  return `${year}-W${String(week).padStart(2, "0")}`
 }
 
 export async function getScorecardData(): Promise<WeekScorecardRow[]> {
-  // Query 1: campaigns → scraped counts (same source as Analytics chart)
+  // Query 1: campaigns → scraped per (iso_week, rep_name)
   const { data: camps, error: campErr } = await supabase
     .from("campaigns")
-    .select("id, week_label, rep_name, prospects_found")
+    .select("week_label, rep_name, prospects_found")
   if (campErr) throw new Error(campErr.message)
 
-  // Build campaign lookup: id → { week_label, rep_name }
-  const campMap = new Map<string, { week_label: string; rep_name: string }>()
-  for (const c of camps ?? []) campMap.set(c.id, { week_label: c.week_label, rep_name: c.rep_name })
+  type CampBucket = { iso_week: string; week_label: string; rep_name: string; scraped: number }
+  const campBuckets = new Map<string, CampBucket>()
+  for (const c of camps ?? []) {
+    const date = _extractDate(c.week_label)
+    if (!date) continue
+    const iso = _isoWeekKey(date)
+    const key = `${iso}||${c.rep_name}`
+    if (!campBuckets.has(key)) campBuckets.set(key, { iso_week: iso, week_label: c.week_label, rep_name: c.rep_name, scraped: 0 })
+    campBuckets.get(key)!.scraped += c.prospects_found ?? 0
+  }
 
-  // Query 2: prospects via account → campaign chain
-  // Most prospects don't have campaign_id directly but DO have account_id,
-  // and accounts have campaign_id.
+  // Query 2: ALL prospects grouped by created_at ISO week → funnel metrics
+  // prospect.campaign_id and account.campaign_id are frequently null, so we
+  // cannot rely on FK chains. Using created_at is the only reliable approach.
   const { data: prospects, error: pErr } = await supabase
     .from("prospects")
-    .select("shortlisted, email, shortlist_status, accounts(campaign_id)")
+    .select("created_at, shortlisted, email, shortlist_status")
   if (pErr) throw new Error(pErr.message)
 
-  // Aggregate per-campaign prospect stats
-  type PStats = { shortlisted: number; enriched: number; enviados: number; reuniones: number }
-  const pMap = new Map<string, PStats>()
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const p of (prospects ?? []) as any[]) {
-    const acct = Array.isArray(p.accounts) ? p.accounts[0] : p.accounts
-    const cid: string | null = acct?.campaign_id ?? null
-    if (!cid) continue
-    if (!pMap.has(cid)) pMap.set(cid, { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
-    const s = pMap.get(cid)!
-    if (p.shortlisted)                             s.shortlisted++
-    if (p.email)                                   s.enriched++
-    if (p.shortlist_status === "Enviado")          s.enviados++
-    if (p.shortlist_status === "Reunión Agendada") s.reuniones++
+  type WMetrics = { shortlisted: number; enriched: number; enviados: number; reuniones: number }
+  const metricsMap = new Map<string, WMetrics>()
+  for (const p of prospects ?? []) {
+    const iso = _isoWeekKey(new Date(p.created_at))
+    if (!metricsMap.has(iso)) metricsMap.set(iso, { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
+    const m = metricsMap.get(iso)!
+    if (p.shortlisted)                             m.shortlisted++
+    if (p.email)                                   m.enriched++
+    if (p.shortlist_status === "Enviado")          m.enviados++
+    if (p.shortlist_status === "Reunión Agendada") m.reuniones++
   }
 
-  // Merge: one row per (week_label, rep_name)
-  const map = new Map<string, WeekScorecardRow>()
-  for (const c of camps ?? []) {
-    const key = `${c.week_label}||${c.rep_name}`
-    if (!map.has(key)) map.set(key, { week_label: c.week_label, rep_name: c.rep_name, scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
-    const row = map.get(key)!
-    const ps = pMap.get(c.id) ?? { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 }
-    row.scraped     += c.prospects_found ?? 0
-    row.shortlisted += ps.shortlisted
-    row.enriched    += ps.enriched
-    row.enviados    += ps.enviados
-    row.reuniones   += ps.reuniones
+  // Merge: one row per (iso_week, rep_name)
+  // Prospect metrics are TEAM totals for the week (same value for every rep in that week)
+  const rows: WeekScorecardRow[] = []
+  for (const [, b] of campBuckets) {
+    const m = metricsMap.get(b.iso_week) ?? { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 }
+    rows.push({ iso_week: b.iso_week, week_label: b.week_label, rep_name: b.rep_name, scraped: b.scraped, ...m })
   }
 
-  return Array.from(map.values()).sort((a, b) => b.week_label.localeCompare(a.week_label))
+  return rows.sort((a, b) => b.iso_week.localeCompare(a.iso_week))
 }
 
 export async function deleteCampaign(id: string) {
