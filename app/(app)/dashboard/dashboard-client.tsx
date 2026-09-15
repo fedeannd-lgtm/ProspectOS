@@ -868,7 +868,7 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
           { label: "Shortlist",    value: totals.shortlisted },
           { label: "Con Email",     value: totals.enriched },
           { label: "Enviados",     value: totals.enviados },
-          { label: "Reuniones",    value: totals.reuniones },
+          { label: "Reuniones",    value: new Set(meetings.map(m => m.company_name ?? "")).size },
         ].map((k) => (
           <Card key={k.label}>
             <CardContent className="px-4 py-3">
