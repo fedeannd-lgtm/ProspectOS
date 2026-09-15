@@ -1084,8 +1084,7 @@ function HubspotSyncCard() {
           <Activity className="size-4" /> HubSpot — Sincronizar reuniones
         </CardTitle>
         <CardDescription>
-          Marca como <strong>Reunión Agendada</strong> todos los prospectos cuyo deal en HubSpot
-          está en etapa &ldquo;Sales Qualified Lead&rdquo; o superior (por email o por empresa).
+          Sincroniza el estado de reuniones desde HubSpot contra toda la base de prospectos.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-center gap-4">
