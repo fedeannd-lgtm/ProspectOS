@@ -945,47 +945,49 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
         </p>
       )}
 
-      {/* Meetings detail */}
-      {meetings.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-              Reuniones agendadas ({meetings.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Prospecto</TableHead>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Cargo</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>LinkedIn</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {meetings.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell className="font-medium">
-                      {m.full_name ?? (`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "—")}
-                    </TableCell>
-                    <TableCell>{m.company_name ?? "—"}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{m.job_title ?? "—"}</TableCell>
-                    <TableCell className="text-sm">{m.email ?? "—"}</TableCell>
-                    <TableCell>
-                      {m.linkedin_url
-                        ? <a href={m.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">Ver perfil</a>
-                        : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      {/* Meetings detail — grouped by company */}
+      {meetings.length > 0 && (() => {
+        // Group by company_name
+        const byCompany = new Map<string, MeetingProspect[]>()
+        for (const m of meetings) {
+          const co = m.company_name ?? "Sin empresa"
+          if (!byCompany.has(co)) byCompany.set(co, [])
+          byCompany.get(co)!.push(m)
+        }
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                Reuniones agendadas ({meetings.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 divide-y">
+              {Array.from(byCompany.entries()).map(([company, contacts]) => (
+                <div key={company} className="px-4 py-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{company}</p>
+                  <div className="space-y-2">
+                    {contacts.map((m) => (
+                      <div key={m.id} className="flex items-center gap-4 text-sm">
+                        <span className="font-medium min-w-[180px]">
+                          {m.full_name ?? (`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "—")}
+                        </span>
+                        <span className="text-muted-foreground min-w-[180px]">{m.job_title ?? "—"}</span>
+                        <span className="text-muted-foreground">{m.email ?? "—"}</span>
+                        {m.linkedin_url && (
+                          <a href={m.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs ml-auto shrink-0">
+                            Ver perfil
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )
+      })()}
     </div>
   )
 }
