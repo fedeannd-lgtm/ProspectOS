@@ -273,7 +273,6 @@ export async function syncHubspotDeals(): Promise<{ updated: number; error?: str
           .from("prospects")
           .update({ shortlist_status: "Reunión Agendada" })
           .in("email", emails)
-          .eq("shortlisted", true)
           .neq("shortlist_status", "Reunión Agendada")
         if (error) throw new Error(error.message)
         totalUpdated += count ?? 0
@@ -309,7 +308,6 @@ export async function syncHubspotDeals(): Promise<{ updated: number; error?: str
         let query = supabaseAdmin
           .from("prospects")
           .select("id")
-          .eq("shortlisted", true)
           .neq("shortlist_status", "Reunión Agendada")
 
         const allOrParts = [
