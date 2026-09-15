@@ -865,7 +865,7 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
       </div>
 
       {/* KPI summary cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
           { label: "Scraped",      value: totals.scraped },
           { label: "Shortlist",    value: totals.shortlisted },
