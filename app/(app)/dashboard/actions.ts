@@ -151,7 +151,8 @@ export type WeekScorecardRow = {
   shortlisted: number
   enriched: number
   enviados: number
-  reuniones: number
+  reuniones: number        // SQL+ only
+  reuniones_total: number  // all active deals (SQL + pre-SQL)
 }
 
 /** Extract the first YYYY-MM-DD date found in a campaign week_label string */
@@ -199,14 +200,15 @@ export async function getScorecardData(): Promise<WeekScorecardRow[]> {
     .rpc("get_prospect_scorecard")
   if (pErr) throw new Error(pErr.message)
 
-  type WMetrics = { shortlisted: number; enriched: number; enviados: number; reuniones: number }
+  type WMetrics = { shortlisted: number; enriched: number; enviados: number; reuniones: number; reuniones_total: number }
   const metricsMap = new Map<string, WMetrics>()
-  for (const r of (metricsRows ?? []) as { iso_week: string; shortlisted: number; enriched: number; enviados: number; reuniones: number }[]) {
+  for (const r of (metricsRows ?? []) as { iso_week: string; shortlisted: number; enriched: number; enviados: number; reuniones: number; reuniones_total: number }[]) {
     metricsMap.set(r.iso_week, {
-      shortlisted: Number(r.shortlisted),
-      enriched:    Number(r.enriched),
-      enviados:    Number(r.enviados),
-      reuniones:   Number(r.reuniones),
+      shortlisted:     Number(r.shortlisted),
+      enriched:        Number(r.enriched),
+      enviados:        Number(r.enviados),
+      reuniones:       Number(r.reuniones),
+      reuniones_total: Number(r.reuniones_total),
     })
   }
 
@@ -214,7 +216,7 @@ export async function getScorecardData(): Promise<WeekScorecardRow[]> {
   // Prospect metrics are TEAM totals for the week (same value for every rep in that week)
   const rows: WeekScorecardRow[] = []
   for (const [, b] of campBuckets) {
-    const m = metricsMap.get(b.iso_week) ?? { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 }
+    const m = metricsMap.get(b.iso_week) ?? { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0, reuniones_total: 0 }
     rows.push({ iso_week: b.iso_week, week_label: b.week_label, rep_name: b.rep_name, scraped: b.scraped, ...m })
   }
 

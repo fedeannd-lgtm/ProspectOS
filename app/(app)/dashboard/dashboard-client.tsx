@@ -774,7 +774,8 @@ type NormalizedWeek = {
   shortlisted: number
   enriched: number
   enviados: number
-  reuniones: number
+  reuniones: number        // SQL+ only
+  reuniones_total: number  // all active deals
 }
 
 function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meetings?: MeetingProspect[] }) {
@@ -799,10 +800,11 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
           isoKey: key,
           label,
           scraped: 0,
-          shortlisted: row.shortlisted,
-          enriched:    row.enriched,
-          enviados:    row.enviados,
-          reuniones:   row.reuniones,
+          shortlisted:     row.shortlisted,
+          enriched:        row.enriched,
+          enviados:        row.enviados,
+          reuniones:       row.reuniones,
+          reuniones_total: row.reuniones_total ?? 0,
         })
       }
 
@@ -819,13 +821,14 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
   // KPI totals
   const totals = useMemo(() => weeks.reduce(
     (acc, w) => ({
-      scraped:     acc.scraped     + w.scraped,
-      shortlisted: acc.shortlisted + w.shortlisted,
-      enriched:    acc.enriched    + w.enriched,
-      enviados:    acc.enviados    + w.enviados,
-      reuniones:   acc.reuniones   + w.reuniones,
+      scraped:         acc.scraped         + w.scraped,
+      shortlisted:     acc.shortlisted     + w.shortlisted,
+      enriched:        acc.enriched        + w.enriched,
+      enviados:        acc.enviados        + w.enviados,
+      reuniones:       acc.reuniones       + w.reuniones,
+      reuniones_total: acc.reuniones_total + w.reuniones_total,
     }),
-    { scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 }
+    { scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0, reuniones_total: 0 }
   ), [weeks])
 
   // Chart — oldest first (left → right)
@@ -868,8 +871,9 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
           { label: "Shortlist",    value: totals.shortlisted },
           { label: "Con Email",     value: totals.enriched },
           { label: "Enviados",     value: totals.enviados },
-          { label: "Reuniones",    value: (() => {
-            // Same dedup + domain grouping as the detail section
+          { label: "Total Reuniones", value: totals.reuniones_total },
+          { label: "Reuniones SQL",   value: (() => {
+            // Dedup by email + group by domain — same as detail section
             const seen = new Set<string>()
             const deduped = meetings.filter((m) => {
               if (!m.email) return true
@@ -926,7 +930,8 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
                     <TableHead className="text-right">Shortlist</TableHead>
                     <TableHead className="text-right">Con Email</TableHead>
                     <TableHead className="text-right">Enviados</TableHead>
-                    <TableHead className="text-right">Reuniones</TableHead>
+                    <TableHead className="text-right">Total Reun.</TableHead>
+                    <TableHead className="text-right">SQL</TableHead>
                     <TableHead className="text-right">Conv%</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -938,6 +943,7 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
                       <TableCell className="text-right tabular-nums">{w.shortlisted.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums">{w.enriched.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums">{w.enviados.toLocaleString("es")}</TableCell>
+                      <TableCell className="text-right tabular-nums">{w.reuniones_total.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums font-semibold">{w.reuniones.toLocaleString("es")}</TableCell>
                       <TableCell className={`text-right tabular-nums text-xs ${w.reuniones > 0 ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
                         {pct(w.reuniones, w.enviados)}

@@ -212,8 +212,8 @@ export async function upsertRepCookie(repName: string, cookie: string) {
 // ── HubSpot sync ─────────────────────────────────────────────────────────────
 
 /**
- * Stages that indicate a qualified meeting was scheduled.
- * Everything from "Sales Qualified Lead" onward, excluding losses.
+ * Stages that indicate a SQL-qualified meeting (Sales Qualified Lead or above).
+ * Prospects from these deals get shortlist_status = 'Reunión Agendada'.
  */
 const QUALIFYING_STAGE_LABELS = new Set([
   "Sales Qualified Lead",
@@ -224,6 +224,17 @@ const QUALIFYING_STAGE_LABELS = new Set([
   "Trial in progress",
   "Won",
   "On Hold",
+])
+
+/**
+ * Stages that mean the deal is dead — exclude from "total meetings" count.
+ */
+const LOST_STAGE_LABELS = new Set([
+  "Closed Lost",
+  "Lost",
+  "Not Interested",
+  "Disqualified",
+  "No Show",
 ])
 
 /** Normalize a company name for fuzzy matching:
@@ -247,10 +258,13 @@ export async function syncHubspotDeals(): Promise<{ updated: number; error?: str
   try {
     const { getDealPipelineStages, getAllDeals, getContactEmails, getCompanyInfo } = await import("@/lib/hubspot")
 
-    // Resolve stage label → internal ID
+    // Resolve stage label → internal IDs
     const stages = await getDealPipelineStages()
     const qualifyingIds = new Set(
       stages.filter((s) => QUALIFYING_STAGE_LABELS.has(s.label)).map((s) => s.id)
+    )
+    const lostIds = new Set(
+      stages.filter((s) => LOST_STAGE_LABELS.has(s.label)).map((s) => s.id)
     )
 
     // Pull all deals; keep only qualifying ones
@@ -332,6 +346,57 @@ export async function syncHubspotDeals(): Promise<{ updated: number; error?: str
               .in("id", batch)
             if (error) throw new Error(error.message)
             totalUpdated += count ?? 0
+          }
+        }
+      }
+    }
+
+    // ── Pass 3: pre-SQL active deals → 'Reunión No SQL' ─────────────────────
+    // Any deal that's not qualifying (SQL+) and not lost = meeting happened but not yet qualified
+    const preSql = allDeals.filter(
+      (d) => d.dealstage && !qualifyingIds.has(d.dealstage) && !lostIds.has(d.dealstage)
+    )
+    if (preSql.length > 0) {
+      // Email pass
+      const preSqlContactIds = [...new Set(preSql.flatMap((d) => d.associatedContacts))]
+      if (preSqlContactIds.length > 0) {
+        const preSqlEmailMap = await getContactEmails(preSqlContactIds)
+        const preSqlEmails = [...preSqlEmailMap.values()]
+        if (preSqlEmails.length > 0) {
+          await supabaseAdmin
+            .from("prospects")
+            .update({ shortlist_status: "Reunión No SQL" })
+            .in("email", preSqlEmails)
+            .not("shortlist_status", "in", '("Reunión Agendada")')
+        }
+      }
+      // Company pass
+      const preSqlCompanyIds = [...new Set(preSql.flatMap((d) => d.associatedCompanies))]
+      if (preSqlCompanyIds.length > 0) {
+        const preSqlCompanyMap = await getCompanyInfo(preSqlCompanyIds)
+        const orParts: string[] = []
+        for (const company of preSqlCompanyMap.values()) {
+          if (company.name) {
+            const normalized = _normalizeCompanyName(company.name)
+            if (normalized.length >= 3) {
+              const escaped = normalized.replace(/%/g, "\\%").replace(/_/g, "\\_")
+              orParts.push(`company_name.ilike.%${escaped}%`)
+            }
+          }
+        }
+        if (orParts.length > 0) {
+          const { data: candidates } = await supabaseAdmin
+            .from("prospects")
+            .select("id")
+            .not("shortlist_status", "in", '("Reunión Agendada")')
+            .neq("shortlist_status", "Reunión No SQL")
+            .or(orParts.join(","))
+          const ids = (candidates ?? []).map((r: { id: string }) => r.id)
+          for (let i = 0; i < ids.length; i += 500) {
+            await supabaseAdmin
+              .from("prospects")
+              .update({ shortlist_status: "Reunión No SQL" })
+              .in("id", ids.slice(i, i + 500))
           }
         }
       }
