@@ -116,6 +116,50 @@ export async function getCampaignIndustries(): Promise<string[]> {
   return [...new Set(data.map((r) => r.industry as string).filter(Boolean))].sort()
 }
 
+// ── Scorecard ─────────────────────────────────────────────────────────────────
+
+export type WeekScorecardRow = {
+  week_label: string
+  rep_name: string
+  scraped: number
+  shortlisted: number
+  enriched: number    // prospects with email
+  enviados: number    // shortlist_status = 'Enviado'
+  reuniones: number   // shortlist_status = 'Reunión Agendada'
+}
+
+export async function getScorecardData(): Promise<WeekScorecardRow[]> {
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("email, shortlisted, shortlist_status, campaigns!inner(week_label, rep_name)")
+
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, WeekScorecardRow>()
+
+  const get = (key: string, week_label: string, rep_name: string): WeekScorecardRow => {
+    if (!map.has(key)) map.set(key, { week_label, rep_name, scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
+    return map.get(key)!
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const p of (data ?? []) as any[]) {
+    const raw = p.campaigns
+    const camp: { week_label: string; rep_name: string } | null = Array.isArray(raw) ? raw[0] : raw
+    if (!camp) continue
+    const { week_label, rep_name } = camp
+
+    const row = get(`${week_label}||${rep_name}`, week_label, rep_name)
+    row.scraped++
+    if (p.shortlisted) row.shortlisted++
+    if (p.email) row.enriched++
+    if (p.shortlist_status === "Enviado") row.enviados++
+    if (p.shortlist_status === "Reunión Agendada") row.reuniones++
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.week_label.localeCompare(a.week_label))
+}
+
 export async function deleteCampaign(id: string) {
   const { error } = await supabase.from("campaigns").delete().eq("id", id)
   if (error) throw new Error(error.message)

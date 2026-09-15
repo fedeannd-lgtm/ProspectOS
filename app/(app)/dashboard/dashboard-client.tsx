@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { REPS as BASE_REPS, INDUSTRIES } from "@/lib/reps"
 const REPS = ["Todos", ...BASE_REPS]
 const REP_OPTIONS = BASE_REPS
-import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown } from "lucide-react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -37,7 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createCampaign, updateCampaign, deleteCampaign, getWeekStats, createAutoCampaign, getSavedUrlsForWizard, getDistributionTemplatesForWizard, type IcpStat, type IcpCategoryStat, type AutoCampaignConfig } from "./actions"
+import { createCampaign, updateCampaign, deleteCampaign, getWeekStats, createAutoCampaign, getSavedUrlsForWizard, getDistributionTemplatesForWizard, type IcpStat, type IcpCategoryStat, type AutoCampaignConfig, type WeekScorecardRow } from "./actions"
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -758,9 +758,174 @@ function ChartsView({ campaigns, icpStats, icpCategoryStats }: { campaigns: Camp
   )
 }
 
-export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [], autoActionMap = {} }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }> }) {
+// ── Scorecard ─────────────────────────────────────────────────────────────────
+
+const REPS_SCORECARD = ["Todos", ...BASE_REPS]
+
+function pct(num: number, den: number): string {
+  if (den === 0) return "—"
+  return `${((num / den) * 100).toFixed(1)}%`
+}
+
+function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
+  const [repFilter, setRepFilter] = useState("Todos")
+
+  // Aggregate rows per week (optionally filtered by rep)
+  const weeks = useMemo(() => {
+    const map = new Map<string, WeekScorecardRow>()
+
+    for (const row of data) {
+      if (repFilter !== "Todos" && row.rep_name !== repFilter) continue
+      const existing = map.get(row.week_label)
+      if (!existing) {
+        map.set(row.week_label, { ...row, rep_name: repFilter })
+      } else {
+        existing.scraped += row.scraped
+        existing.shortlisted += row.shortlisted
+        existing.enriched += row.enriched
+        existing.enviados += row.enviados
+        existing.reuniones += row.reuniones
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.week_label.localeCompare(a.week_label))
+  }, [data, repFilter])
+
+  // KPI totals
+  const totals = useMemo(() => weeks.reduce(
+    (acc, w) => ({
+      scraped: acc.scraped + w.scraped,
+      shortlisted: acc.shortlisted + w.shortlisted,
+      enriched: acc.enriched + w.enriched,
+      enviados: acc.enviados + w.enviados,
+      reuniones: acc.reuniones + w.reuniones,
+    }),
+    { scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 }
+  ), [weeks])
+
+  // Chart data — oldest first for left-to-right progression
+  const chartData = useMemo(() =>
+    [...weeks].reverse().map((w) => ({
+      name: w.week_label,
+      Scraped: w.scraped,
+      Shortlist: w.shortlisted,
+      Enviados: w.enviados,
+      Reuniones: w.reuniones,
+    })),
+    [weeks]
+  )
+
+  const hasData = weeks.length > 0
+
+  return (
+    <div className="space-y-4">
+      {/* Rep filter */}
+      <div className="flex gap-1.5 flex-wrap">
+        {REPS_SCORECARD.map((r) => (
+          <button
+            key={r}
+            onClick={() => setRepFilter(r)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+              repFilter === r
+                ? "bg-foreground text-background border-foreground"
+                : "border-border hover:bg-muted/50"
+            }`}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI summary cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {[
+          { label: "Scraped", value: totals.scraped },
+          { label: "Shortlist", value: totals.shortlisted },
+          { label: "Enriquecidos", value: totals.enriched },
+          { label: "Enviados", value: totals.enviados },
+          { label: "Reuniones", value: totals.reuniones },
+        ].map((k) => (
+          <Card key={k.label}>
+            <CardContent className="px-4 py-3">
+              <p className="text-xs text-muted-foreground">{k.label}</p>
+              <p className="text-2xl font-bold tabular-nums">{k.value.toLocaleString("es")}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Line chart */}
+      {hasData && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Evolución semanal</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="Scraped" fill="#94a3b8" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Shortlist" fill="#60a5fa" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Enviados" fill="#a78bfa" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Reuniones" fill="#34d399" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Funnel table */}
+      {hasData ? (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Semana</TableHead>
+                    <TableHead className="text-right">Scraped</TableHead>
+                    <TableHead className="text-right">Shortlist</TableHead>
+                    <TableHead className="text-right">Enriquecidos</TableHead>
+                    <TableHead className="text-right">Enviados</TableHead>
+                    <TableHead className="text-right">Reuniones</TableHead>
+                    <TableHead className="text-right">Conv%</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {weeks.map((w) => (
+                    <TableRow key={w.week_label}>
+                      <TableCell className="font-medium">{w.week_label}</TableCell>
+                      <TableCell className="text-right tabular-nums">{w.scraped.toLocaleString("es")}</TableCell>
+                      <TableCell className="text-right tabular-nums">{w.shortlisted.toLocaleString("es")}</TableCell>
+                      <TableCell className="text-right tabular-nums">{w.enriched.toLocaleString("es")}</TableCell>
+                      <TableCell className="text-right tabular-nums">{w.enviados.toLocaleString("es")}</TableCell>
+                      <TableCell className="text-right tabular-nums font-semibold">{w.reuniones.toLocaleString("es")}</TableCell>
+                      <TableCell className={`text-right tabular-nums text-xs ${w.reuniones > 0 ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
+                        {pct(w.reuniones, w.enviados)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          Sin datos todavía — empezá a cargar campañas y la conversión aparece acá.
+        </p>
+      )}
+    </div>
+  )
+}
+
+export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [], autoActionMap = {}, scorecardData = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }>; scorecardData?: WeekScorecardRow[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
-  const [view, setView] = useState<"week" | "list" | "charts">("week")
+  const [view, setView] = useState<"week" | "list" | "charts" | "scorecard">("week")
   const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))
   const [weekStats, setWeekStats] = useState<{ validEmails: number; scoreGte5: number; sent: number } | null>(null)
   const [, startWeekStats] = useTransition()
@@ -942,10 +1107,17 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
             </button>
             <button
               onClick={() => setView("charts")}
-              className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "charts" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              className={`px-2.5 py-1.5 border-l transition-colors ${view === "charts" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
               title="Analytics"
             >
               <BarChart3 className="size-4" />
+            </button>
+            <button
+              onClick={() => setView("scorecard")}
+              className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "scorecard" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              title="Scorecard"
+            >
+              <TrendingUp className="size-4" />
             </button>
           </div>
           <Button onClick={openCreate} disabled={isPending}>
@@ -1031,6 +1203,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
 
       {view === "week" && <WeeklyView campaigns={weekCampaigns} autoActionMap={autoActionMap} />}
       {view === "charts" && <ChartsView campaigns={campaigns} icpStats={icpStats} icpCategoryStats={icpCategoryStats} />}
+      {view === "scorecard" && <ScorecardView data={scorecardData} />}
 
       {view === "list" && <Tabs defaultValue="Todos">
         <TabsList>
