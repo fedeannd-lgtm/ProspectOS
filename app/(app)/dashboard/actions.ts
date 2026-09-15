@@ -129,33 +129,42 @@ export type WeekScorecardRow = {
 }
 
 export async function getScorecardData(): Promise<WeekScorecardRow[]> {
-  // Step 1: campaigns → "scraped" comes from prospects_found (same source as Analytics chart)
+  // Query 1: campaigns → scraped counts (same source as Analytics chart)
   const { data: camps, error: campErr } = await supabase
     .from("campaigns")
     .select("id, week_label, rep_name, prospects_found")
   if (campErr) throw new Error(campErr.message)
 
-  // Step 2: prospects linked to campaigns → shortlist / enriched / status counts
+  // Build campaign lookup: id → { week_label, rep_name }
+  const campMap = new Map<string, { week_label: string; rep_name: string }>()
+  for (const c of camps ?? []) campMap.set(c.id, { week_label: c.week_label, rep_name: c.rep_name })
+
+  // Query 2: prospects via account → campaign chain
+  // Most prospects don't have campaign_id directly but DO have account_id,
+  // and accounts have campaign_id.
   const { data: prospects, error: pErr } = await supabase
     .from("prospects")
-    .select("campaign_id, shortlisted, email, shortlist_status")
-    .not("campaign_id", "is", null)
+    .select("shortlisted, email, shortlist_status, accounts(campaign_id)")
   if (pErr) throw new Error(pErr.message)
 
-  // Per-campaign prospect stats
+  // Aggregate per-campaign prospect stats
   type PStats = { shortlisted: number; enriched: number; enviados: number; reuniones: number }
   const pMap = new Map<string, PStats>()
-  for (const p of prospects ?? []) {
-    if (!p.campaign_id) continue
-    if (!pMap.has(p.campaign_id)) pMap.set(p.campaign_id, { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
-    const s = pMap.get(p.campaign_id)!
-    if (p.shortlisted)                              s.shortlisted++
-    if (p.email)                                    s.enriched++
-    if (p.shortlist_status === "Enviado")           s.enviados++
-    if (p.shortlist_status === "Reunión Agendada")  s.reuniones++
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const p of (prospects ?? []) as any[]) {
+    const acct = Array.isArray(p.accounts) ? p.accounts[0] : p.accounts
+    const cid: string | null = acct?.campaign_id ?? null
+    if (!cid) continue
+    if (!pMap.has(cid)) pMap.set(cid, { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
+    const s = pMap.get(cid)!
+    if (p.shortlisted)                             s.shortlisted++
+    if (p.email)                                   s.enriched++
+    if (p.shortlist_status === "Enviado")          s.enviados++
+    if (p.shortlist_status === "Reunión Agendada") s.reuniones++
   }
 
-  // Aggregate by week_label + rep_name
+  // Merge: one row per (week_label, rep_name)
   const map = new Map<string, WeekScorecardRow>()
   for (const c of camps ?? []) {
     const key = `${c.week_label}||${c.rep_name}`
