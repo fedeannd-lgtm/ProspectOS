@@ -767,49 +767,64 @@ function pct(num: number, den: number): string {
   return `${((num / den) * 100).toFixed(1)}%`
 }
 
+type NormalizedWeek = {
+  isoKey: string   // "2026-W25" — used for sort + dedup
+  label: string    // "22 Jun" — used for display
+  scraped: number
+  shortlisted: number
+  enriched: number
+  enviados: number
+  reuniones: number
+}
+
 function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
   const [repFilter, setRepFilter] = useState("Todos")
 
-  // Aggregate rows per week (optionally filtered by rep)
+  // Normalize week_label → ISO week key, then aggregate
   const weeks = useMemo(() => {
-    const map = new Map<string, WeekScorecardRow>()
+    const map = new Map<string, NormalizedWeek>()
 
     for (const row of data) {
       if (repFilter !== "Todos" && row.rep_name !== repFilter) continue
-      const existing = map.get(row.week_label)
-      if (!existing) {
-        map.set(row.week_label, { ...row, rep_name: repFilter })
-      } else {
-        existing.scraped += row.scraped
-        existing.shortlisted += row.shortlisted
-        existing.enriched += row.enriched
-        existing.enviados += row.enviados
-        existing.reuniones += row.reuniones
+
+      const date = parseCampaignDate(row.week_label)
+      if (!date) continue  // skip rows with unparseable labels
+      const { key, monday } = getISOWeekInfo(date)
+      const label = `${monday.getDate()} ${MONTHS[monday.getMonth()]}`
+
+      if (!map.has(key)) {
+        map.set(key, { isoKey: key, label, scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
       }
+      const entry = map.get(key)!
+      entry.scraped     += row.scraped
+      entry.shortlisted += row.shortlisted
+      entry.enriched    += row.enriched
+      entry.enviados    += row.enviados
+      entry.reuniones   += row.reuniones
     }
 
-    return Array.from(map.values()).sort((a, b) => b.week_label.localeCompare(a.week_label))
+    return Array.from(map.values()).sort((a, b) => b.isoKey.localeCompare(a.isoKey))
   }, [data, repFilter])
 
   // KPI totals
   const totals = useMemo(() => weeks.reduce(
     (acc, w) => ({
-      scraped: acc.scraped + w.scraped,
+      scraped:     acc.scraped     + w.scraped,
       shortlisted: acc.shortlisted + w.shortlisted,
-      enriched: acc.enriched + w.enriched,
-      enviados: acc.enviados + w.enviados,
-      reuniones: acc.reuniones + w.reuniones,
+      enriched:    acc.enriched    + w.enriched,
+      enviados:    acc.enviados    + w.enviados,
+      reuniones:   acc.reuniones   + w.reuniones,
     }),
     { scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 }
   ), [weeks])
 
-  // Chart data — oldest first for left-to-right progression
+  // Chart — oldest first (left → right)
   const chartData = useMemo(() =>
     [...weeks].reverse().map((w) => ({
-      name: w.week_label,
-      Scraped: w.scraped,
+      name: w.label,
+      Scraped:   w.scraped,
       Shortlist: w.shortlisted,
-      Enviados: w.enviados,
+      Enviados:  w.enviados,
       Reuniones: w.reuniones,
     })),
     [weeks]
@@ -839,11 +854,11 @@ function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
       {/* KPI summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
-          { label: "Scraped", value: totals.scraped },
-          { label: "Shortlist", value: totals.shortlisted },
+          { label: "Scraped",      value: totals.scraped },
+          { label: "Shortlist",    value: totals.shortlisted },
           { label: "Enriquecidos", value: totals.enriched },
-          { label: "Enviados", value: totals.enviados },
-          { label: "Reuniones", value: totals.reuniones },
+          { label: "Enviados",     value: totals.enviados },
+          { label: "Reuniones",    value: totals.reuniones },
         ].map((k) => (
           <Card key={k.label}>
             <CardContent className="px-4 py-3">
@@ -854,7 +869,7 @@ function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
         ))}
       </div>
 
-      {/* Line chart */}
+      {/* Bar chart */}
       {hasData && (
         <Card>
           <CardHeader className="pb-2">
@@ -868,9 +883,9 @@ function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Scraped" fill="#94a3b8" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Scraped"   fill="#94a3b8" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="Shortlist" fill="#60a5fa" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Enviados" fill="#a78bfa" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Enviados"  fill="#a78bfa" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="Reuniones" fill="#34d399" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -897,8 +912,8 @@ function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
                 </TableHeader>
                 <TableBody>
                   {weeks.map((w) => (
-                    <TableRow key={w.week_label}>
-                      <TableCell className="font-medium">{w.week_label}</TableCell>
+                    <TableRow key={w.isoKey}>
+                      <TableCell className="font-medium">{w.label}</TableCell>
                       <TableCell className="text-right tabular-nums">{w.scraped.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums">{w.shortlisted.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums">{w.enriched.toLocaleString("es")}</TableCell>
