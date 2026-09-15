@@ -208,3 +208,62 @@ export async function upsertRepCookie(repName: string, cookie: string) {
   if (error) throw new Error(error.message)
   revalidatePath("/settings")
 }
+
+// ── HubSpot sync ─────────────────────────────────────────────────────────────
+
+/**
+ * Stages that indicate a qualified meeting was scheduled.
+ * Everything from "Sales Qualified Lead" onward, excluding losses.
+ */
+const QUALIFYING_STAGE_LABELS = new Set([
+  "Sales Qualified Lead",
+  "Interested",
+  "Sales Qualified Opportunity",
+  "Advanced Opportunity",
+  "Integration in progress",
+  "Trial in progress",
+  "Won",
+  "On Hold",
+])
+
+export async function syncHubspotDeals(): Promise<{ updated: number; error?: string }> {
+  try {
+    const { getDealPipelineStages, getAllDeals, getContactEmails } = await import("@/lib/hubspot")
+
+    // Resolve stage label → internal ID
+    const stages = await getDealPipelineStages()
+    const qualifyingIds = new Set(
+      stages.filter((s) => QUALIFYING_STAGE_LABELS.has(s.label)).map((s) => s.id)
+    )
+
+    // Pull all deals; keep only qualifying ones
+    const allDeals = await getAllDeals()
+    const qualifying = allDeals.filter(
+      (d) => d.dealstage && qualifyingIds.has(d.dealstage)
+    )
+
+    // Collect unique contact IDs
+    const contactIds = [...new Set(qualifying.flatMap((d) => d.associatedContacts))]
+    if (contactIds.length === 0) return { updated: 0 }
+
+    // Batch-fetch emails from HubSpot
+    const emailMap = await getContactEmails(contactIds)
+    const emails = [...emailMap.values()]
+    if (emails.length === 0) return { updated: 0 }
+
+    // Update matching shortlisted prospects
+    const { error, count } = await supabaseAdmin
+      .from("prospects")
+      .update({ shortlist_status: "Reunión Agendada" })
+      .in("email", emails)
+      .eq("shortlisted", true)
+      .neq("shortlist_status", "Reunión Agendada")
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath("/shortlist")
+    return { updated: count ?? 0 }
+  } catch (e) {
+    return { updated: 0, error: e instanceof Error ? e.message : "Error desconocido" }
+  }
+}

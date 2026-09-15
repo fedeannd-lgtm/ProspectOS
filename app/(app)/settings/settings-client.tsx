@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
-import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, type SavedUrl, type ClientCompany } from "./actions"
+import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, type SavedUrl, type ClientCompany } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
@@ -1058,6 +1058,56 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
       <LinkedinSequenceCard initialConfig={inboxConfig.linkedin_sequence_config ?? null} />
       <EmailSequenceCard initialConfig={inboxConfig.email_sequence_config ?? null} />
       <InboxSettingsCard initialConfig={inboxConfig} />
+      <HubspotSyncCard />
     </div>
+  )
+}
+
+// ── HubSpot sync card ─────────────────────────────────────────────────────────
+
+function HubspotSyncCard() {
+  const [isPending, startTransition] = useTransition()
+  const [result, setResult] = useState<{ updated: number; error?: string } | null>(null)
+
+  function handleSync() {
+    setResult(null)
+    startTransition(async () => {
+      const res = await syncHubspotDeals()
+      setResult(res)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Activity className="size-4" /> HubSpot — Sincronizar reuniones
+        </CardTitle>
+        <CardDescription>
+          Marca como <strong>Reunión Agendada</strong> los prospectos del shortlist cuyo deal en HubSpot
+          está en etapa &ldquo;Sales Qualified Lead&rdquo; o superior.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center gap-4">
+        <Button onClick={handleSync} disabled={isPending} size="sm">
+          {isPending ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
+          {isPending ? "Sincronizando…" : "Sincronizar ahora"}
+        </Button>
+        {result && !result.error && (
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+            <CheckCircle2 className="size-4 text-green-500 shrink-0" />
+            {result.updated > 0
+              ? `${result.updated} prospecto${result.updated !== 1 ? "s" : ""} actualizado${result.updated !== 1 ? "s" : ""}`
+              : "Sin cambios (todos ya estaban al día)"}
+          </p>
+        )}
+        {result?.error && (
+          <p className="text-sm text-destructive flex items-center gap-1.5">
+            <XCircle className="size-4 shrink-0" />
+            {result.error}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
