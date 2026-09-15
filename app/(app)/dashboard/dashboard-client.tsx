@@ -780,6 +780,13 @@ type NormalizedWeek = {
 
 function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meetings?: MeetingProspect[] }) {
   const [repFilter, setRepFilter] = useState("Todos")
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null)
+  const meetingsRef = useRef<HTMLDivElement>(null)
+
+  function handleWeekClick(isoKey: string) {
+    setSelectedWeek(prev => prev === isoKey ? null : isoKey)
+    setTimeout(() => meetingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50)
+  }
 
   // Aggregate by iso_week.
   // scraped: sum for the selected rep (or all reps)
@@ -943,7 +950,10 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
                       <TableCell className="text-right tabular-nums">{w.shortlisted.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums">{w.enriched.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums">{w.enviados.toLocaleString("es")}</TableCell>
-                      <TableCell className="text-right tabular-nums">{w.reuniones_total.toLocaleString("es")}</TableCell>
+                      <TableCell
+                        className={`text-right tabular-nums ${w.reuniones_total > 0 ? "cursor-pointer hover:text-blue-400 underline underline-offset-2" : ""} ${selectedWeek === w.isoKey ? "text-blue-400 font-semibold" : ""}`}
+                        onClick={() => w.reuniones_total > 0 && handleWeekClick(w.isoKey)}
+                      >{w.reuniones_total.toLocaleString("es")}</TableCell>
                       <TableCell className="text-right tabular-nums font-semibold">{w.reuniones.toLocaleString("es")}</TableCell>
                       <TableCell className={`text-right tabular-nums text-xs ${w.reuniones > 0 ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>
                         {pct(w.reuniones, w.enviados)}
@@ -961,78 +971,106 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
         </p>
       )}
 
-      {/* Meetings detail — grouped by company */}
+      {/* Meetings detail — grouped by week → company */}
       {meetings.length > 0 && (() => {
-        // Deduplicate by email — keep the first (most recent, sorted by created_at desc).
-        // Prospects without email always pass through.
+        // 1. Dedup by email
         const seenEmails = new Set<string>()
         const dedupedMeetings = meetings.filter((m) => {
           if (!m.email) return true
-          const key = m.email.toLowerCase()
-          if (seenEmails.has(key)) return false
-          seenEmails.add(key)
-          return true
+          const k = m.email.toLowerCase()
+          if (seenEmails.has(k)) return false
+          seenEmails.add(k); return true
         })
 
-        // Build domain → company name from prospects that have both, so prospects
-        // with no company_name but a matching email domain get grouped correctly.
-        // Group key: email domain (canonical) — falls back to company_name or id
-        function groupKey(m: MeetingProspect): string {
+        // 2. Helpers
+        function mIsoKey(m: MeetingProspect): string {
+          const { key } = getISOWeekInfo(new Date(m.created_at))
+          return key
+        }
+        function mWeekLabel(m: MeetingProspect): string {
+          const { monday } = getISOWeekInfo(new Date(m.created_at))
+          return `${monday.getDate()} ${MONTHS[monday.getMonth()]}`
+        }
+        function domainKey(m: MeetingProspect): string {
           return m.email?.split("@")[1]?.toLowerCase() ?? m.company_name?.toLowerCase() ?? m.id
         }
-
-        const byDomain = new Map<string, MeetingProspect[]>()
-        for (const m of dedupedMeetings) {
-          const key = groupKey(m)
-          if (!byDomain.has(key)) byDomain.set(key, [])
-          byDomain.get(key)!.push(m)
-        }
-
-        // Display label: shortest company_name in the group (avoids "Grupo X" vs "X"),
-        // fallback to capitalized domain word
-        function displayLabel(prospects: MeetingProspect[], key: string): string {
+        function coLabel(prospects: MeetingProspect[], dk: string): string {
           const names = prospects.map(p => p.company_name).filter(Boolean) as string[]
           if (names.length > 0) return names.reduce((a, b) => a.length <= b.length ? a : b)
-          const word = key.split(".")[0]
-          return word.charAt(0).toUpperCase() + word.slice(1)
+          return (dk.split(".")[0].charAt(0).toUpperCase() + dk.split(".")[0].slice(1))
         }
 
-        const byCompany = new Map<string, { label: string; prospects: MeetingProspect[] }>()
-        for (const [key, prospects] of byDomain) {
-          byCompany.set(key, { label: displayLabel(prospects, key), prospects })
+        // 3. Filter by selected week
+        const filtered = selectedWeek
+          ? dedupedMeetings.filter(m => mIsoKey(m) === selectedWeek)
+          : dedupedMeetings
+
+        // 4. Group: week → domain → prospects
+        type WeekGroup = { label: string; companies: Map<string, { label: string; prospects: MeetingProspect[] }> }
+        const byWeek = new Map<string, WeekGroup>()
+        for (const m of filtered) {
+          const wk = mIsoKey(m)
+          if (!byWeek.has(wk)) byWeek.set(wk, { label: mWeekLabel(m), companies: new Map() })
+          const wg = byWeek.get(wk)!
+          const dk = domainKey(m)
+          if (!wg.companies.has(dk)) wg.companies.set(dk, { label: "", prospects: [] })
+          wg.companies.get(dk)!.prospects.push(m)
         }
+        // Resolve company labels after grouping
+        for (const wg of byWeek.values())
+          for (const [dk, co] of wg.companies) co.label = coLabel(co.prospects, dk)
+
+        const totalCompanies = new Set(dedupedMeetings.map(domainKey)).size
+
         return (
-          <Card>
+          <div ref={meetingsRef}><Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                Reuniones agendadas ({byCompany.size})
+                Reuniones agendadas ({totalCompanies})
+                {selectedWeek && (
+                  <button
+                    onClick={() => setSelectedWeek(null)}
+                    className="ml-auto text-xs text-blue-400 hover:underline font-normal"
+                  >
+                    Semana {weeks.find(w => w.isoKey === selectedWeek)?.label} · Ver todas
+                  </button>
+                )}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0 divide-y">
-              {Array.from(byCompany.entries()).map(([key, { label, prospects: contacts }]) => (
-                <div key={key} className="px-4 py-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{label}</p>
-                  <div className="space-y-2">
-                    {contacts.map((m) => (
-                      <div key={m.id} className="flex items-center gap-4 text-sm">
-                        <span className="font-medium min-w-[180px]">
-                          {m.full_name ?? (`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "—")}
-                        </span>
-                        <span className="text-muted-foreground min-w-[180px]">{m.job_title ?? "—"}</span>
-                        <span className="text-muted-foreground">{m.email ?? "—"}</span>
-                        {m.linkedin_url && (
-                          <a href={m.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs ml-auto shrink-0">
-                            Ver perfil
-                          </a>
-                        )}
+            <CardContent className="p-0">
+              {Array.from(byWeek.entries()).map(([wk, { label: wLabel, companies }]) => (
+                <div key={wk}>
+                  <div className="px-4 py-2 bg-muted/30 border-y text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Semana {wLabel}
+                  </div>
+                  <div className="divide-y">
+                    {Array.from(companies.entries()).map(([dk, { label: cLabel, prospects: contacts }]) => (
+                      <div key={dk} className="px-4 py-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{cLabel}</p>
+                        <div className="space-y-2">
+                          {contacts.map((m) => (
+                            <div key={m.id} className="flex items-center gap-4 text-sm">
+                              <span className="font-medium min-w-[180px]">
+                                {m.full_name ?? (`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "—")}
+                              </span>
+                              <span className="text-muted-foreground min-w-[180px]">{m.job_title ?? "—"}</span>
+                              <span className="text-muted-foreground">{m.email ?? "—"}</span>
+                              {m.linkedin_url && (
+                                <a href={m.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs ml-auto shrink-0">
+                                  Ver perfil
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
             </CardContent>
-          </Card>
+          </Card></div>
         )
       })()}
     </div>
