@@ -959,7 +959,7 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                Reuniones agendadas ({meetings.length})
+                Reuniones agendadas ({byCompany.size})
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0 divide-y">
