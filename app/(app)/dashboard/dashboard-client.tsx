@@ -947,10 +947,29 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
 
       {/* Meetings detail — grouped by company */}
       {meetings.length > 0 && (() => {
-        // Group by company_name
+        // Build domain → company name from prospects that have both, so prospects
+        // with no company_name but a matching email domain get grouped correctly.
+        const domainToCompany = new Map<string, string>()
+        for (const m of meetings) {
+          if (m.company_name && m.email) {
+            const domain = m.email.split("@")[1]?.toLowerCase()
+            if (domain && !domainToCompany.has(domain)) domainToCompany.set(domain, m.company_name)
+          }
+        }
+        // Derive company label for a prospect: company_name → same-domain company → domain word → "Sin empresa"
+        function companyLabel(m: MeetingProspect): string {
+          if (m.company_name) return m.company_name
+          const domain = m.email?.split("@")[1]?.toLowerCase()
+          if (!domain) return "Sin empresa"
+          if (domainToCompany.has(domain)) return domainToCompany.get(domain)!
+          // Capitalize the first part of the domain (e.g. "solfran.com" → "Solfran")
+          const word = domain.split(".")[0]
+          return word.charAt(0).toUpperCase() + word.slice(1)
+        }
+
         const byCompany = new Map<string, MeetingProspect[]>()
         for (const m of meetings) {
-          const co = m.company_name ?? "Sin empresa"
+          const co = companyLabel(m)
           if (!byCompany.has(co)) byCompany.set(co, [])
           byCompany.get(co)!.push(m)
         }
