@@ -168,24 +168,22 @@ export async function getScorecardData(): Promise<WeekScorecardRow[]> {
     campBuckets.get(key)!.scraped += c.prospects_found ?? 0
   }
 
-  // Query 2: ALL prospects grouped by created_at ISO week → funnel metrics
-  // prospect.campaign_id and account.campaign_id are frequently null, so we
-  // cannot rely on FK chains. Using created_at is the only reliable approach.
-  const { data: prospects, error: pErr } = await supabase
-    .from("prospects")
-    .select("created_at, shortlisted, email, shortlist_status")
+  // Query 2: Aggregate prospect funnel metrics by ISO week via RPC.
+  // Direct .select() is capped at PostgREST's 1000-row default; the RPC
+  // runs fully server-side and returns pre-aggregated counts.
+  const { data: metricsRows, error: pErr } = await supabaseAdmin
+    .rpc("get_prospect_scorecard")
   if (pErr) throw new Error(pErr.message)
 
   type WMetrics = { shortlisted: number; enriched: number; enviados: number; reuniones: number }
   const metricsMap = new Map<string, WMetrics>()
-  for (const p of prospects ?? []) {
-    const iso = _isoWeekKey(new Date(p.created_at))
-    if (!metricsMap.has(iso)) metricsMap.set(iso, { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0 })
-    const m = metricsMap.get(iso)!
-    if (p.shortlisted)                             m.shortlisted++
-    if (p.email)                                   m.enriched++
-    if (p.shortlist_status === "Enviado")          m.enviados++
-    if (p.shortlist_status === "Reunión Agendada") m.reuniones++
+  for (const r of (metricsRows ?? []) as { iso_week: string; shortlisted: number; enriched: number; enviados: number; reuniones: number }[]) {
+    metricsMap.set(r.iso_week, {
+      shortlisted: Number(r.shortlisted),
+      enriched:    Number(r.enriched),
+      enviados:    Number(r.enviados),
+      reuniones:   Number(r.reuniones),
+    })
   }
 
   // Merge: one row per (iso_week, rep_name)
