@@ -16,7 +16,7 @@ RETURNS TABLE(
     COUNT(*) FILTER (WHERE shortlisted = true)                                              AS shortlisted,
     COUNT(*) FILTER (WHERE email IS NOT NULL AND email <> '')                               AS enriched,
     COUNT(*) FILTER (WHERE sent_at IS NOT NULL OR shortlist_status = 'Enviado')            AS enviados,
-    COUNT(DISTINCT company_name) FILTER (WHERE shortlist_status = 'Reunión Agendada')       AS reuniones
+    COUNT(DISTINCT COALESCE(split_part(email, '@', 2), company_name)) FILTER (WHERE shortlist_status = 'Reunión Agendada') AS reuniones
   FROM prospects
   GROUP BY 1
   ORDER BY 1 DESC;

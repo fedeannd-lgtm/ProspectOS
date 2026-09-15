@@ -868,7 +868,17 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
           { label: "Shortlist",    value: totals.shortlisted },
           { label: "Con Email",     value: totals.enriched },
           { label: "Enviados",     value: totals.enviados },
-          { label: "Reuniones",    value: new Set(meetings.map(m => m.company_name ?? "")).size },
+          { label: "Reuniones",    value: (() => {
+            // Same dedup + domain grouping as the detail section
+            const seen = new Set<string>()
+            const deduped = meetings.filter((m) => {
+              if (!m.email) return true
+              const k = m.email.toLowerCase()
+              if (seen.has(k)) return false
+              seen.add(k); return true
+            })
+            return new Set(deduped.map(m => m.email?.split("@")[1]?.toLowerCase() ?? m.company_name?.toLowerCase() ?? m.id)).size
+          })() },
         ].map((k) => (
           <Card key={k.label}>
             <CardContent className="px-4 py-3">
