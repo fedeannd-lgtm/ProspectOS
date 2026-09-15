@@ -947,10 +947,21 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
 
       {/* Meetings detail — grouped by company */}
       {meetings.length > 0 && (() => {
+        // Deduplicate by email — keep the first (most recent, sorted by created_at desc).
+        // Prospects without email always pass through.
+        const seenEmails = new Set<string>()
+        const dedupedMeetings = meetings.filter((m) => {
+          if (!m.email) return true
+          const key = m.email.toLowerCase()
+          if (seenEmails.has(key)) return false
+          seenEmails.add(key)
+          return true
+        })
+
         // Build domain → company name from prospects that have both, so prospects
         // with no company_name but a matching email domain get grouped correctly.
         const domainToCompany = new Map<string, string>()
-        for (const m of meetings) {
+        for (const m of dedupedMeetings) {
           if (m.company_name && m.email) {
             const domain = m.email.split("@")[1]?.toLowerCase()
             if (domain && !domainToCompany.has(domain)) domainToCompany.set(domain, m.company_name)
@@ -968,7 +979,7 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
         }
 
         const byCompany = new Map<string, MeetingProspect[]>()
-        for (const m of meetings) {
+        for (const m of dedupedMeetings) {
           const co = companyLabel(m)
           if (!byCompany.has(co)) byCompany.set(co, [])
           byCompany.get(co)!.push(m)
