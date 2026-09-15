@@ -116,6 +116,30 @@ export async function getCampaignIndustries(): Promise<string[]> {
   return [...new Set(data.map((r) => r.industry as string).filter(Boolean))].sort()
 }
 
+// ── Meeting prospects ─────────────────────────────────────────────────────────
+
+export type MeetingProspect = {
+  id: string
+  full_name: string | null
+  first_name: string | null
+  last_name: string | null
+  company_name: string | null
+  job_title: string | null
+  email: string | null
+  linkedin_url: string | null
+  created_at: string
+}
+
+export async function getMeetingProspects(): Promise<MeetingProspect[]> {
+  const { data, error } = await supabaseAdmin
+    .from("prospects")
+    .select("id, full_name, first_name, last_name, company_name, job_title, email, linkedin_url, created_at")
+    .eq("shortlist_status", "Reunión Agendada")
+    .order("created_at", { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as MeetingProspect[]
+}
+
 // ── Scorecard ─────────────────────────────────────────────────────────────────
 
 export type WeekScorecardRow = {

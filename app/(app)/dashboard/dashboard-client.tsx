@@ -37,7 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createCampaign, updateCampaign, deleteCampaign, getWeekStats, createAutoCampaign, getSavedUrlsForWizard, getDistributionTemplatesForWizard, type IcpStat, type IcpCategoryStat, type AutoCampaignConfig, type WeekScorecardRow } from "./actions"
+import { createCampaign, updateCampaign, deleteCampaign, getWeekStats, createAutoCampaign, getSavedUrlsForWizard, getDistributionTemplatesForWizard, type IcpStat, type IcpCategoryStat, type AutoCampaignConfig, type WeekScorecardRow, type MeetingProspect } from "./actions"
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -777,7 +777,7 @@ type NormalizedWeek = {
   reuniones: number
 }
 
-function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
+function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meetings?: MeetingProspect[] }) {
   const [repFilter, setRepFilter] = useState("Todos")
 
   // Aggregate by iso_week.
@@ -944,11 +944,53 @@ function ScorecardView({ data }: { data: WeekScorecardRow[] }) {
           Sin datos todavía — empezá a cargar campañas y la conversión aparece acá.
         </p>
       )}
+
+      {/* Meetings detail */}
+      {meetings.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+              Reuniones agendadas ({meetings.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Prospecto</TableHead>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Cargo</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>LinkedIn</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {meetings.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-medium">
+                      {m.full_name ?? (`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "—")}
+                    </TableCell>
+                    <TableCell>{m.company_name ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{m.job_title ?? "—"}</TableCell>
+                    <TableCell className="text-sm">{m.email ?? "—"}</TableCell>
+                    <TableCell>
+                      {m.linkedin_url
+                        ? <a href={m.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs">Ver perfil</a>
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
 
-export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [], autoActionMap = {}, scorecardData = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }>; scorecardData?: WeekScorecardRow[] }) {
+export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [], autoActionMap = {}, scorecardData = [], meetingProspects = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }>; scorecardData?: WeekScorecardRow[]; meetingProspects?: MeetingProspect[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
   const [view, setView] = useState<"week" | "list" | "charts" | "scorecard">("week")
   const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))
@@ -1228,7 +1270,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
 
       {view === "week" && <WeeklyView campaigns={weekCampaigns} autoActionMap={autoActionMap} />}
       {view === "charts" && <ChartsView campaigns={campaigns} icpStats={icpStats} icpCategoryStats={icpCategoryStats} />}
-      {view === "scorecard" && <ScorecardView data={scorecardData} />}
+      {view === "scorecard" && <ScorecardView data={scorecardData} meetings={meetingProspects} />}
 
       {view === "list" && <Tabs defaultValue="Todos">
         <TabsList>
