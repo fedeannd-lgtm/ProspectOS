@@ -778,8 +778,20 @@ type NormalizedWeek = {
   reuniones_total: number  // all active deals
 }
 
+type MetricKey = "scraped" | "shortlisted" | "enriched" | "enviados" | "reuniones_total" | "reuniones"
+
+const METRIC_META: Record<MetricKey, { label: string; chartKey: string; color: string }> = {
+  scraped:         { label: "Scraped",          chartKey: "Scraped",         color: "#94a3b8" },
+  shortlisted:     { label: "Shortlist",         chartKey: "Shortlist",       color: "#60a5fa" },
+  enriched:        { label: "Con Email",         chartKey: "Con Email",       color: "#f59e0b" },
+  enviados:        { label: "Enviados",          chartKey: "Enviados",        color: "#a78bfa" },
+  reuniones_total: { label: "Total Reuniones",   chartKey: "Total Reun.",     color: "#10b981" },
+  reuniones:       { label: "Reuniones SQL",     chartKey: "SQL",             color: "#34d399" },
+}
+
 function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meetings?: MeetingProspect[] }) {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null)
+  const [metricFilter, setMetricFilter] = useState<MetricKey | null>(null)
   const meetingsRef = useRef<HTMLDivElement>(null)
 
   function handleWeekClick(isoKey: string) {
@@ -834,56 +846,85 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
     { scraped: 0, shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0, reuniones_total: 0 }
   ), [weeks])
 
-  // Chart — oldest first (left → right)
+  // Chart — oldest first (left → right), all metrics included for filtering
   const chartData = useMemo(() =>
     [...weeks].reverse().map((w) => ({
-      name: w.label,
-      Scraped:   w.scraped,
-      Shortlist: w.shortlisted,
-      Enviados:  w.enviados,
-      Reuniones: w.reuniones,
+      name:          w.label,
+      Scraped:       w.scraped,
+      Shortlist:     w.shortlisted,
+      "Con Email":   w.enriched,
+      Enviados:      w.enviados,
+      "Total Reun.": w.reuniones_total,
+      SQL:           w.reuniones,
     })),
     [weeks]
   )
+
+  // Which bar series to show in chart
+  const activeMetrics: MetricKey[] = metricFilter
+    ? [metricFilter]
+    : ["scraped", "enviados", "reuniones"]
 
   const hasData = weeks.length > 0
 
   return (
     <div className="space-y-4">
-      {/* KPI summary cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {[
-          { label: "Scraped",      value: totals.scraped },
-          { label: "Shortlist",    value: totals.shortlisted },
-          { label: "Con Email",     value: totals.enriched },
-          { label: "Enviados",     value: totals.enviados },
-          { label: "Total Reuniones", value: totals.reuniones_total },
-          { label: "Reuniones SQL",   value: (() => {
-            // Dedup by email + group by domain — same as detail section
-            const seen = new Set<string>()
-            const deduped = meetings.filter((m) => {
-              if (!m.email) return true
-              const k = m.email.toLowerCase()
-              if (seen.has(k)) return false
-              seen.add(k); return true
-            })
-            return new Set(deduped.map(m => m.email?.split("@")[1]?.toLowerCase() ?? m.company_name?.toLowerCase() ?? m.id)).size
-          })() },
-        ].map((k) => (
-          <Card key={k.label}>
-            <CardContent className="px-4 py-3">
-              <p className="text-xs text-muted-foreground">{k.label}</p>
-              <p className="text-2xl font-bold tabular-nums">{k.value.toLocaleString("es")}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* KPI summary cards — click to filter chart */}
+      {(() => {
+        const seen = new Set<string>()
+        const deduped = meetings.filter((m) => {
+          if (!m.email) return true
+          const k = m.email.toLowerCase()
+          if (seen.has(k)) return false
+          seen.add(k); return true
+        })
+        const sqlCount = new Set(deduped.map(m => m.email?.split("@")[1]?.toLowerCase() ?? m.company_name?.toLowerCase() ?? m.id)).size
+        const kpis: { key: MetricKey; value: number }[] = [
+          { key: "scraped",         value: totals.scraped },
+          { key: "shortlisted",     value: totals.shortlisted },
+          { key: "enriched",        value: totals.enriched },
+          { key: "enviados",        value: totals.enviados },
+          { key: "reuniones_total", value: totals.reuniones_total },
+          { key: "reuniones",       value: sqlCount },
+        ]
+        return (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {kpis.map(({ key, value }) => {
+              const meta = METRIC_META[key]
+              const active = metricFilter === key
+              return (
+                <Card
+                  key={key}
+                  className={`cursor-pointer transition-all ${active ? "ring-2 ring-offset-1" : "hover:bg-muted/30"}`}
+                  style={active ? { outline: `2px solid ${meta.color}`, outlineOffset: "2px" } : {}}
+                  onClick={() => setMetricFilter(prev => prev === key ? null : key)}
+                >
+                  <CardContent className="px-4 py-3">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      {active && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: meta.color }} />}
+                      {meta.label}
+                    </p>
+                    <p className="text-2xl font-bold tabular-nums">{value.toLocaleString("es")}</p>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* Bar chart */}
       {hasData && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Evolución semanal</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Evolución semanal
+              {metricFilter && (
+                <span className="ml-2 text-xs font-normal" style={{ color: METRIC_META[metricFilter].color }}>
+                  — {METRIC_META[metricFilter].label}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
@@ -892,11 +933,10 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Scraped"   fill="#94a3b8" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Shortlist" fill="#60a5fa" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Enviados"  fill="#a78bfa" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Reuniones" fill="#34d399" radius={[2, 2, 0, 0]} />
+                {activeMetrics.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
+                {activeMetrics.map(k => (
+                  <Bar key={k} dataKey={METRIC_META[k].chartKey} name={METRIC_META[k].label} fill={METRIC_META[k].color} radius={[2, 2, 0, 0]} />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
