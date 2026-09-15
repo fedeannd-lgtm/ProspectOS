@@ -866,7 +866,7 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
         {[
           { label: "Scraped",      value: totals.scraped },
           { label: "Shortlist",    value: totals.shortlisted },
-          { label: "Enriquecidos", value: totals.enriched },
+          { label: "Con Email",     value: totals.enriched },
           { label: "Enviados",     value: totals.enviados },
           { label: "Reuniones",    value: totals.reuniones },
         ].map((k) => (
@@ -914,7 +914,7 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
                     <TableHead>Semana</TableHead>
                     <TableHead className="text-right">Scraped</TableHead>
                     <TableHead className="text-right">Shortlist</TableHead>
-                    <TableHead className="text-right">Enriquecidos</TableHead>
+                    <TableHead className="text-right">Con Email</TableHead>
                     <TableHead className="text-right">Enviados</TableHead>
                     <TableHead className="text-right">Reuniones</TableHead>
                     <TableHead className="text-right">Conv%</TableHead>
