@@ -215,19 +215,20 @@ export async function upsertRepCookie(repName: string, cookie: string) {
  * Stages that indicate a SQL-qualified meeting (Sales Qualified Lead or above).
  * Prospects from these deals get shortlist_status = 'Reunión Agendada'.
  */
+/** SQL-qualified meetings → shortlist_status = 'Reunión Agendada' */
 const QUALIFYING_STAGE_LABELS = new Set([
-  "Sales Qualified Lead",
   "Interested",
+  "Sales Qualified Lead",
   "Sales Qualified Opportunity",
   "Advanced Opportunity",
   "Integration in progress",
   "Trial in progress",
   "Won",
-  "On Hold",
 ])
 
 /**
- * Stages that mean the deal is dead — exclude from "total meetings" count.
+ * Stages that mean the deal is dead — excluded from both SQL and Total counts.
+ * "On Hold" and "Oppty Lost" are intentionally NOT here so they count in Total.
  */
 const LOST_STAGE_LABELS = new Set([
   "Closed Lost",
