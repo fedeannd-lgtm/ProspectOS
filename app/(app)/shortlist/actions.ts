@@ -449,3 +449,46 @@ export async function addManualProspect(input: ManualProspectInput): Promise<{ i
   revalidatePath("/shortlist")
   return { id: data.id }
 }
+
+// ── Message templates ─────────────────────────────────────────────────────────
+
+export type MessageTemplate = {
+  id: string
+  name: string
+  channel: "linkedin" | "email" | "whatsapp"
+  content: string
+  industry: string | null
+  created_at: string
+}
+
+export async function getMessageTemplates(channel: "linkedin" | "email" | "whatsapp"): Promise<MessageTemplate[]> {
+  const { data } = await supabaseAdmin
+    .from("message_templates")
+    .select("*")
+    .eq("channel", channel)
+    .order("name", { ascending: true })
+  return (data ?? []) as MessageTemplate[]
+}
+
+export async function saveMessageTemplate(
+  name: string,
+  channel: "linkedin" | "email" | "whatsapp",
+  content: string,
+  industry?: string | null
+): Promise<{ id: string } | { error: string }> {
+  const { data, error } = await supabaseAdmin
+    .from("message_templates")
+    .insert({ name, channel, content, industry: industry ?? null })
+    .select("id")
+    .single()
+  if (error) return { error: error.message }
+  return { id: data.id }
+}
+
+export async function deleteMessageTemplate(id: string): Promise<void> {
+  await supabaseAdmin.from("message_templates").delete().eq("id", id)
+}
+
+export async function updateMessageTemplate(id: string, content: string): Promise<void> {
+  await supabaseAdmin.from("message_templates").update({ content }).eq("id", id)
+}

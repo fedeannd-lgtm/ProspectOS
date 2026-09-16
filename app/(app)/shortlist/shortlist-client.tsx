@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type, ChevronRight, Calendar, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import type { ShortlistedProspect, ManualProspectInput } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask } from "./actions"
+import type { ShortlistedProspect, ManualProspectInput, MessageTemplate } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask, getMessageTemplates, saveMessageTemplate, deleteMessageTemplate } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 import type { InboxConfig } from "@/app/(app)/inbox/actions"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
@@ -131,6 +131,179 @@ function EmailStepCard({ step, onChange }: { step: EmailStep; onChange: (updated
           rows={Math.max(4, step.body.split("\n").length + 1)}
           className="w-full text-sm leading-relaxed bg-transparent border-0 border-b border-transparent hover:border-input focus:border-input focus:outline-none resize-none transition-colors py-0.5"
         />
+      </div>
+    </div>
+  )
+}
+
+// ── template picker ────────────────────────────────────────────────────────────
+
+function TemplatePicker({
+  channel,
+  currentContent,
+  onSelect,
+}: {
+  channel: "linkedin" | "email" | "whatsapp"
+  currentContent: string
+  onSelect: (content: string) => void
+}) {
+  const [templates, setTemplates] = useState<MessageTemplate[]>([])
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [newName, setNewName] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    getMessageTemplates(channel).then(setTemplates)
+  }, [channel])
+
+  async function handleSave() {
+    if (!newName.trim() || !currentContent.trim()) return
+    setSaving(true)
+    const result = await saveMessageTemplate(newName.trim(), channel, currentContent)
+    if ("id" in result) {
+      setTemplates((prev) => [
+        ...prev,
+        { id: result.id, name: newName.trim(), channel, content: currentContent, industry: null, created_at: new Date().toISOString() },
+      ])
+      setNewName("")
+      setSaveOpen(false)
+    }
+    setSaving(false)
+  }
+
+  async function handleDelete(id: string) {
+    await deleteMessageTemplate(id)
+    setTemplates((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Templates</span>
+        <button
+          onClick={() => setSaveOpen((v) => !v)}
+          className="text-[10px] text-blue-500 hover:underline"
+        >
+          + Guardar actual
+        </button>
+      </div>
+
+      {saveOpen && (
+        <div className="flex gap-1.5">
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Nombre del template..."
+            className="h-7 text-xs"
+            onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          />
+          <Button size="sm" className="h-7 text-xs px-2" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="size-3 animate-spin" /> : "Guardar"}
+          </Button>
+        </div>
+      )}
+
+      {templates.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {templates.map((t) => (
+            <div key={t.id} className="group flex items-center gap-0.5 border rounded-full px-2.5 py-0.5">
+              <button
+                onClick={() => onSelect(t.content)}
+                className="text-xs hover:text-foreground text-muted-foreground transition-colors"
+              >
+                {t.name}
+              </button>
+              <button
+                onClick={() => handleDelete(t.id)}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all ml-1 text-[10px]"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {templates.length === 0 && (
+        <p className="text-[10px] text-muted-foreground">Sin templates — guardá el prompt actual para reutilizarlo.</p>
+      )}
+    </div>
+  )
+}
+
+// ── whatsapp panel ─────────────────────────────────────────────────────────────
+
+const WA_VARS = ["{{nombre}}", "{{empresa}}", "{{cargo}}"] as const
+
+function WhatsAppPanel({ prospect }: { prospect: ShortlistedProspect }) {
+  const [message, setMessage] = useState("")
+
+  function substitute(text: string) {
+    const firstName = prospect.first_name || prospect.full_name?.split(" ")[0] || ""
+    return text
+      .replace(/\{\{nombre\}\}/g, firstName)
+      .replace(/\{\{empresa\}\}/g, prospect.company_name ?? "")
+      .replace(/\{\{cargo\}\}/g, prospect.job_title ?? "")
+  }
+
+  const preview = substitute(message)
+  const waHref = prospect.phone
+    ? `https://wa.me/${prospect.phone.replace(/[^\d+]/g, "")}${preview ? `?text=${encodeURIComponent(preview)}` : ""}`
+    : null
+
+  return (
+    <div className="rounded-lg border overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b">
+        <span className="text-sm font-semibold">WhatsApp</span>
+        {waHref && (
+          <a
+            href={waHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-green-600 hover:text-green-500 font-medium transition-colors"
+          >
+            <Phone className="size-3" /> Abrir WhatsApp
+          </a>
+        )}
+        {!waHref && (
+          <span className="text-xs text-muted-foreground">Sin teléfono</span>
+        )}
+      </div>
+
+      <div className="p-4 space-y-3">
+        <TemplatePicker
+          channel="whatsapp"
+          currentContent={message}
+          onSelect={setMessage}
+        />
+
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Variables</span>
+            {WA_VARS.map((v) => (
+              <button
+                key={v}
+                onClick={() => setMessage((prev) => prev + v)}
+                className="text-[10px] px-1.5 py-0.5 border rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={4}
+            placeholder="Escribí el mensaje o elegí un template. Usá {{nombre}}, {{empresa}}, {{cargo}} para personalizar..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+          />
+        </div>
+
+        {message && (
+          <div className="rounded-md bg-green-500/5 border border-green-500/20 px-3 py-2">
+            <p className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wide">Vista previa</p>
+            <p className="text-xs whitespace-pre-wrap">{preview || "—"}</p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -312,13 +485,20 @@ function ChannelBox({
             </div>
 
             {config.prompt_mode === "general" ? (
-              <textarea
-                value={config.general_prompt}
-                onChange={(e) => updateCfg({ general_prompt: e.target.value })}
-                rows={3}
-                placeholder={isLi ? "Instrucción para todos los mensajes de LinkedIn..." : "Instrucción para todos los emails..."}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
-              />
+              <div className="space-y-2">
+                <TemplatePicker
+                  channel={channel}
+                  currentContent={config.general_prompt}
+                  onSelect={(content) => updateCfg({ general_prompt: content })}
+                />
+                <textarea
+                  value={config.general_prompt}
+                  onChange={(e) => updateCfg({ general_prompt: e.target.value })}
+                  rows={3}
+                  placeholder={isLi ? "Instrucción para todos los mensajes de LinkedIn..." : "Instrucción para todos los emails..."}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+                />
+              </div>
             ) : (
               <div className="space-y-2">
                 {Array.from({ length: config.step_count }, (_, i) => {
@@ -1139,6 +1319,9 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
               error={liError}
               hasSequences={!!sequences?.linkedin?.length}
             />
+
+            {/* WhatsApp */}
+            <WhatsAppPanel prospect={selected} />
 
             {/* Generar ambos */}
             <div className="flex items-center gap-3">
