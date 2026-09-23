@@ -62,7 +62,7 @@ export async function deleteSavedUrl(id: string) {
   revalidatePath("/settings")
 }
 
-import { getTenantReps } from "@/lib/reps"
+import { getTenantReps } from "@/lib/reps-server"
 
 export async function getRepConfigs() {
   const tenantId = await getTenantId()
