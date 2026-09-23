@@ -6,7 +6,7 @@ import { REPS as BASE_REPS, INDUSTRIES } from "@/lib/reps"
 const REPS = ["Todos", ...BASE_REPS]
 const REP_OPTIONS = BASE_REPS
 import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp } from "lucide-react"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from "recharts"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -438,6 +438,12 @@ function ChartsView({ campaigns, icpStats, icpCategoryStats }: { campaigns: Camp
     })
     const result = Array.from(map.values()).sort((a, b) => a.order.localeCompare(b.order))
     result.forEach((e) => { e.ratio = e.empresas > 0 ? +(e.prospectos / e.empresas).toFixed(1) : 0 })
+    // 4-week moving average
+    result.forEach((e, i) => {
+      const window = result.slice(Math.max(0, i - 3), i + 1)
+      ;(e as any).avgEmpresas = +(window.reduce((s, w) => s + w.empresas, 0) / window.length).toFixed(1)
+      ;(e as any).avgProspectos = +(window.reduce((s, w) => s + w.prospectos, 0) / window.length).toFixed(0)
+    })
     return result
   }, [campaigns])
 
@@ -555,15 +561,17 @@ function ChartsView({ campaigns, icpStats, icpCategoryStats }: { campaigns: Camp
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={weeklyData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+            <ComposedChart data={weeklyData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip />
+              <Tooltip formatter={(v, name) => [typeof v === 'number' ? v.toLocaleString("es") : v, name]} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="empresas" name="Empresas" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="prospectos" name="Prospectos" fill="#10b981" radius={[3, 3, 0, 0]} />
-            </BarChart>
+              <Bar dataKey="empresas" name="Empresas" fill="#3b82f6" radius={[3, 3, 0, 0]} opacity={0.85} />
+              <Bar dataKey="prospectos" name="Prospectos" fill="#10b981" radius={[3, 3, 0, 0]} opacity={0.85} />
+              <Line dataKey="avgEmpresas" name="Avg empresas (4s)" type="monotone" stroke="#1d4ed8" strokeWidth={2} dot={false} strokeDasharray="4 2" />
+              <Line dataKey="avgProspectos" name="Avg prospectos (4s)" type="monotone" stroke="#059669" strokeWidth={2} dot={false} strokeDasharray="4 2" />
+            </ComposedChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>

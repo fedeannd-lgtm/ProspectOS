@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { CheckCircle2, XCircle, Loader2, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity, ChevronsUpDown, Users, ExternalLink } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity, ChevronsUpDown, Users, ExternalLink, Download } from "lucide-react"
 import type { ProviderStatus } from "./provider-status"
 import type { ProviderUsage } from "./actions"
 import { Button } from "@/components/ui/button"
@@ -604,11 +604,31 @@ function ClientListCard({
             Guardar lista
           </Button>
           {companies.length > 0 && (
-            <a href={buildTriggerUrl()} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" variant="outline" type="button">
-                <ExternalLink className="mr-1.5 size-3.5" /> Crear en Sales Navigator
+            <>
+              <a href={buildTriggerUrl()} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" variant="outline" type="button">
+                  <ExternalLink className="mr-1.5 size-3.5" /> Crear en Sales Navigator
+                </Button>
+              </a>
+              <Button size="sm" variant="outline" type="button" onClick={() => {
+                const header = "Empresa,LinkedIn URL,Dominio,Sales Nav ID"
+                const rows = companies.map((c) =>
+                  [c.company_name, c.linkedin_url ?? "", c.domain ?? "", c.sales_nav_id ?? ""]
+                    .map((v) => `"${v.replace(/"/g, '""')}"`)
+                    .join(",")
+                )
+                const csv = [header, ...rows].join("\n")
+                const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement("a")
+                a.href = url
+                a.download = "clientes.csv"
+                a.click()
+                URL.revokeObjectURL(url)
+              }}>
+                <Download className="mr-1.5 size-3.5" /> Exportar CSV
               </Button>
-            </a>
+            </>
           )}
           {saved && (
             <span className="inline-flex items-center gap-1 text-xs text-green-700">

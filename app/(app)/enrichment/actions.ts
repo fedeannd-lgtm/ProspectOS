@@ -19,13 +19,24 @@ export async function getCampaigns() {
 }
 
 export async function getProspectsForEnrichment(campaignId: string) {
-  const { data, error } = await supabase
-    .from("prospects")
-    .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, phone_wa, apollo_id, status, accounts(headcount_range)")
-    .eq("campaign_id", campaignId)
-    .order("created_at", { ascending: false })
-  if (error) throw new Error(error.message)
-  return data ?? []
+  // Supabase defaults to 1000 rows — use range pagination to fetch all
+  const PAGE = 1000
+  let from = 0
+  const all: any[] = []
+  while (true) {
+    const { data, error } = await supabase
+      .from("prospects")
+      .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, phone_wa, apollo_id, status, accounts(headcount_range)")
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+  return all
 }
 
 export async function enrichOneProspect(prospectId: string): Promise<{

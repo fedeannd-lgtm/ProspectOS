@@ -1199,7 +1199,7 @@ async function runCreateClientList(appBaseUrl) {
     sessionStorage.setItem('prospectOS_client_list', JSON.stringify(state));
 
     await new Promise(r => setTimeout(r, 800));
-    window.location.href = `/sales/search/company?keywords=${encodeURIComponent(cleanSearchName(toResolve[0].company_name))}`;
+    window.location.href = buildClientSearchUrl(toResolve[0]);
     // Page will reload → resumeClientListFlow picks up the state
 
   } catch (err) {
@@ -1218,6 +1218,44 @@ function cleanSearchName(name) {
     .join(' ')
     .trim();
   return cleaned || name;
+}
+
+// Build the Sales Nav company search URL for a company.
+// If linkedin_url is present, extract the slug and use it as keywords —
+// it's more specific and avoids ambiguous name matches.
+function buildClientSearchUrl(company) {
+  if (company.linkedin_url) {
+    const slug = company.linkedin_url.replace(/\/+$/, '').split('/').pop();
+    if (slug && slug !== 'company' && slug.length > 1) {
+      return `/sales/search/company?keywords=${encodeURIComponent(slug)}`;
+    }
+  }
+  return `/sales/search/company?keywords=${encodeURIComponent(cleanSearchName(company.company_name))}`;
+}
+
+// Normalize a string for loose name comparison: lowercase, alphanumeric only.
+function normalizeForMatch(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Check if a Sales Nav result page likely corresponds to the company we searched.
+// Reads visible text from the first result card and checks for overlap with the search term.
+function resultMatchesCompany(searchName) {
+  const norm = normalizeForMatch(searchName);
+  if (norm.length < 3) return true; // too short to verify
+  // Sales Nav marks company names with data-anonymize="company-name"
+  const nameEls = document.querySelectorAll('[data-anonymize="company-name"]');
+  for (const el of nameEls) {
+    const text = normalizeForMatch(el.textContent || '');
+    // Accept if either name contains the first 4+ chars of the other
+    const minLen = Math.min(norm.length, text.length);
+    const prefix = norm.slice(0, Math.max(4, Math.floor(minLen * 0.6)));
+    if (text.includes(prefix) || norm.includes(normalizeForMatch(el.textContent || '').slice(0, Math.max(4, Math.floor(minLen * 0.6))))) {
+      return true;
+    }
+  }
+  // If no annotated elements found, can't verify → accept (don't block)
+  return nameEls.length === 0;
 }
 
 // Find all anchor links matching a pattern, piercing shadow roots.
@@ -1261,12 +1299,19 @@ async function resumeClientListFlow(state) {
     }
     if (companyId) break;
 
-    // Fallback: parse salesApiCompanies URL from Performance entries
-    // The page fetches e.g. /sales-api/salesApiCompanies?ids=List(urn%3Ali%3Afs_salesCompany%3A12345,...)
+    // Fallback: parse salesApiCompanies URL from Performance entries.
+    // Only use entries fetched AFTER we navigated to this search page to avoid
+    // picking up stale IDs from previous Sales Nav browsing.
     if (!companyId) {
+      const navStart = performance.timing?.navigationStart ?? 0;
       const entries = performance.getEntriesByType('resource');
       for (const entry of entries) {
-        if (entry.name.includes('salesApiCompanies') && entry.name.includes('ids=List(')) {
+        if (
+          entry.name.includes('salesApiCompanies') &&
+          entry.name.includes('ids=List(') &&
+          entry.startTime > 0 && // must have fired after page nav
+          (navStart === 0 || (performance.now() - entry.startTime) < 20000) // within last 20s
+        ) {
           const m = entry.name.match(/urn%3Ali%3Afs_salesCompany%3A(\d+)/);
           if (m) { companyId = m[1]; break; }
         }
@@ -1276,6 +1321,12 @@ async function resumeClientListFlow(state) {
 
     if (/no result|sin resultado|0 result/i.test(document.body?.innerText || '')) break;
     await new Promise(r => setTimeout(r, 600));
+  }
+
+  // Verify the first result actually matches the company we searched
+  if (companyId && !resultMatchesCompany(displayName)) {
+    console.log('[ProspectOS client_list]', displayName, '→ ID found but name mismatch, rejecting', companyId);
+    companyId = null;
   }
 
   const newResolved = [...resolved];
@@ -1293,8 +1344,7 @@ async function resumeClientListFlow(state) {
   if (nextIndex < toResolve.length) {
     const nextState = { ...state, resolved: newResolved, currentIndex: nextIndex };
     sessionStorage.setItem('prospectOS_client_list', JSON.stringify(nextState));
-    const nextName = cleanSearchName(toResolve[nextIndex].company_name);
-    window.location.href = `/sales/search/company?keywords=${encodeURIComponent(nextName)}`;
+    window.location.href = buildClientSearchUrl(toResolve[nextIndex]);
   } else {
     sessionStorage.removeItem('prospectOS_client_list');
     await doCreateList(newResolved, appBaseUrl, { setStatus, setProgress }, totalCount);
