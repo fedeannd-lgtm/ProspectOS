@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
+import { getTenantId } from "@/lib/tenant"
 
 export type IcpStat = {
   week_label: string
@@ -12,9 +13,11 @@ export type IcpStat = {
 }
 
 export async function getIcpStats(): Promise<IcpStat[]> {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("prospects")
-    .select("icp_score, campaigns!inner(week_label, industry)")
+    .select("icp_score, campaigns!inner(week_label, industry, tenant_id)")
+    .eq("campaigns.tenant_id", tenantId)
   if (error) throw new Error(error.message)
 
   const map = new Map<string, IcpStat>()
@@ -41,9 +44,11 @@ export type IcpCategoryStat = {
 }
 
 export async function getIcpCategoryStats(): Promise<IcpCategoryStat[]> {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("prospects")
-    .select("icp_category, campaigns!inner(week_label, industry)")
+    .select("icp_category, campaigns!inner(week_label, industry, tenant_id)")
+    .eq("campaigns.tenant_id", tenantId)
   if (error) throw new Error(error.message)
 
   const map = new Map<string, IcpCategoryStat>()
@@ -61,9 +66,11 @@ export async function getIcpCategoryStats(): Promise<IcpCategoryStat[]> {
 }
 
 export async function getCampaigns() {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("campaigns")
     .select("*, accounts(count), prospects(count), sent:prospects(count).not.is.null(sent_at)")
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +79,6 @@ export async function getCampaigns() {
     const prospectsFound = c.prospects?.[0]?.count ?? c.prospects_found ?? 0
     const sentCount = c.sent?.[0]?.count ?? 0
 
-    // Derive status from real data when the stored value is stale ('pending' but there's activity)
     let status = c.status as string
     if (status === "pending" || status === "searching") {
       if (sentCount > 0) status = "done"
@@ -81,12 +87,7 @@ export async function getCampaigns() {
       else status = "pending"
     }
 
-    return {
-      ...c,
-      status,
-      accounts_found: accountsFound,
-      prospects_found: prospectsFound,
-    }
+    return { ...c, status, accounts_found: accountsFound, prospects_found: prospectsFound }
   })
 }
 
@@ -96,7 +97,8 @@ export async function createCampaign(form: {
   industry: string
   notes: string
 }) {
-  const { error } = await supabase.from("campaigns").insert(form)
+  const tenantId = await getTenantId()
+  const { error } = await supabase.from("campaigns").insert({ ...form, tenant_id: tenantId })
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard")
 }
@@ -105,13 +107,15 @@ export async function updateCampaign(
   id: string,
   form: { week_label: string; rep_name: string; industry: string; notes: string }
 ) {
-  const { error } = await supabase.from("campaigns").update(form).eq("id", id)
+  const tenantId = await getTenantId()
+  const { error } = await supabase.from("campaigns").update(form).eq("id", id).eq("tenant_id", tenantId)
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard")
 }
 
 export async function getCampaignIndustries(): Promise<string[]> {
-  const { data } = await supabase.from("campaigns").select("industry")
+  const tenantId = await getTenantId()
+  const { data } = await supabase.from("campaigns").select("industry").eq("tenant_id", tenantId)
   if (!data) return []
   return [...new Set(data.map((r) => r.industry as string).filter(Boolean))].sort()
 }
@@ -131,9 +135,11 @@ export type MeetingProspect = {
 }
 
 export async function getMeetingProspects(): Promise<MeetingProspect[]> {
+  const tenantId = await getTenantId()
   const { data, error } = await supabaseAdmin
     .from("prospects")
-    .select("id, full_name, first_name, last_name, company_name, job_title, email, linkedin_url, created_at")
+    .select("id, full_name, first_name, last_name, company_name, job_title, email, linkedin_url, created_at, campaigns!inner(tenant_id)")
+    .eq("campaigns.tenant_id", tenantId)
     .eq("shortlist_status", "Reunión Agendada")
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
@@ -143,19 +149,17 @@ export async function getMeetingProspects(): Promise<MeetingProspect[]> {
 // ── Scorecard ─────────────────────────────────────────────────────────────────
 
 export type WeekScorecardRow = {
-  iso_week: string   // "2026-W22" — sort key & dedup key for client
-  week_label: string // raw campaign label — client parses date for display
-  rep_name: string   // for per-rep scraped filter in client
-  scraped: number    // from campaigns.prospects_found
-  // Team totals for the week — sourced from prospects.created_at (not FK chain)
+  iso_week: string
+  week_label: string
+  rep_name: string
+  scraped: number
   shortlisted: number
   enriched: number
   enviados: number
-  reuniones: number        // SQL+ only
-  reuniones_total: number  // all active deals (SQL + pre-SQL)
+  reuniones: number
+  reuniones_total: number
 }
 
-/** Extract the first YYYY-MM-DD date found in a campaign week_label string */
 function _extractDate(label: string): Date | null {
   const m = label.match(/(\d{4}-\d{2}-\d{2})/)
   if (!m) return null
@@ -163,7 +167,6 @@ function _extractDate(label: string): Date | null {
   return isNaN(d.getTime()) ? null : d
 }
 
-/** Compute ISO 8601 week key ("2026-W22") for a given date */
 function _isoWeekKey(date: Date): string {
   const d = new Date(date)
   d.setUTCHours(12, 0, 0, 0)
@@ -176,10 +179,12 @@ function _isoWeekKey(date: Date): string {
 }
 
 export async function getScorecardData(): Promise<WeekScorecardRow[]> {
-  // Query 1: campaigns → scraped per (iso_week, rep_name)
+  const tenantId = await getTenantId()
+
   const { data: camps, error: campErr } = await supabase
     .from("campaigns")
     .select("week_label, rep_name, prospects_found")
+    .eq("tenant_id", tenantId)
   if (campErr) throw new Error(campErr.message)
 
   type CampBucket = { iso_week: string; week_label: string; rep_name: string; scraped: number }
@@ -193,11 +198,8 @@ export async function getScorecardData(): Promise<WeekScorecardRow[]> {
     campBuckets.get(key)!.scraped += c.prospects_found ?? 0
   }
 
-  // Query 2: Aggregate prospect funnel metrics by ISO week via RPC.
-  // Direct .select() is capped at PostgREST's 1000-row default; the RPC
-  // runs fully server-side and returns pre-aggregated counts.
   const { data: metricsRows, error: pErr } = await supabaseAdmin
-    .rpc("get_prospect_scorecard")
+    .rpc("get_prospect_scorecard", { p_tenant_id: tenantId })
   if (pErr) throw new Error(pErr.message)
 
   type WMetrics = { shortlisted: number; enriched: number; enviados: number; reuniones: number; reuniones_total: number }
@@ -212,8 +214,6 @@ export async function getScorecardData(): Promise<WeekScorecardRow[]> {
     })
   }
 
-  // Merge: one row per (iso_week, rep_name)
-  // Prospect metrics are TEAM totals for the week (same value for every rep in that week)
   const rows: WeekScorecardRow[] = []
   for (const [, b] of campBuckets) {
     const m = metricsMap.get(b.iso_week) ?? { shortlisted: 0, enriched: 0, enviados: 0, reuniones: 0, reuniones_total: 0 }
@@ -224,7 +224,8 @@ export async function getScorecardData(): Promise<WeekScorecardRow[]> {
 }
 
 export async function deleteCampaign(id: string) {
-  const { error } = await supabase.from("campaigns").delete().eq("id", id)
+  const tenantId = await getTenantId()
+  const { error } = await supabase.from("campaigns").delete().eq("id", id).eq("tenant_id", tenantId)
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard")
 }
@@ -276,29 +277,25 @@ export async function createAutoCampaign(
   campaignData: { week_label: string; rep_name: string; industry: string; notes: string },
   autoConfig: AutoCampaignConfig
 ) {
-  // Create campaign first
+  const tenantId = await getTenantId()
   const { data: campaign, error: campErr } = await supabaseAdmin
     .from("campaigns")
-    .insert(campaignData)
+    .insert({ ...campaignData, tenant_id: tenantId })
     .select("id")
     .single()
 
   if (campErr || !campaign) throw new Error(campErr?.message ?? "Error al crear campaña")
 
-  // Create auto_campaign config linked to it
   const { error: autoErr } = await supabaseAdmin.from("auto_campaigns").insert({
     campaign_id: campaign.id,
     ...autoConfig,
   })
 
   if (autoErr) {
-    // Rollback campaign creation
     await supabaseAdmin.from("campaigns").delete().eq("id", campaign.id)
     throw new Error(autoErr.message)
   }
 
-  // Advance immediately — llamamos advancePending directo con los datos que ya tenemos
-  // para evitar el race condition de la query por pending campaigns
   const { advancePending } = await import("@/lib/auto-campaign-engine")
   const { data: autoRow } = await supabaseAdmin
     .from("auto_campaigns")
@@ -324,7 +321,6 @@ export async function getAutoCampaignForCampaign(campaignId: string): Promise<Au
   return data as AutoCampaign | null
 }
 
-// Returns a map of campaign_id → { autoStatus, jobUrl } for campaigns that need action
 export async function getAutoActionMap(): Promise<Record<string, { autoStatus: string; jobUrl: string | null }>> {
   const { data: autos } = await supabaseAdmin
     .from("auto_campaigns")
@@ -333,7 +329,6 @@ export async function getAutoActionMap(): Promise<Record<string, { autoStatus: s
 
   if (!autos?.length) return {}
 
-  // For search-job actions, fetch the URL from search_jobs
   const jobActionNeeded = autos.filter((a) => a.status === "company_search" || a.status === "people_search")
   const jobActionIds = jobActionNeeded.map((a) => a.campaign_id)
 
@@ -358,21 +353,20 @@ export async function getAutoActionMap(): Promise<Record<string, { autoStatus: s
   const result: Record<string, { autoStatus: string; jobUrl: string | null }> = {}
   for (const a of autos) {
     let jobUrl: string | null = jobUrlMap[a.campaign_id] ?? null
-
-    // For creating_list, generate the extension URL dynamically (no search_job)
     if (a.status === "creating_list") {
       jobUrl = `https://www.linkedin.com/sales/home#_mode=create_account_list&_campaign=${a.campaign_id}&_app=${encodeURIComponent(appUrl)}`
     }
-
     result[a.campaign_id] = { autoStatus: a.status, jobUrl }
   }
   return result
 }
 
 export async function getSavedUrlsForWizard(repName: string, industry: string) {
+  const tenantId = await getTenantId()
   const { data } = await supabase
     .from("saved_urls")
     .select("id, url, label, url_type")
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
     .in("url_type", ["company_search", "people_search"])
@@ -382,9 +376,11 @@ export async function getSavedUrlsForWizard(repName: string, industry: string) {
 }
 
 export async function getDistributionTemplatesForWizard() {
+  const tenantId = await getTenantId()
   const { data } = await supabase
     .from("distribution_templates")
     .select("id, name, industry")
+    .eq("tenant_id", tenantId)
     .order("name", { ascending: true })
   return data ?? []
 }

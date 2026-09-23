@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
+import { getTenantId } from "@/lib/tenant"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,16 +66,18 @@ export type RunResults = {
 // ─── Templates CRUD ───────────────────────────────────────────────────────────
 
 export async function getTemplates(): Promise<DistributionTemplate[]> {
+  const tenantId = await getTenantId()
   const { data: templates, error } = await supabase
     .from("distribution_templates")
     .select("*")
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
 
-  const { data: routes } = await supabase
-    .from("distribution_routes")
-    .select("*")
-    .order("priority", { ascending: true })
+  const templateIds = (templates ?? []).map((t) => t.id)
+  const { data: routes } = templateIds.length
+    ? await supabase.from("distribution_routes").select("*").in("template_id", templateIds).order("priority", { ascending: true })
+    : { data: [] }
 
   return (templates ?? []).map((t) => ({
     ...t,
@@ -110,9 +113,10 @@ export async function saveTemplate(template: {
     return template.id
   } else {
     // Create new
+    const tenantId = await getTenantId()
     const { data, error } = await supabaseAdmin
       .from("distribution_templates")
-      .insert({ name: template.name, industry: template.industry, notes: template.notes, shortlist_filter: template.shortlist_filter ?? "all" })
+      .insert({ tenant_id: tenantId, name: template.name, industry: template.industry, notes: template.notes, shortlist_filter: template.shortlist_filter ?? "all" })
       .select("id")
       .single()
     if (error || !data) throw new Error(error?.message ?? "Error al crear plantilla")
@@ -137,7 +141,7 @@ export async function cloneTemplate(templateId: string): Promise<string> {
 
   const { data: newT, error } = await supabaseAdmin
     .from("distribution_templates")
-    .insert({ name: `${t.name} (copia)`, industry: t.industry, notes: t.notes, shortlist_filter: t.shortlist_filter ?? "all" })
+    .insert({ tenant_id: t.tenant_id ?? "", name: `${t.name} (copia)`, industry: t.industry, notes: t.notes, shortlist_filter: t.shortlist_filter ?? "all" })
     .select("id")
     .single()
   if (error || !newT) throw new Error(error?.message ?? "Error al clonar")

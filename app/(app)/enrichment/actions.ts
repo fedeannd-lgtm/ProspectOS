@@ -8,11 +8,14 @@ import { calculateOsScore } from "@/lib/scoring"
 import { findPhoneDatagma } from "@/lib/datagma"
 import { findPhoneProspeo } from "@/lib/prospeo"
 import { normalizeCompanyName, normalizePersonName } from "@/lib/process-search-results"
+import { getTenantId } from "@/lib/tenant"
 
 export async function getCampaigns() {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("campaigns")
     .select("id, week_label, rep_name, industry, status, prospects_found")
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
   return data ?? []

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { sendSmartleadReply } from "@/lib/smartlead"
+import { getTenantId } from "@/lib/tenant"
 
 export type ProspectReply = {
   id: string
@@ -82,11 +83,12 @@ export async function getPendingCount(): Promise<number> {
 }
 
 export async function getInboxConfig(): Promise<InboxConfig> {
+  const tenantId = await getTenantId()
   const { data } = await supabase
     .from("inbox_config")
     .select("product_context, calendly_link, linkedin_instructions, linkedin_sequence_config, email_sequence_config, exclude_clients, exclude_previous")
-    .eq("id", 1)
-    .single()
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
   return {
     product_context: data?.product_context ?? null,
     calendly_link: data?.calendly_link ?? null,
@@ -99,9 +101,10 @@ export async function getInboxConfig(): Promise<InboxConfig> {
 }
 
 export async function saveInboxConfig(config: InboxConfig): Promise<void> {
+  const tenantId = await getTenantId()
   await supabaseAdmin
     .from("inbox_config")
-    .upsert({ id: 1, ...config, updated_at: new Date().toISOString() }, { onConflict: "id" })
+    .upsert({ tenant_id: tenantId, ...config, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" })
   revalidatePath("/settings")
 }
 

@@ -1,4 +1,4 @@
-import { UserButton } from "@clerk/nextjs"
+import { UserButton, OrganizationSwitcher } from "@clerk/nextjs"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -18,7 +18,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <SidebarTrigger className="-ml-1" />
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
-            {!devBypass && <UserButton />}
+            {!devBypass && (
+              <>
+                <OrganizationSwitcher
+                  hidePersonal
+                  afterSelectOrganizationUrl="/dashboard"
+                  afterCreateOrganizationUrl="/dashboard"
+                  appearance={{ elements: { rootBox: "flex items-center" } }}
+                />
+                <UserButton />
+              </>
+            )}
           </div>
         </header>
         <main className="flex-1 p-6">{children}</main>

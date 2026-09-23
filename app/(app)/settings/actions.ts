@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
+import { getTenantId } from "@/lib/tenant"
 
 export type SavedUrl = {
   id: string
@@ -15,9 +16,11 @@ export type SavedUrl = {
 }
 
 export async function incrementSavedUrlUsage(repName: string, industry: string, urlType: "company_search" | "people_search", url: string): Promise<void> {
+  const tenantId = await getTenantId()
   const { data } = await supabaseAdmin
     .from("saved_urls")
     .select("id, times_used")
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
     .eq("url_type", urlType)
@@ -32,9 +35,11 @@ export async function incrementSavedUrlUsage(repName: string, industry: string, 
 }
 
 export async function getSavedUrls(): Promise<SavedUrl[]> {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("saved_urls")
     .select("*")
+    .eq("tenant_id", tenantId)
     .order("rep_name")
     .order("industry")
     .order("url_type")
@@ -44,7 +49,8 @@ export async function getSavedUrls(): Promise<SavedUrl[]> {
 }
 
 export async function createSavedUrl(payload: Omit<SavedUrl, "id" | "created_at" | "times_used">): Promise<SavedUrl> {
-  const { data, error } = await supabaseAdmin.from("saved_urls").insert(payload).select().single()
+  const tenantId = await getTenantId()
+  const { data, error } = await supabaseAdmin.from("saved_urls").insert({ ...payload, tenant_id: tenantId }).select().single()
   if (error) throw new Error(error.message)
   revalidatePath("/settings")
   return data as SavedUrl
@@ -56,17 +62,21 @@ export async function deleteSavedUrl(id: string) {
   revalidatePath("/settings")
 }
 
-import { REPS } from "@/lib/reps"
+import { getTenantReps } from "@/lib/reps"
 
 export async function getRepConfigs() {
-  const { data, error } = await supabase
-    .from("rep_configs")
-    .select("rep_name, linkedin_cookie, updated_at")
-    .order("rep_name")
+  const tenantId = await getTenantId()
+  const [reps, { data, error }] = await Promise.all([
+    getTenantReps(),
+    supabase
+      .from("rep_configs")
+      .select("rep_name, linkedin_cookie, updated_at")
+      .eq("tenant_id", tenantId)
+      .order("rep_name"),
+  ])
   if (error) throw new Error(error.message)
 
-  // Merge stored configs with known reps so all 5 always appear
-  return REPS.map((rep) => {
+  return reps.map((rep) => {
     const stored = data?.find((r) => r.rep_name === rep)
     return {
       rep_name: rep,
@@ -95,14 +105,22 @@ const PROVIDER_LABELS: Record<string, string> = {
 }
 
 export async function getProviderUsage(): Promise<ProviderUsage[]> {
+  const tenantId = await getTenantId()
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
   const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
+  // Filter prospects via campaign FK to respect tenant isolation
+  const { data: campaignIds } = await supabaseAdmin
+    .from("campaigns").select("id").eq("tenant_id", tenantId)
+  const ids = (campaignIds ?? []).map((c) => c.id)
+  if (!ids.length) return []
+
   const { data, error } = await supabase
     .from("prospects")
     .select("email_provider, created_at")
+    .in("campaign_id", ids)
     .not("email_provider", "is", null)
   if (error) throw new Error(error.message)
 
@@ -139,9 +157,11 @@ export type ClientCompany = {
 }
 
 export async function getClientCompanies(): Promise<ClientCompany[]> {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("client_companies")
     .select("id, company_name, linkedin_url, sales_nav_id, domain")
+    .eq("tenant_id", tenantId)
     .order("company_name")
   if (error) throw new Error(error.message)
   return (data ?? []) as ClientCompany[]
@@ -150,7 +170,7 @@ export async function getClientCompanies(): Promise<ClientCompany[]> {
 export async function saveClientCompanies(
   entries: { company_name: string; linkedin_url?: string | null; domain?: string | null }[]
 ): Promise<void> {
-  // Deduplicate by normalized name
+  const tenantId = await getTenantId()
   const seen = new Set<string>()
   const rows = entries
     .filter((e) => e.company_name.trim())
@@ -160,9 +180,9 @@ export async function saveClientCompanies(
       seen.add(key)
       return true
     })
-    .map((e) => ({ company_name: e.company_name.trim(), linkedin_url: e.linkedin_url || null, domain: e.domain || null }))
+    .map((e) => ({ tenant_id: tenantId, company_name: e.company_name.trim(), linkedin_url: e.linkedin_url || null, domain: e.domain || null }))
 
-  await supabaseAdmin.from("client_companies").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+  await supabaseAdmin.from("client_companies").delete().eq("tenant_id", tenantId)
   if (rows.length > 0) await supabaseAdmin.from("client_companies").insert(rows)
   revalidatePath("/settings")
 }
@@ -190,20 +210,23 @@ export async function updateClientCompanyLinkedinUrl(
 }
 
 export async function getCampaignIndustries(): Promise<string[]> {
+  const tenantId = await getTenantId()
   const { data } = await supabase
     .from("campaigns")
     .select("industry")
+    .eq("tenant_id", tenantId)
   if (!data) return []
   const unique = [...new Set(data.map((r) => r.industry as string).filter(Boolean))]
   return unique.sort()
 }
 
 export async function upsertRepCookie(repName: string, cookie: string) {
+  const tenantId = await getTenantId()
   const { error } = await supabaseAdmin
     .from("rep_configs")
     .upsert(
-      { rep_name: repName, linkedin_cookie: cookie, updated_at: new Date().toISOString() },
-      { onConflict: "rep_name" }
+      { tenant_id: tenantId, rep_name: repName, linkedin_cookie: cookie, updated_at: new Date().toISOString() },
+      { onConflict: "tenant_id,rep_name" }
     )
   if (error) throw new Error(error.message)
   revalidatePath("/settings")

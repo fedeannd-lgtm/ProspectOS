@@ -3,14 +3,17 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { addExclusionListsToUrl } from "@/lib/sales-nav-lists"
+import { getTenantId } from "@/lib/tenant"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
 
 export async function getCampaigns() {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("campaigns")
     .select("id, week_label, rep_name, industry, status")
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
   return data
@@ -28,9 +31,11 @@ export async function getCompanySearchJobs() {
 }
 
 export async function getSearchConfig(repName: string, industry: string) {
+  const tenantId = await getTenantId()
   const { data: savedUrl } = await supabase
     .from("saved_urls")
     .select("id, url, current_page")
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
     .eq("url_type", "company_search")
@@ -88,12 +93,14 @@ export async function triggerCompanySearch(
     }
 
     // Embed previous campaign lists as EXCLUDED filters in the Sales Nav URL
+    const tenantIdForTrigger = await getTenantId()
     const { data: cfg } = await supabaseAdmin
-      .from("inbox_config").select("exclude_previous").eq("id", 1).single()
+      .from("inbox_config").select("exclude_previous").eq("tenant_id", tenantIdForTrigger).maybeSingle()
     if (cfg?.exclude_previous) {
       let prevQuery = supabaseAdmin
         .from("campaigns")
         .select("list_id, list_name, week_label")
+        .eq("tenant_id", tenantIdForTrigger)
         .eq("industry", industry)
         .eq("rep_name", repName)
         .not("list_id", "is", null)
@@ -125,11 +132,13 @@ export async function advanceSearchPage(
   resultsCount: number,
   startPage: number = 1
 ) {
+  const tenantId = await getTenantId()
   const pagesConsumed = Math.max(1, Math.ceil(resultsCount / 25))
   const nextPage = startPage + pagesConsumed
   const { data: savedUrl } = await supabaseAdmin
     .from("saved_urls")
     .select("id")
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
     .eq("url_type", "company_search")
@@ -150,13 +159,15 @@ export async function deleteSearchJobs(ids: string[]): Promise<void> {
 }
 
 export async function getExcludedPreviousCount(campaignId: string, excludeRange = "all"): Promise<number> {
+  const tenantId = await getTenantId()
   const { data: campaign } = await supabaseAdmin
-    .from("campaigns").select("industry, rep_name").eq("id", campaignId).single()
+    .from("campaigns").select("industry, rep_name").eq("id", campaignId).eq("tenant_id", tenantId).single()
   if (!campaign?.industry || !campaign?.rep_name) return 0
 
   let query = supabaseAdmin
     .from("campaigns")
     .select("list_id")
+    .eq("tenant_id", tenantId)
     .eq("industry", campaign.industry)
     .eq("rep_name", campaign.rep_name)
     .not("list_id", "is", null)
@@ -184,9 +195,11 @@ export async function getPreviewUrl(
   }
 
   if (excludePrevious) {
+    const tenantId2 = await getTenantId()
     let prevQuery = supabaseAdmin
       .from("campaigns")
       .select("list_id, list_name, week_label")
+      .eq("tenant_id", tenantId2)
       .eq("industry", industry)
       .eq("rep_name", repName)
       .not("list_id", "is", null)

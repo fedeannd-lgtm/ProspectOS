@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
+import { getTenantId } from "@/lib/tenant"
 import { generateSequences, generateLinkedinOnly, generateEmailOnly, type Sequences, type LinkedinStep, type EmailStep } from "@/lib/ai-sequences"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
@@ -42,6 +43,7 @@ export type ShortlistedProspect = {
 }
 
 export async function getShortlistedProspects(): Promise<ShortlistedProspect[]> {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("prospects")
     .select(`
@@ -50,9 +52,10 @@ export async function getShortlistedProspects(): Promise<ShortlistedProspect[]> 
       os_score, highlights, location, phone, apollo_id, shortlist_status,
       next_task_date, next_task_note,
       accounts ( industry, headcount_range ),
-      campaigns ( rep_name, week_label )
+      campaigns!inner ( rep_name, week_label, tenant_id )
     `)
     .eq("shortlisted", true)
+    .eq("campaigns.tenant_id", tenantId)
     .order("created_at", { ascending: false })
 
   if (error) throw new Error(error.message)

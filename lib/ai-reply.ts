@@ -41,6 +41,7 @@ export async function analyzeReply(replyId: string): Promise<void> {
     .from("prospect_replies")
     .select(`
       id, body, subject, source, thread_history, sender_name, sender_email,
+      campaign_id,
       prospects (
         full_name, first_name, last_name, job_title, company_name,
         icp_category, highlights, linkedin_url,
@@ -55,11 +56,18 @@ export async function analyzeReply(replyId: string): Promise<void> {
   const r = reply as unknown as ReplyContext
   const p = r.prospects
 
+  const campaignId = (reply as { campaign_id?: string | null }).campaign_id
+  let tenantId = ""
+  if (campaignId) {
+    const { data: camp } = await supabaseAdmin.from("campaigns").select("tenant_id").eq("id", campaignId).maybeSingle()
+    tenantId = camp?.tenant_id ?? ""
+  }
+
   const { data: config } = await supabaseAdmin
     .from("inbox_config")
     .select("product_context, calendly_link")
-    .eq("id", 1)
-    .single()
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
 
   const productContext = config?.product_context ?? "(sin contexto de producto configurado)"
   const calendlyLink = config?.calendly_link ?? ""

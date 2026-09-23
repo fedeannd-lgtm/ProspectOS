@@ -9,13 +9,19 @@ const isPublic = createRouteMatcher([
   "/api/extension/(.*)",
 ])
 
+const isSelectOrg = createRouteMatcher(["/select-org(.*)"])
+
 export default clerkMiddleware(async (auth, req) => {
   if (isPublic(req)) return NextResponse.next()
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     const signInUrl = new URL("/sign-in", req.url)
     signInUrl.searchParams.set("redirect_url", req.url)
     return NextResponse.redirect(signInUrl)
+  }
+  // Redirect to org selector when authenticated but no active org
+  if (!orgId && !isSelectOrg(req)) {
+    return NextResponse.redirect(new URL("/select-org", req.url))
   }
 })
 

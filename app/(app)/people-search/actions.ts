@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { startSalesNavRun } from "@/lib/apify"
 import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
 import { incrementSavedUrlUsage } from "@/app/(app)/settings/actions"
+import { getTenantId } from "@/lib/tenant"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL
   || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
@@ -16,9 +17,11 @@ function estimatedMinutes(maxResults: number) {
 }
 
 export async function getCampaigns() {
+  const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("campaigns")
     .select("id, week_label, rep_name, industry, status, list_id, list_name")
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
   return data
@@ -36,10 +39,11 @@ export async function getPeopleSearchJobs() {
 }
 
 export async function getPeopleSearchConfig(repName: string, industry: string) {
-  // URLs come from the saved_urls repository (people_search type, ordered by creation)
+  const tenantId = await getTenantId()
   const { data: savedUrls, error: urlsError } = await supabase
     .from("saved_urls")
     .select("url")
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
     .eq("url_type", "people_search")
@@ -51,10 +55,10 @@ export async function getPeopleSearchConfig(repName: string, industry: string) {
   const base_url = savedUrls[0].url
   const base_url_2 = savedUrls[1]?.url ?? null
 
-  // List state from people_search_configs (may not exist yet — that's fine)
   const { data: config } = await supabase
     .from("people_search_configs")
     .select("list_id, list_name, prev_list_id, prev_list_name, last_result_count, last_count_checked_at, last_result_count_2, last_count_2_checked_at")
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
@@ -86,9 +90,11 @@ export async function upsertPeopleSearchConfig2(
   industry: string,
   baseUrl2: string
 ) {
+  const tenantId = await getTenantId()
   const { error } = await supabaseAdmin
     .from("people_search_configs")
     .update({ base_url_2: baseUrl2, updated_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
   if (error) throw new Error(error.message)
@@ -101,10 +107,11 @@ export async function updateActiveList(
   listId: string,
   listName: string
 ) {
-  // Fetch current list before overwriting so we can track it as prev
+  const tenantId = await getTenantId()
   const { data: current } = await supabase
     .from("people_search_configs")
     .select("list_id, list_name")
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
     .maybeSingle()
@@ -118,6 +125,7 @@ export async function updateActiveList(
       prev_list_name: current?.list_name ?? null,
       updated_at: new Date().toISOString(),
     })
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
 
@@ -130,11 +138,12 @@ export async function upsertPeopleSearchConfig(
   industry: string,
   baseUrl: string
 ) {
+  const tenantId = await getTenantId()
   const { error } = await supabase
     .from("people_search_configs")
     .upsert(
-      { rep_name: repName, industry, base_url: baseUrl, updated_at: new Date().toISOString() },
-      { onConflict: "rep_name,industry" }
+      { tenant_id: tenantId, rep_name: repName, industry, base_url: baseUrl, updated_at: new Date().toISOString() },
+      { onConflict: "tenant_id,rep_name,industry" }
     )
   if (error) throw new Error(error.message)
   revalidatePath("/people-search")
@@ -204,6 +213,7 @@ export async function getProspectsForCampaign(campaignId: string) {
 }
 
 export async function saveResultCount(repName: string, industry: string, count: number): Promise<void> {
+  const tenantId = await getTenantId()
   const { error } = await supabaseAdmin
     .from("people_search_configs")
     .update({
@@ -211,6 +221,7 @@ export async function saveResultCount(repName: string, industry: string, count: 
       last_count_checked_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
+    .eq("tenant_id", tenantId)
     .eq("rep_name", repName)
     .eq("industry", industry)
   if (error) throw new Error(error.message)

@@ -24,16 +24,17 @@ export async function POST(req: NextRequest) {
 
   const { data: job } = await supabaseAdmin
     .from("search_jobs")
-    .select("job_type, campaign_id, start_page, campaigns(rep_name, industry)")
+    .select("job_type, campaign_id, start_page, campaigns(rep_name, industry, tenant_id)")
     .eq("id", jobId)
     .single()
 
   if (!job) return NextResponse.json({ error: "Job no encontrado" }, { status: 404 })
 
   if (job.job_type === "company_search") {
+    const tenantId = (job.campaigns as { tenant_id?: string } | null)?.tenant_id ?? ""
     const [{ data: cfg }, { data: clients }] = await Promise.all([
-      supabaseAdmin.from("inbox_config").select("exclude_clients").eq("id", 1).single(),
-      supabaseAdmin.from("client_companies").select("company_name"),
+      supabaseAdmin.from("inbox_config").select("exclude_clients").eq("tenant_id", tenantId).maybeSingle(),
+      supabaseAdmin.from("client_companies").select("company_name").eq("tenant_id", tenantId),
     ])
 
     const clientSet = cfg?.exclude_clients

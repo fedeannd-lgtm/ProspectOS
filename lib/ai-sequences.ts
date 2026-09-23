@@ -100,12 +100,27 @@ async function fetchProspect(prospectId: string) {
   }
 }
 
-async function fetchGlobalConfig() {
+async function fetchTenantIdFromProspect(prospectId: string): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from("prospects")
+    .select("campaign_id")
+    .eq("id", prospectId)
+    .maybeSingle()
+  if (!data?.campaign_id) return ""
+  const { data: camp } = await supabaseAdmin
+    .from("campaigns")
+    .select("tenant_id")
+    .eq("id", data.campaign_id)
+    .maybeSingle()
+  return camp?.tenant_id ?? ""
+}
+
+async function fetchGlobalConfig(tenantId: string) {
   const { data } = await supabaseAdmin
     .from("inbox_config")
     .select("product_context, calendly_link, linkedin_sequence_config, email_sequence_config")
-    .eq("id", 1)
-    .single()
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
   return {
     productContext: data?.product_context || PRODUCT_CONTEXT_FALLBACK || "(sin contexto de producto configurado)",
     calendlyLink: data?.calendly_link ?? "",
@@ -158,7 +173,8 @@ export async function generateSequences(
   liConfigOverride?: LinkedinSequenceConfig,
   emailConfigOverride?: EmailSequenceConfig
 ): Promise<Sequences> {
-  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig()])
+  const tenantId = await fetchTenantIdFromProspect(prospectId)
+  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId)])
 
   const liCfg = liConfigOverride ?? global.liCfg
   const emailCfg = emailConfigOverride ?? global.emailCfg
@@ -218,7 +234,8 @@ export async function generateEmailOnly(
   emailContext: string,
   emailConfigOverride?: EmailSequenceConfig
 ): Promise<EmailStep[]> {
-  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig()])
+  const tenantId = await fetchTenantIdFromProspect(prospectId)
+  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId)])
   const emailCfg = emailConfigOverride ?? global.emailCfg
 
   const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en email outreach.
@@ -260,7 +277,8 @@ export async function generateLinkedinOnly(
   linkedinContext: string,
   liConfigOverride?: LinkedinSequenceConfig
 ): Promise<LinkedinStep[]> {
-  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig()])
+  const tenantId = await fetchTenantIdFromProspect(prospectId)
+  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId)])
   const liCfg = liConfigOverride ?? global.liCfg
 
   const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en outreach por LinkedIn.
