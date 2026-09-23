@@ -7,6 +7,7 @@ const isPublic = createRouteMatcher([
   "/api/webhooks/(.*)",
   "/api/debug/(.*)",
   "/api/extension/(.*)",
+  "/api/test-enrichment(.*)",
 ])
 
 const isSelectOrg = createRouteMatcher(["/select-org(.*)"])
