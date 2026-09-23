@@ -102,15 +102,19 @@ export async function findEmailApollo(
   companyDomain?: string | null
 ): Promise<ApolloResult> {
   try {
+    const apolloFirstName = firstName.split(" ")[0]
+    const apolloFullName = fullName || `${firstName} ${lastName}`.trim()
+
     // 1. Replicate Clay's Apollo setup: name + company identifier
     //    Domain wins over org name when both present; org name used when no domain (Clay's behavior)
     const first = await matchPerson({
-      first_name: firstName,
+      first_name: apolloFirstName,
       last_name: lastName,
-      name: fullName || undefined,
+      name: apolloFullName || undefined,
       domain: companyDomain || undefined,
       organization_name: !companyDomain && companyName ? companyName : undefined,
     })
+    console.log(`[Apollo] pass1 (name+${companyDomain ? "domain" : "org_name"}) for ${fullName} @ ${companyName}: person=${!!first?.person} email=${first?.person ? extractEmail(first.person as Record<string,unknown>) : null}`)
 
     let person = first?.person as Record<string, unknown> | undefined
 
@@ -118,6 +122,9 @@ export async function findEmailApollo(
     if (!person && linkedinUrl && isCanonicalLinkedIn(linkedinUrl)) {
       const urlOnly = await matchPerson({ linkedin_url: linkedinUrl })
       person = urlOnly?.person as Record<string, unknown> | undefined
+      console.log(`[Apollo] pass2 (linkedin_url) for ${fullName}: person=${!!person}`)
+    } else if (!person) {
+      console.log(`[Apollo] pass2 skipped — url is encoded Sales Nav or empty: ${linkedinUrl?.slice(0, 60)}`)
     }
 
     // 3. name + domain (if domain available and previous attempts failed)
@@ -128,6 +135,7 @@ export async function findEmailApollo(
         domain: companyDomain,
       })
       person = withDomain?.person as Record<string, unknown> | undefined
+      console.log(`[Apollo] pass3 (name+domain fallback) for ${fullName}: person=${!!person}`)
     }
 
     if (person) {
