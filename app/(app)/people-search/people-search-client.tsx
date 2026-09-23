@@ -33,6 +33,7 @@ import {
   deleteSearchJobs,
 } from "./actions"
 import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
+import { UrlBuilderButton } from "@/components/url-builder-modal"
 
 type Campaign = {
   id: string
@@ -379,11 +380,14 @@ export function PeopleSearchClient({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">People Search</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Scrapeás personas de las empresas encontradas. Primero creá la lista de cuentas en Sales Navigator con las empresas de abajo.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">People Search</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Scrapeás personas de las empresas encontradas. Primero creá la lista de cuentas en Sales Navigator con las empresas de abajo.
+          </p>
+        </div>
+        <UrlBuilderButton type="people" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { getSearchConfig, triggerCompanySearch, getJobStatus, deleteSearchJobs, getExcludedPreviousCount, getPreviewUrl } from "./actions"
 import { getInboxConfig, saveInboxConfig } from "../inbox/actions"
+import { UrlBuilderButton } from "@/components/url-builder-modal"
 
 type Campaign = {
   id: string
@@ -291,11 +292,14 @@ export function CompanySearchClient({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Company Search</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Disparás el scraping desde acá. ProspectOS trackea el progreso y extrae los resultados automáticamente.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Company Search</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Disparás el scraping desde acá. ProspectOS trackea el progreso y extrae los resultados automáticamente.
+          </p>
+        </div>
+        <UrlBuilderButton type="company" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
