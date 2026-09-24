@@ -1140,7 +1140,6 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <ApiKeyField label="Anthropic" value={keys.anthropic_api_key ?? ""} onChange={(v) => update("anthropic_api_key", v)} placeholder="sk-ant-..." />
-          <ApiKeyField label="Apify Token" value={keys.apify_token ?? ""} onChange={(v) => update("apify_token", v)} placeholder="apify_api_..." />
           <ApiKeyField label="Apollo" value={keys.apollo_api_key ?? ""} onChange={(v) => update("apollo_api_key", v)} />
           <ApiKeyField label="ZeroBounce" value={keys.zerobounce_api_key ?? ""} onChange={(v) => update("zerobounce_api_key", v)} />
           <ApiKeyField label="FindyMail" value={keys.findymail_api_key ?? ""} onChange={(v) => update("findymail_api_key", v)} />
