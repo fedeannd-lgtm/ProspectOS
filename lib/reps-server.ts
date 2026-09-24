@@ -10,8 +10,7 @@ export async function getTenantReps(): Promise<string[]> {
       .select("name")
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: true })
-    const names = data?.map((r: { name: string }) => r.name) ?? []
-    return names.length > 0 ? names : REPS
+    return data?.map((r: { name: string }) => r.name) ?? []
   } catch {
     return REPS
   }
