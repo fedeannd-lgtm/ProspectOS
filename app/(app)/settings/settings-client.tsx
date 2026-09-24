@@ -1076,12 +1076,38 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
         initialExcludePrevious={inboxConfig.exclude_previous ?? false}
       />
 
+      <ChromeExtensionCard />
       <TenantApiKeysCard initialKeys={tenantApiKeys} />
       <LinkedinSequenceCard initialConfig={inboxConfig.linkedin_sequence_config ?? null} />
       <EmailSequenceCard initialConfig={inboxConfig.email_sequence_config ?? null} />
       <InboxSettingsCard initialConfig={inboxConfig} />
       <HubspotSyncCard />
     </div>
+  )
+}
+
+// ── Chrome extension card ─────────────────────────────────────────────────────
+
+function ChromeExtensionCard() {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-base">Extensión de Chrome</CardTitle>
+          <CardDescription>Descargá los archivos e instalá la extensión en modo desarrollador.</CardDescription>
+        </div>
+        <a
+          href="https://github.com/fedeannd-lgtm/ProspectOS/releases/tag/V1.0.0"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Button variant="outline" size="sm">
+            <Download className="size-3.5 mr-1.5" />
+            Descargar
+          </Button>
+        </a>
+      </CardHeader>
+    </Card>
   )
 }
 
