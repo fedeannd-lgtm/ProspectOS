@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
-import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, saveTenantApiKeys, type SavedUrl, type ClientCompany, type TenantApiKeys } from "./actions"
+import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, saveTenantApiKeys, getTenantReps, addTenantRep, deleteTenantRep, saveIcpRules, saveOsScoreRules, type SavedUrl, type ClientCompany, type TenantApiKeys, type IcpRule, type OsScoreRule } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
@@ -984,7 +984,7 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   )
 }
 
-export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies, tenantApiKeys }: {
+export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies, tenantApiKeys, tenantReps: initialReps, icpRules: initialIcpRules, osScoreRules: initialOsScoreRules, osScore2Rules: initialOsScore2Rules }: {
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
   providerUsage: ProviderUsage[]
@@ -992,6 +992,10 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
   campaignIndustries: string[]
   clientCompanies: ClientCompany[]
   tenantApiKeys: TenantApiKeys
+  tenantReps: string[]
+  icpRules: IcpRule[]
+  osScoreRules: OsScoreRule[]
+  osScore2Rules: OsScoreRule[]
 }) {
   // Merge predefined industries with custom ones from campaigns, deduplicated and sorted
   const allIndustries = useMemo(() => {
@@ -1008,20 +1012,82 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
     })
   }
 
+  const checklistItems = [
+    { label: "Reps", ok: initialReps.length > 0 },
+    { label: "Lista de clientes", ok: clientCompanies.length > 0 },
+    { label: "Extensión de Chrome", ok: false, manual: true },
+    { label: "ICP rules", ok: initialIcpRules.length > 0 },
+    { label: "OS Score", ok: initialOsScoreRules.length > 0 },
+    { label: "Contexto del producto", ok: !!(inboxConfig.product_context?.trim()) },
+    { label: "API Keys", ok: !!(tenantApiKeys.apollo_api_key) },
+    { label: "Calendly", ok: !!(inboxConfig.calendly_link?.trim()) },
+  ]
+  const doneCount = checklistItems.filter((i) => i.ok).length
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Configuración de URLs e integraciones por SDR.
-        </p>
+        <p className="mt-0.5 text-sm text-muted-foreground">Configuración por organización.</p>
       </div>
 
+      {/* ── Checklist de onboarding ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Setup</CardTitle>
+            <span className="text-sm text-muted-foreground tabular-nums">{doneCount}/{checklistItems.length} configurados</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {checklistItems.map((item) => (
+              <div key={item.label} className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${item.ok ? "bg-green-50 text-green-800 dark:bg-green-950/30 dark:text-green-300" : "bg-muted/50 text-muted-foreground"}`}>
+                {item.ok
+                  ? <CheckCircle2 className="size-3.5 shrink-0 text-green-600" />
+                  : item.manual
+                    ? <AlertCircle className="size-3.5 shrink-0 text-amber-500" />
+                    : <MinusCircle className="size-3.5 shrink-0" />
+                }
+                <span className="text-xs font-medium">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Sección 1: Listas de prospección ── */}
+      <SectionHeader title="Listas de prospección" subtitle="Setup inicial para poder buscar y organizar prospectos." />
+      <RepsCard initialReps={initialReps} />
+      <ClientListCard
+        initialCompanies={clientCompanies}
+        initialExclude={inboxConfig.exclude_clients ?? false}
+        initialExcludePrevious={inboxConfig.exclude_previous ?? false}
+      />
+      <SavedUrlsCard initialUrls={savedUrls} allIndustries={allIndustries} />
+      <ChromeExtensionCard />
+
+      {/* ── Sección 2: Enriquecimiento ── */}
+      <SectionHeader title="Enriquecimiento" subtitle="Configurá cómo se clasifican y puntúan los prospectos." />
+      <IcpRulesCard initialRules={initialIcpRules} />
+      <OsScoreRulesCard title="OS Score" description="Segmentos por job title para categorización primaria." initialRules={initialOsScoreRules} dimension={1} />
+      <OsScoreRulesCard title="OS Score 2" description="Segunda dimensión de categorización (opcional)." initialRules={initialOsScore2Rules} dimension={2} />
+      <InboxSettingsCard initialConfig={inboxConfig} />
+      <TenantApiKeysCard initialKeys={tenantApiKeys} />
+
+      {/* ── Sección 3: Integraciones y secuencias ── */}
+      <SectionHeader title="Integraciones y secuencias" subtitle="Configuraciones avanzadas de distribución y automatización." />
+      <HubspotSyncCard />
+      <EmailSequenceCard initialConfig={inboxConfig.email_sequence_config ?? null} />
+      <LinkedinSequenceCard initialConfig={inboxConfig.linkedin_sequence_config ?? null} />
+
+      {/* ── Monitoreo ── */}
+      <SectionHeader title="Monitoreo" subtitle="Estado de créditos y consumo por servicio de enriquecimiento." />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base">Estado de providers</CardTitle>
-            <CardDescription>Créditos disponibles por servicio de enriquecimiento.</CardDescription>
+            <CardDescription>Créditos disponibles por servicio.</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={handleRefreshProviders} disabled={refreshing}>
             {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
@@ -1067,22 +1133,247 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
           </CardContent>
         </Card>
       )}
-
-      <SavedUrlsCard initialUrls={savedUrls} allIndustries={allIndustries} />
-
-      <ClientListCard
-        initialCompanies={clientCompanies}
-        initialExclude={inboxConfig.exclude_clients ?? false}
-        initialExcludePrevious={inboxConfig.exclude_previous ?? false}
-      />
-
-      <ChromeExtensionCard />
-      <TenantApiKeysCard initialKeys={tenantApiKeys} />
-      <LinkedinSequenceCard initialConfig={inboxConfig.linkedin_sequence_config ?? null} />
-      <EmailSequenceCard initialConfig={inboxConfig.email_sequence_config ?? null} />
-      <InboxSettingsCard initialConfig={inboxConfig} />
-      <HubspotSyncCard />
     </div>
+  )
+}
+
+// ── Section header ────────────────────────────────────────────────────────────
+
+function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="pt-2 border-t">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+    </div>
+  )
+}
+
+// ── Reps card ─────────────────────────────────────────────────────────────────
+
+function RepsCard({ initialReps }: { initialReps: string[] }) {
+  const [reps, setReps] = useState<string[]>(initialReps)
+  const [newRep, setNewRep] = useState("")
+  const [adding, startAdd] = useTransition()
+  const [deletingRep, setDeletingRep] = useState<string | null>(null)
+
+  function handleAdd() {
+    const name = newRep.trim()
+    if (!name) return
+    startAdd(async () => {
+      await addTenantRep(name)
+      setReps(await getTenantReps())
+      setNewRep("")
+    })
+  }
+
+  function handleDelete(name: string) {
+    setDeletingRep(name)
+    deleteTenantRep(name).then(async () => {
+      setReps(await getTenantReps())
+      setDeletingRep(null)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2"><Users className="size-4" /> Reps</CardTitle>
+        <CardDescription>Miembros del equipo de ventas. Cada rep tiene sus propias campañas.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {reps.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {reps.map((rep) => (
+              <div key={rep} className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-sm">
+                <span>{rep}</span>
+                <button
+                  onClick={() => handleDelete(rep)}
+                  disabled={deletingRep === rep}
+                  className="text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  {deletingRep === rep ? <Loader2 className="size-3 animate-spin" /> : <XCircle className="size-3.5" />}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No hay reps configurados todavía.</p>
+        )}
+        <div className="flex gap-2">
+          <Input
+            value={newRep}
+            onChange={(e) => setNewRep(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd() }}
+            placeholder="Nombre del rep"
+            className="text-sm max-w-xs"
+          />
+          <Button size="sm" onClick={handleAdd} disabled={adding || !newRep.trim()}>
+            {adding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            <span className="ml-1">Agregar</span>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── ICP rules card ────────────────────────────────────────────────────────────
+
+function IcpRulesCard({ initialRules }: { initialRules: IcpRule[] }) {
+  const [rules, setRules] = useState<Omit<IcpRule, "id">[]>(
+    initialRules.map(({ label, score, keywords, priority }) => ({ label, score, keywords, priority }))
+  )
+  const [saving, startSave] = useTransition()
+  const [saved, setSaved] = useState(false)
+
+  function addRow() {
+    setRules((prev) => [...prev, { label: "", score: 5, keywords: [], priority: prev.length }])
+  }
+
+  function updateRow(i: number, field: keyof Omit<IcpRule, "id">, value: string | number | string[]) {
+    setRules((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r))
+  }
+
+  function removeRow(i: number) {
+    setRules((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  function handleSave() {
+    startSave(async () => {
+      await saveIcpRules(rules)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">ICP Rules</CardTitle>
+        <CardDescription>Niveles de seniority con su score. El primer match gana.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {rules.length === 0 && (
+          <p className="text-sm text-muted-foreground">No hay reglas configuradas. Agregá la primera.</p>
+        )}
+        {rules.map((rule, i) => (
+          <div key={i} className="flex gap-2 items-start">
+            <Input
+              value={rule.label}
+              onChange={(e) => updateRow(i, "label", e.target.value)}
+              placeholder="Ej: C-Level / VP"
+              className="text-sm flex-1 min-w-0"
+            />
+            <select
+              value={rule.score}
+              onChange={(e) => updateRow(i, "score", Number(e.target.value))}
+              className="text-sm border border-input rounded-md px-2 py-1.5 bg-background w-20 shrink-0"
+            >
+              <option value={10}>10</option>
+              <option value={5}>5</option>
+              <option value={0}>0</option>
+            </select>
+            <Input
+              value={rule.keywords.join(", ")}
+              onChange={(e) => updateRow(i, "keywords", e.target.value.split(",").map((k) => k.trim()).filter(Boolean))}
+              placeholder="Keywords separadas por coma"
+              className="text-sm flex-[2] min-w-0"
+            />
+            <button onClick={() => removeRow(i)} className="text-muted-foreground hover:text-destructive mt-1.5 shrink-0">
+              <Trash2 className="size-4" />
+            </button>
+          </div>
+        ))}
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={addRow}>
+            <Plus className="size-3.5 mr-1" /> Agregar nivel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : null}
+            Guardar
+          </Button>
+          {saved && <span className="inline-flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="size-3" /> Guardado</span>}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── OS Score rules card ───────────────────────────────────────────────────────
+
+function OsScoreRulesCard({ title, description, initialRules, dimension }: {
+  title: string
+  description: string
+  initialRules: OsScoreRule[]
+  dimension: 1 | 2
+}) {
+  const [rules, setRules] = useState<Omit<OsScoreRule, "id">[]>(
+    initialRules.map(({ segment, keywords, priority }) => ({ segment, keywords, priority }))
+  )
+  const [saving, startSave] = useTransition()
+  const [saved, setSaved] = useState(false)
+
+  function addRow() {
+    setRules((prev) => [...prev, { segment: "", keywords: [], priority: prev.length }])
+  }
+
+  function updateRow(i: number, field: "segment" | "keywords", value: string | string[]) {
+    setRules((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r))
+  }
+
+  function removeRow(i: number) {
+    setRules((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  function handleSave() {
+    startSave(async () => {
+      await saveOsScoreRules(rules, dimension)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {rules.length === 0 && (
+          <p className="text-sm text-muted-foreground">No hay segmentos configurados.</p>
+        )}
+        {rules.map((rule, i) => (
+          <div key={i} className="flex gap-2 items-start">
+            <Input
+              value={rule.segment}
+              onChange={(e) => updateRow(i, "segment", e.target.value)}
+              placeholder="Ej: Helpdesk"
+              className="text-sm w-40 shrink-0"
+            />
+            <Input
+              value={rule.keywords.join(", ")}
+              onChange={(e) => updateRow(i, "keywords", e.target.value.split(",").map((k) => k.trim()).filter(Boolean))}
+              placeholder="Keywords separadas por coma"
+              className="text-sm flex-1 min-w-0"
+            />
+            <button onClick={() => removeRow(i)} className="text-muted-foreground hover:text-destructive mt-1.5 shrink-0">
+              <Trash2 className="size-4" />
+            </button>
+          </div>
+        ))}
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={addRow}>
+            <Plus className="size-3.5 mr-1" /> Agregar segmento
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : null}
+            Guardar
+          </Button>
+          {saved && <span className="inline-flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="size-3" /> Guardado</span>}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
