@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { getTenantId } from "@/lib/tenant"
+import type { IcpRule, OsScoreRule } from "@/lib/classification-rules"
 
 export type SavedUrl = {
   id: string
