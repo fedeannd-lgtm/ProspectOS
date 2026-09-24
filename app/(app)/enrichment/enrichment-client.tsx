@@ -19,12 +19,10 @@ type Prospect = {
   job_title: string; company_name: string; company_domain: string | null
   linkedin_url: string; email: string | null; email_status: string | null
   email_provider: string | null; icp_score: number; icp_category: string | null
-  os_score: number | null; started_role_months: number | null; phone: string | null; phone_wa: string | null
+  os_score: number | null; os_segment2: string | null; started_role_months: number | null; phone: string | null; phone_wa: string | null
   apollo_id: string | null; status: string
   accounts: { headcount_range: string | null }[] | null
 }
-
-type IcpCategory = "Communication" | "Experience" | "Onboarding" | "Helpdesk" | "Genérico"
 
 const ZB_CFG: Record<string, { label: string; cls: string }> = {
   valid:       { label: "Válido",     cls: "bg-green-50 text-green-700" },
@@ -212,7 +210,7 @@ function MultiFilter<T extends string>({
   )
 }
 
-export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Campaign[]; providerStatus: ProviderStatus[] }) {
+export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments = [] }: { campaigns: Campaign[]; providerStatus: ProviderStatus[]; osScore2Segments?: string[] }) {
   const [campaignId, setCampaignId] = useState("")
   const [comboOpen, setComboOpen] = useState(false)
   const [prospects, setProspects] = useState<Prospect[]>([])
@@ -227,7 +225,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
   const [search, setSearch] = useState("")
   const [scoreFilter, setScoreFilter] = useState<Set<"gte5" | "eq10" | "eq0">>(new Set())
   const [osScoreFilter, setOsScoreFilter] = useState<Set<"tier1" | "tier2" | "tier3" | "non_icp">>(new Set())
-  const [categoryFilter, setCategoryFilter] = useState<Set<IcpCategory>>(new Set())
+  const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set())
   const [emailFilter, setEmailFilter] = useState<"all" | "pending" | "enriched">("all")
   const [mesInicioFilter, setMesInicioFilter] = useState<"all" | "con" | "sin">("all")
 
@@ -305,7 +303,7 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
         (osScoreFilter.has("non_icp") && os <= 3)
       )) return false
     }
-    if (categoryFilter.size > 0 && !categoryFilter.has(p.icp_category as IcpCategory)) return false
+    if (categoryFilter.size > 0 && !categoryFilter.has(p.os_segment2 ?? "")) return false
     if (emailFilter === "pending" && hasValidEmail(p)) return false
     if (emailFilter === "enriched" && !hasValidEmail(p)) return false
     if (mesInicioFilter === "con" && p.started_role_months == null) return false
@@ -690,19 +688,15 @@ export function EnrichmentClient({ campaigns, providerStatus }: { campaigns: Cam
               className="w-36"
             />
 
-            <MultiFilter
-              label="Categoría"
-              options={[
-                { value: "Communication", label: "Communication" },
-                { value: "Experience",    label: "Experience" },
-                { value: "Onboarding",    label: "Onboarding" },
-                { value: "Helpdesk",      label: "Helpdesk" },
-                { value: "Genérico",      label: "Genérico" },
-              ]}
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              className="w-36"
-            />
+            {osScore2Segments.length > 0 && (
+              <MultiFilter
+                label="OS Score 2"
+                options={osScore2Segments.map((s) => ({ value: s, label: s }))}
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                className="w-36"
+              />
+            )}
 
             <Select value={emailFilter} onValueChange={(v) => setEmailFilter(v as typeof emailFilter)}>
               <SelectTrigger className="h-8 text-xs w-36">

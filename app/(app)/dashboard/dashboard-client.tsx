@@ -2,9 +2,7 @@
 
 import { useState, useTransition, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { REPS as BASE_REPS, INDUSTRIES } from "@/lib/reps"
-const REPS = ["Todos", ...BASE_REPS]
-const REP_OPTIONS = BASE_REPS
+import { INDUSTRIES } from "@/lib/reps"
 import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from "recharts"
 import Link from "next/link"
@@ -768,7 +766,7 @@ function ChartsView({ campaigns, icpStats, icpCategoryStats }: { campaigns: Camp
 
 // ── Scorecard ─────────────────────────────────────────────────────────────────
 
-const REPS_SCORECARD = ["Todos", ...BASE_REPS]
+// REPS_SCORECARD is built inside DashboardClient from the reps prop
 
 function pct(num: number, den: number): string {
   if (den === 0) return "—"
@@ -1104,7 +1102,9 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
   )
 }
 
-export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [], autoActionMap = {}, scorecardData = [], meetingProspects = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }>; scorecardData?: WeekScorecardRow[]; meetingProspects?: MeetingProspect[] }) {
+export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [], autoActionMap = {}, scorecardData = [], meetingProspects = [], reps: repsProp = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }>; scorecardData?: WeekScorecardRow[]; meetingProspects?: MeetingProspect[]; reps?: string[] }) {
+  const REPS = ["Todos", ...repsProp]
+  const REP_OPTIONS = repsProp
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
   const [view, setView] = useState<"week" | "list" | "charts" | "scorecard">("week")
   const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))

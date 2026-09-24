@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Users, ExternalLink, Search, Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
 import { getFilteredProspects, getCampaignsForFilter, getAllFilteredProspects, deleteProspects, type ProspectRow } from "./actions"
-import { REPS, INDUSTRIES } from "@/lib/reps"
+import { INDUSTRIES } from "@/lib/reps"
 
 const STATUS_LABELS: Record<string, { label: string; class: string }> = {
   scraped:   { label: "Scrapeado",   class: "bg-zinc-100 text-zinc-600" },
@@ -42,7 +42,7 @@ function exportCsv(rows: ProspectRow[]) {
   a.click(); URL.revokeObjectURL(url)
 }
 
-export function ProspectsClient() {
+export function ProspectsClient({ reps = [] }: { reps?: string[] }) {
   const [repFilter, setRepFilter] = useState("all")
   const [industryFilter, setIndustryFilter] = useState("all")
   const [campaignFilter, setCampaignFilter] = useState("all")
@@ -159,7 +159,7 @@ export function ProspectsClient() {
                 onChange={(e) => { setRepFilter(e.target.value); setPage(1) }}
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm">
                 <option value="all">Todos los reps</option>
-                {REPS.map((r) => <option key={r} value={r}>{r}</option>)}
+                {reps.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
               <select value={industryFilter}
                 onChange={(e) => { setIndustryFilter(e.target.value); setPage(1) }}

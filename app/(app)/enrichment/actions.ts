@@ -31,7 +31,7 @@ export async function getProspectsForEnrichment(campaignId: string) {
   while (true) {
     const { data, error } = await supabase
       .from("prospects")
-      .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, started_role_months, phone, phone_wa, apollo_id, status, accounts(headcount_range)")
+      .select("id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, email, email_status, email_provider, icp_score, icp_category, os_score, os_segment2, started_role_months, phone, phone_wa, apollo_id, status, accounts(headcount_range)")
       .eq("campaign_id", campaignId)
       .order("created_at", { ascending: false })
       .range(from, from + PAGE - 1)
