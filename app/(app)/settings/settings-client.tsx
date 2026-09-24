@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
-import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, type SavedUrl, type ClientCompany } from "./actions"
+import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, saveTenantApiKeys, type SavedUrl, type ClientCompany, type TenantApiKeys } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { REPS, INDUSTRIES } from "@/lib/reps"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
@@ -984,13 +984,14 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   )
 }
 
-export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies }: {
+export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies, tenantApiKeys }: {
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
   providerUsage: ProviderUsage[]
   inboxConfig: InboxConfig
   campaignIndustries: string[]
   clientCompanies: ClientCompany[]
+  tenantApiKeys: TenantApiKeys
 }) {
   // Merge predefined industries with custom ones from campaigns, deduplicated and sorted
   const allIndustries = useMemo(() => {
@@ -1075,11 +1076,128 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
         initialExcludePrevious={inboxConfig.exclude_previous ?? false}
       />
 
+      <TenantApiKeysCard initialKeys={tenantApiKeys} />
       <LinkedinSequenceCard initialConfig={inboxConfig.linkedin_sequence_config ?? null} />
       <EmailSequenceCard initialConfig={inboxConfig.email_sequence_config ?? null} />
       <InboxSettingsCard initialConfig={inboxConfig} />
       <HubspotSyncCard />
     </div>
+  )
+}
+
+// ── Tenant API keys card ──────────────────────────────────────────────────────
+
+const COLD_EMAIL_TOOLS = ["Smartlead", "HeyReach", "Instantly", "Lemlist", "Otro"]
+const LINKEDIN_TOOLS = ["HeyReach", "Expandi", "LinkedHelper", "Dripify", "Otro"]
+
+function ApiKeyField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <div className="flex gap-1.5">
+        <Input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder ?? "sk-..."}
+          className="text-xs font-mono h-8 flex-1"
+        />
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0 text-muted-foreground" onClick={() => setShow((v) => !v)}>
+          {show ? "🙈" : "👁"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
+  const [keys, setKeys] = useState<TenantApiKeys>(initialKeys)
+  const [isPending, startTransition] = useTransition()
+  const [saved, setSaved] = useState(false)
+
+  function update(field: keyof TenantApiKeys, value: string | null) {
+    setKeys((k) => ({ ...k, [field]: value || null }))
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      await saveTenantApiKeys(keys)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">API Keys del workspace</CardTitle>
+        <CardDescription>
+          Claves de integración para este cliente. Se almacenan encriptadas y son independientes por workspace.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ApiKeyField label="Anthropic" value={keys.anthropic_api_key ?? ""} onChange={(v) => update("anthropic_api_key", v)} placeholder="sk-ant-..." />
+          <ApiKeyField label="Apify Token" value={keys.apify_token ?? ""} onChange={(v) => update("apify_token", v)} placeholder="apify_api_..." />
+          <ApiKeyField label="Apollo" value={keys.apollo_api_key ?? ""} onChange={(v) => update("apollo_api_key", v)} />
+          <ApiKeyField label="ZeroBounce" value={keys.zerobounce_api_key ?? ""} onChange={(v) => update("zerobounce_api_key", v)} />
+          <ApiKeyField label="FindyMail" value={keys.findymail_api_key ?? ""} onChange={(v) => update("findymail_api_key", v)} />
+          <ApiKeyField label="Prospeo" value={keys.prospeo_api_key ?? ""} onChange={(v) => update("prospeo_api_key", v)} />
+          <ApiKeyField label="Datagma" value={keys.datagma_api_key ?? ""} onChange={(v) => update("datagma_api_key", v)} />
+          <ApiKeyField label="HubSpot" value={keys.hubspot_api_key ?? ""} onChange={(v) => update("hubspot_api_key", v)} />
+        </div>
+
+        <div className="border-t pt-4 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Herramienta de cold email</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Herramienta</label>
+              <Select value={keys.cold_email_tool ?? undefined} onValueChange={(v) => update("cold_email_tool", v)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Seleccionar..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {COLD_EMAIL_TOOLS.map((t) => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <ApiKeyField label="API Key" value={keys.cold_email_api_key ?? ""} onChange={(v) => update("cold_email_api_key", v)} />
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Herramienta de LinkedIn</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Herramienta</label>
+              <Select value={keys.linkedin_tool ?? undefined} onValueChange={(v) => update("linkedin_tool", v)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Seleccionar..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {LINKEDIN_TOOLS.map((t) => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <ApiKeyField label="API Key" value={keys.linkedin_api_key ?? ""} onChange={(v) => update("linkedin_api_key", v)} />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 pt-2">
+          <Button size="sm" onClick={handleSave} disabled={isPending}>
+            {isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+            Guardar
+          </Button>
+          {saved && (
+            <span className="inline-flex items-center gap-1 text-xs text-green-700">
+              <CheckCircle2 className="size-3" /> Guardado
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

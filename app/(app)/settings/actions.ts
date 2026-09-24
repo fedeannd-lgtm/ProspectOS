@@ -278,6 +278,46 @@ function _normalizeCompanyName(name: string): string {
     .trim()
 }
 
+// ── Tenant API keys ───────────────────────────────────────────────────────────
+
+export type TenantApiKeys = {
+  anthropic_api_key: string | null
+  apify_token: string | null
+  apollo_api_key: string | null
+  zerobounce_api_key: string | null
+  findymail_api_key: string | null
+  prospeo_api_key: string | null
+  datagma_api_key: string | null
+  hubspot_api_key: string | null
+  cold_email_tool: string | null
+  cold_email_api_key: string | null
+  linkedin_tool: string | null
+  linkedin_api_key: string | null
+}
+
+export async function getTenantApiKeys(): Promise<TenantApiKeys> {
+  const tenantId = await getTenantId()
+  const { data } = await supabaseAdmin
+    .from("tenant_configs")
+    .select("anthropic_api_key, apify_token, apollo_api_key, zerobounce_api_key, findymail_api_key, prospeo_api_key, datagma_api_key, hubspot_api_key, cold_email_tool, cold_email_api_key, linkedin_tool, linkedin_api_key")
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
+  return (data as TenantApiKeys | null) ?? {
+    anthropic_api_key: null, apify_token: null, apollo_api_key: null,
+    zerobounce_api_key: null, findymail_api_key: null, prospeo_api_key: null,
+    datagma_api_key: null, hubspot_api_key: null, cold_email_tool: null,
+    cold_email_api_key: null, linkedin_tool: null, linkedin_api_key: null,
+  }
+}
+
+export async function saveTenantApiKeys(keys: Partial<TenantApiKeys>): Promise<void> {
+  const tenantId = await getTenantId()
+  await supabaseAdmin
+    .from("tenant_configs")
+    .upsert({ tenant_id: tenantId, ...keys, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" })
+  revalidatePath("/settings")
+}
+
 export async function syncHubspotDeals(): Promise<{ updated: number; error?: string }> {
   try {
     const { getDealPipelineStages, getAllDeals, getContactEmails, getCompanyInfo } = await import("@/lib/hubspot")
