@@ -7,7 +7,8 @@
 
 import { supabaseAdmin } from "@/lib/supabase"
 import { addExclusionListsToUrl, updateAccountListInUrl } from "@/lib/sales-nav-lists"
-import { enrichProspect } from "@/lib/enrichment"
+import { enrichProspect, type EnrichmentKeys } from "@/lib/enrichment"
+import { getTenantConfig } from "@/lib/tenant-config"
 import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
 import { findPhoneDatagma } from "@/lib/datagma"
@@ -301,6 +302,17 @@ async function enrichOneProspect(
         const acct = (p as any).accounts
         const accountLinkedIn = acct?.linkedin_url ?? null
         const accountDomain = acct?.domain ?? null
+
+        const { data: camp } = await supabaseAdmin.from("campaigns").select("tenant_id").eq("id", auto.campaign_id).maybeSingle()
+        const tenantCfg = camp?.tenant_id ? await getTenantConfig(camp.tenant_id) : {}
+        const enrichKeys: EnrichmentKeys = {
+          apollo_api_key: tenantCfg.apollo_api_key,
+          zerobounce_api_key: tenantCfg.zerobounce_api_key,
+          findymail_api_key: tenantCfg.findymail_api_key,
+          prospeo_api_key: tenantCfg.prospeo_api_key,
+          datagma_api_key: tenantCfg.datagma_api_key,
+        }
+
         const result = await enrichProspect({
           first_name: p.first_name ?? "",
           last_name: p.last_name ?? "",
@@ -309,7 +321,7 @@ async function enrichOneProspect(
           company_domain: p.company_domain ?? accountDomain ?? null,
           linkedin_url: p.linkedin_url ?? "",
           company_linkedin_url: accountLinkedIn,
-        })
+        }, enrichKeys)
         const { category, score } = classifyIcp(p.job_title ?? "")
         await supabaseAdmin.from("prospects").update({
           email: result.email,

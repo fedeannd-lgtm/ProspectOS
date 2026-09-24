@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
-import { enrichProspect } from "@/lib/enrichment"
+import { enrichProspect, type EnrichmentKeys } from "@/lib/enrichment"
 import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
 import { findPhoneDatagma } from "@/lib/datagma"
 import { findPhoneProspeo } from "@/lib/prospeo"
 import { normalizeCompanyName, normalizePersonName } from "@/lib/process-search-results"
 import { getTenantId } from "@/lib/tenant"
+import { getTenantConfig } from "@/lib/tenant-config"
 
 export async function getCampaigns() {
   const tenantId = await getTenantId()
@@ -59,6 +60,16 @@ export async function enrichOneProspect(prospectId: string): Promise<{
 
   if (!p) throw new Error("Prospecto no encontrado")
 
+  const tenantId = await getTenantId()
+  const tenantCfg = await getTenantConfig(tenantId)
+  const enrichKeys: EnrichmentKeys = {
+    apollo_api_key: tenantCfg.apollo_api_key,
+    zerobounce_api_key: tenantCfg.zerobounce_api_key,
+    findymail_api_key: tenantCfg.findymail_api_key,
+    prospeo_api_key: tenantCfg.prospeo_api_key,
+    datagma_api_key: tenantCfg.datagma_api_key,
+  }
+
   const osScore = calculateOsScore(p.job_title)
 
   // Skip if already has a valid email (unknown = ZB couldn't verify, but we trust the source)
@@ -87,7 +98,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
     company_domain: effectiveDomain,
     linkedin_url: p.linkedin_url ?? "",
     company_linkedin_url: accountLinkedIn,
-  })
+  }, enrichKeys)
 
   const { category, score } = classifyIcp(p.job_title ?? "")
 

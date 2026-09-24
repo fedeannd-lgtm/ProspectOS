@@ -6,6 +6,14 @@ import { findEmailDatagma } from "./datagma"
 import { validateEmail, isUsable, type ZBStatus } from "./zerobounce"
 import { canonicalLinkedInUrl } from "./linkedin"
 
+export type EnrichmentKeys = {
+  apollo_api_key?: string | null
+  zerobounce_api_key?: string | null
+  findymail_api_key?: string | null
+  prospeo_api_key?: string | null
+  datagma_api_key?: string | null
+}
+
 export type EnrichmentResult = {
   email: string | null
   provider: string | null
@@ -26,7 +34,7 @@ type ProspectInput = {
   company_linkedin_url?: string | null
 }
 
-export async function enrichProspect(prospect: ProspectInput): Promise<EnrichmentResult> {
+export async function enrichProspect(prospect: ProspectInput, keys?: EnrichmentKeys): Promise<EnrichmentResult> {
   const { first_name, last_name, full_name, company_name, company_domain, company_linkedin_url } = prospect
 
   const rawUrl = prospect.linkedin_url ?? ""
@@ -37,13 +45,13 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
   const apolloFullName = full_name || `${first_name} ${last_name}`.trim()
 
   // 1. Apollo — replicate Clay's setup: first_name + last_name + full_name + domain
-  const apolloResult = await findEmailApollo(apolloFirstName, last_name, apolloFullName, company_name, rawUrl, company_domain)
+  const apolloResult = await findEmailApollo(apolloFirstName, last_name, apolloFullName, company_name, rawUrl, company_domain, keys?.apollo_api_key)
 
   // Best LinkedIn URL we have: prefer what Apollo returned (canonical), then our own canonical
   const bestLinkedInUrl = apolloResult.canonicalLinkedInUrl ?? canonicalUrl
 
   if (apolloResult.email) {
-    const { status, subStatus } = await validateEmail(apolloResult.email)
+    const { status, subStatus } = await validateEmail(apolloResult.email, keys?.zerobounce_api_key)
     // If ZeroBounce fails (unknown = key missing/no credits/network error),
     // fall back to Apollo's own email_status. Apollo marks emails as "verified"
     // after their own validation pipeline.
@@ -63,11 +71,10 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
   // For Datagma we also pass rawUrl as fallback — Datagma resolves encoded Sales Nav URLs
   const datagmaLinkedIn = bestLinkedInUrl || rawUrl
   const REST: Array<{ name: string; selfVerified?: boolean; find: () => Promise<string | null> }> = [
-    { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl) },
-    { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl) },
+    { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl, keys?.findymail_api_key) },
+    { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl, keys?.prospeo_api_key) },
     { name: "hunter", selfVerified: true, find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
-    // Datagma verifies all emails internally — skip ZeroBounce to avoid wasting credits
-    { name: "datagma", selfVerified: true, find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name, company_linkedin_url ?? undefined) },
+    { name: "datagma", selfVerified: true, find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name, company_linkedin_url ?? undefined, keys?.datagma_api_key) },
   ]
 
   for (const provider of REST) {
@@ -78,7 +85,7 @@ export async function enrichProspect(prospect: ProspectInput): Promise<Enrichmen
       return { email, provider: provider.name, zbStatus: "valid", zbSubStatus: "", enriched: true, apolloId: apolloResult.apolloId, apolloLinkedInUrl: apolloResult.canonicalLinkedInUrl ?? null }
     }
 
-    const { status, subStatus } = await validateEmail(email)
+    const { status, subStatus } = await validateEmail(email, keys?.zerobounce_api_key)
     // Accept if ZeroBounce confirms valid/catch-all, OR if ZB returned "unknown" (no credits/key error).
     // "unknown" means ZeroBounce couldn't verify — not that the email is invalid.
     if (isUsable(status) || status === "unknown") {

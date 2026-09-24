@@ -1,7 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { supabaseAdmin } from "./supabase"
+import { getTenantConfig } from "./tenant-config"
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+function makeClient(apiKey?: string | null) {
+  return new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
+}
 
 type ReplyContext = {
   id: string
@@ -63,11 +66,10 @@ export async function analyzeReply(replyId: string): Promise<void> {
     tenantId = camp?.tenant_id ?? ""
   }
 
-  const { data: config } = await supabaseAdmin
-    .from("inbox_config")
-    .select("product_context, calendly_link")
-    .eq("tenant_id", tenantId)
-    .maybeSingle()
+  const [tenantCfg, { data: config }] = await Promise.all([
+    tenantId ? getTenantConfig(tenantId) : Promise.resolve({}),
+    supabaseAdmin.from("inbox_config").select("product_context, calendly_link").eq("tenant_id", tenantId).maybeSingle(),
+  ])
 
   const productContext = config?.product_context ?? "(sin contexto de producto configurado)"
   const calendlyLink = config?.calendly_link ?? ""
@@ -108,7 +110,7 @@ Devolvé ÚNICAMENTE un JSON válido con este formato exacto (sin markdown, sin 
 {"intent":"interested","reasoning":"una línea","draft":"el borrador completo"}`
 
   try {
-    const message = await client.messages.create({
+    const message = await makeClient((tenantCfg as { anthropic_api_key?: string | null }).anthropic_api_key).messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
       messages: [{ role: "user", content: userPrompt }],

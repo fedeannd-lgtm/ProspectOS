@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { readFileSync } from "fs"
 import { join } from "path"
 import { supabaseAdmin } from "./supabase"
+import { getTenantConfig } from "./tenant-config"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/lib/sequence-configs"
 
@@ -13,7 +14,9 @@ try {
   // file may not exist in some environments
 }
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+function makeClient(apiKey?: string | null) {
+  return new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
+}
 
 export type EmailStep = { step: number; subject: string; body: string }
 export type LinkedinStep = { step: number; message: string }
@@ -142,8 +145,8 @@ function prospectUserPromptLines(p: ReturnType<typeof fetchProspect> extends Pro
   ].filter(Boolean).join("\n")
 }
 
-function callClaude(systemPrompt: string, userPrompt: string, maxTokens = 4096) {
-  return client.messages.create({
+function callClaude(systemPrompt: string, userPrompt: string, maxTokens = 4096, apiKey?: string | null) {
+  return makeClient(apiKey).messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: maxTokens,
     messages: [{ role: "user", content: userPrompt }],
@@ -174,7 +177,7 @@ export async function generateSequences(
   emailConfigOverride?: EmailSequenceConfig
 ): Promise<Sequences> {
   const tenantId = await fetchTenantIdFromProspect(prospectId)
-  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId)])
+  const [prospect, global, tenantCfg] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId), getTenantConfig(tenantId)])
 
   const liCfg = liConfigOverride ?? global.liCfg
   const emailCfg = emailConfigOverride ?? global.emailCfg
@@ -211,7 +214,7 @@ Devolvé ÚNICAMENTE un JSON válido sin markdown, sin texto adicional, con este
     linkedinContext ? `\nContexto para LinkedIn:\n${linkedinContext}` : "",
   ].filter(Boolean).join("\n")
 
-  const message = await callClaude(systemPrompt, userPrompt)
+  const message = await callClaude(systemPrompt, userPrompt, 4096, tenantCfg.anthropic_api_key)
   const text = message.content[0].type === "text" ? message.content[0].text : ""
   const sequences = parseJson<Sequences>(text)
 
@@ -235,7 +238,7 @@ export async function generateEmailOnly(
   emailConfigOverride?: EmailSequenceConfig
 ): Promise<EmailStep[]> {
   const tenantId = await fetchTenantIdFromProspect(prospectId)
-  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId)])
+  const [prospect, global, tenantCfg] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId), getTenantConfig(tenantId)])
   const emailCfg = emailConfigOverride ?? global.emailCfg
 
   const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en email outreach.
@@ -264,7 +267,7 @@ Devolvé ÚNICAMENTE un JSON válido sin markdown, con este formato exacto:
     emailContext ? `\nContexto adicional:\n${emailContext}` : "",
   ].filter(Boolean).join("\n")
 
-  const message = await callClaude(systemPrompt, userPrompt)
+  const message = await callClaude(systemPrompt, userPrompt, 4096, tenantCfg.anthropic_api_key)
   const text = message.content[0].type === "text" ? message.content[0].text : ""
   const parsed = parseJson<{ email: EmailStep[] }>(text)
   return parsed.email
@@ -278,7 +281,7 @@ export async function generateLinkedinOnly(
   liConfigOverride?: LinkedinSequenceConfig
 ): Promise<LinkedinStep[]> {
   const tenantId = await fetchTenantIdFromProspect(prospectId)
-  const [prospect, global] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId)])
+  const [prospect, global, tenantCfg] = await Promise.all([fetchProspect(prospectId), fetchGlobalConfig(tenantId), getTenantConfig(tenantId)])
   const liCfg = liConfigOverride ?? global.liCfg
 
   const systemPrompt = `Sos un SDR experto en ventas B2B con mucha experiencia en outreach por LinkedIn.
@@ -303,7 +306,7 @@ Devolvé ÚNICAMENTE un JSON válido sin markdown, con este formato exacto:
     linkedinContext ? `\nContexto adicional para LinkedIn:\n${linkedinContext}` : "",
   ].filter(Boolean).join("\n")
 
-  const message = await callClaude(systemPrompt, userPrompt, 1024)
+  const message = await callClaude(systemPrompt, userPrompt, 1024, tenantCfg.anthropic_api_key)
   const text = message.content[0].type === "text" ? message.content[0].text : ""
   const parsed = parseJson<{ linkedin: LinkedinStep[] }>(text)
   return parsed.linkedin

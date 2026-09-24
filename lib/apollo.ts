@@ -1,4 +1,6 @@
-const APOLLO_API_KEY = process.env.APOLLO_API_KEY!
+function resolveKey(override?: string | null): string {
+  return override || process.env.APOLLO_API_KEY || ""
+}
 
 export type ApolloResult = {
   email: string | null
@@ -8,15 +10,15 @@ export type ApolloResult = {
   apolloId: string | null
 }
 
-async function matchPerson(payload: Record<string, unknown>): Promise<{ person: Record<string, unknown> } | null> {
+async function matchPerson(payload: Record<string, unknown>, apiKey: string): Promise<{ person: Record<string, unknown> } | null> {
   const res = await fetch("https://api.apollo.io/api/v1/people/match", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-cache",
-      "X-Api-Key": APOLLO_API_KEY,
+      "X-Api-Key": apiKey,
     },
-    body: JSON.stringify({ api_key: APOLLO_API_KEY, reveal_personal_emails: true, ...payload }),
+    body: JSON.stringify({ api_key: apiKey, reveal_personal_emails: true, ...payload }),
   })
   if (!res.ok) {
     console.error(`[Apollo] matchPerson HTTP ${res.status}`, await res.text().catch(() => ""))
@@ -49,16 +51,17 @@ async function searchPeopleAtCompany(
   firstName: string,
   lastName: string,
   companyDomain: string,
+  apiKey: string,
 ): Promise<{ email: string; linkedInUrl: string | null } | null> {
   const res = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-cache",
-      "X-Api-Key": APOLLO_API_KEY,
+      "X-Api-Key": apiKey,
     },
     body: JSON.stringify({
-      api_key: APOLLO_API_KEY,
+      api_key: apiKey,
       q_organization_domains_list: [companyDomain],
       per_page: 100,
     }),
@@ -99,8 +102,10 @@ export async function findEmailApollo(
   fullName: string,
   companyName: string,
   linkedinUrl: string,
-  companyDomain?: string | null
+  companyDomain?: string | null,
+  apiKey?: string | null
 ): Promise<ApolloResult> {
+  const key = resolveKey(apiKey)
   try {
     const apolloFirstName = firstName.split(" ")[0]
     const apolloFullName = fullName || `${firstName} ${lastName}`.trim()
@@ -113,14 +118,14 @@ export async function findEmailApollo(
       name: apolloFullName || undefined,
       domain: companyDomain || undefined,
       organization_name: !companyDomain && companyName ? companyName : undefined,
-    })
+    }, key)
     console.log(`[Apollo] pass1 (name+${companyDomain ? "domain" : "org_name"}) for ${fullName} @ ${companyName}: person=${!!first?.person} email=${first?.person ? extractEmail(first.person as Record<string,unknown>) : null}`)
 
     let person = first?.person as Record<string, unknown> | undefined
 
     // 2. Canonical LinkedIn URL only (skip encoded Sales Nav IDs — they break Apollo matching)
     if (!person && linkedinUrl && isCanonicalLinkedIn(linkedinUrl)) {
-      const urlOnly = await matchPerson({ linkedin_url: linkedinUrl })
+      const urlOnly = await matchPerson({ linkedin_url: linkedinUrl }, key)
       person = urlOnly?.person as Record<string, unknown> | undefined
       console.log(`[Apollo] pass2 (linkedin_url) for ${fullName}: person=${!!person}`)
     } else if (!person) {
@@ -133,7 +138,7 @@ export async function findEmailApollo(
         first_name: firstName,
         last_name: lastName,
         domain: companyDomain,
-      })
+      }, key)
       person = withDomain?.person as Record<string, unknown> | undefined
       console.log(`[Apollo] pass3 (name+domain fallback) for ${fullName}: person=${!!person}`)
     }
@@ -148,7 +153,7 @@ export async function findEmailApollo(
 
       // Force email reveal via Apollo person ID
       if (apolloId) {
-        const second = await matchPerson({ id: apolloId })
+        const second = await matchPerson({ id: apolloId }, key)
         const p2 = second?.person as Record<string, unknown> | undefined
         if (p2) {
           const email2 = extractEmail(p2)
@@ -165,7 +170,7 @@ export async function findEmailApollo(
 
     // 4. mixed_people/search by company domain + name match
     if (companyDomain) {
-      const found = await searchPeopleAtCompany(firstName, lastName, companyDomain)
+      const found = await searchPeopleAtCompany(firstName, lastName, companyDomain, key)
       if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl, apolloEmailStatus: null, phone: null, apolloId: null }
     }
 
@@ -176,12 +181,13 @@ export async function findEmailApollo(
 }
 
 // Lookup a company's primary domain by name — does NOT consume lead credits
-export async function apolloOrgLookup(companyName: string): Promise<string | null> {
-  if (!APOLLO_API_KEY || !companyName) return null
+export async function apolloOrgLookup(companyName: string, apiKey?: string | null): Promise<string | null> {
+  const key = resolveKey(apiKey)
+  if (!key || !companyName) return null
   try {
     const res = await fetch("https://api.apollo.io/api/v1/organizations/search", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": APOLLO_API_KEY },
+      headers: { "Content-Type": "application/json", "x-api-key": key },
       body: JSON.stringify({ q_organization_name: companyName, per_page: 1 }),
     })
     if (!res.ok) return null
@@ -197,23 +203,25 @@ export async function findPhoneApollo(
   lastName: string,
   companyName: string,
   linkedinUrl: string,
-  companyDomain?: string | null
+  companyDomain?: string | null,
+  apiKey?: string | null
 ): Promise<string | null> {
+  const key = resolveKey(apiKey)
   try {
     const first = await matchPerson({
       first_name: firstName.split(" ")[0],
       last_name: lastName,
       organization_name: companyName || undefined,
-    })
+    }, key)
     let person = first?.person as Record<string, unknown> | undefined
 
     if (!person && linkedinUrl && isCanonicalLinkedIn(linkedinUrl)) {
-      const urlOnly = await matchPerson({ linkedin_url: linkedinUrl })
+      const urlOnly = await matchPerson({ linkedin_url: linkedinUrl }, key)
       person = urlOnly?.person as Record<string, unknown> | undefined
     }
 
     if (!person && companyDomain) {
-      const withDomain = await matchPerson({ first_name: firstName.split(" ")[0], last_name: lastName, domain: companyDomain })
+      const withDomain = await matchPerson({ first_name: firstName.split(" ")[0], last_name: lastName, domain: companyDomain }, key)
       person = withDomain?.person as Record<string, unknown> | undefined
     }
 
@@ -225,7 +233,7 @@ export async function findPhoneApollo(
     // Force reveal via person ID
     const apolloId = person.id as string | undefined
     if (apolloId) {
-      const second = await matchPerson({ id: apolloId })
+      const second = await matchPerson({ id: apolloId }, key)
       const p2 = second?.person as Record<string, unknown> | undefined
       if (p2) return extractPhone(p2)
     }

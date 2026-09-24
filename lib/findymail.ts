@@ -1,13 +1,13 @@
 import { canonicalLinkedInUrl } from "./linkedin"
 
-const FINDYMAIL_API_KEY = process.env.FINDYMAIL_API_KEY!
-
 export async function findEmailFindymail(
   firstName: string,
   lastName: string,
   domain: string,
-  linkedinUrl: string
+  linkedinUrl: string,
+  apiKey?: string | null
 ): Promise<string | null> {
+  const key = apiKey || process.env.FINDYMAIL_API_KEY || ""
   try {
     const canonical = canonicalLinkedInUrl(linkedinUrl)
     // Prefer LinkedIn URL lookup when available
@@ -16,7 +16,7 @@ export async function findEmailFindymail(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${FINDYMAIL_API_KEY}`,
+          "Authorization": `Bearer ${key}`,
         },
         body: JSON.stringify({ linkedin_url: canonical }),
       })
@@ -32,7 +32,7 @@ export async function findEmailFindymail(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${FINDYMAIL_API_KEY}`,
+        "Authorization": `Bearer ${key}`,
       },
       body: JSON.stringify({ name: `${firstName} ${lastName}`.trim(), domain }),
     })

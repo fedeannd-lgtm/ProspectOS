@@ -1,20 +1,19 @@
-const DATAGMA_API_KEY = process.env.DATAGMA_API_KEY
-
 export async function findPhoneDatagma(params: {
   linkedinUrl?: string | null
   email?: string | null
   firstName: string
   lastName: string
   companyName?: string | null
-}): Promise<string | null> {
-  if (!DATAGMA_API_KEY) return null
+}, apiKey?: string | null): Promise<string | null> {
+  const key = apiKey || process.env.DATAGMA_API_KEY || ""
+  if (!key) return null
   try {
     const { linkedinUrl, email, firstName, lastName, companyName } = params
 
     // 1. Search by LinkedIn URL and/or email (preferred — more accurate)
     if (linkedinUrl || email) {
       const url = new URL("https://gateway.datagma.net/api/ingress/v1/search")
-      url.searchParams.set("apiId", DATAGMA_API_KEY)
+      url.searchParams.set("apiId", key)
       url.searchParams.set("minimumMatch", "1")
       if (linkedinUrl) url.searchParams.set("username", linkedinUrl)
       if (email) url.searchParams.set("email", email)
@@ -31,7 +30,7 @@ export async function findPhoneDatagma(params: {
     if (firstName && lastName) {
       const fullName = `${firstName} ${lastName}`.trim()
       const url = new URL("https://gateway.datagma.net/api/ingress/v2/full")
-      url.searchParams.set("apiId", DATAGMA_API_KEY)
+      url.searchParams.set("apiId", key)
       url.searchParams.set("data", "MAYD")
       url.searchParams.set("phoneFull", "true")
       url.searchParams.set("fullName", fullName)
@@ -106,14 +105,16 @@ export async function findEmailDatagma(
   companyDomain: string,
   linkedinUrl: string,
   companyName?: string,
-  companyLinkedInUrl?: string
+  companyLinkedInUrl?: string,
+  apiKey?: string | null
 ): Promise<string | null> {
-  if (!DATAGMA_API_KEY) return null
+  const key = apiKey || process.env.DATAGMA_API_KEY || ""
+  if (!key) return null
   try {
     const names = buildNameVariants(firstName, lastName)
 
     for (const fullName of names) {
-      const email = await datagmaFindEmail({ fullName, companyName, companyLinkedInUrl })
+      const email = await datagmaFindEmail({ fullName, companyName, companyLinkedInUrl }, key)
       if (email) return email
     }
 
@@ -137,11 +138,11 @@ async function datagmaFindEmail(params: {
   fullName: string
   companyName?: string
   companyLinkedInUrl?: string
-}): Promise<string | null> {
+}, key: string): Promise<string | null> {
   const { fullName, companyName, companyLinkedInUrl } = params
 
   const url = new URL("https://gateway.datagma.net/api/ingress/v6/findEmail")
-  url.searchParams.set("apiId", DATAGMA_API_KEY!)
+  url.searchParams.set("apiId", key)
   url.searchParams.set("fullName", fullName)
   url.searchParams.set("findEmailV2Step", "3")
   url.searchParams.set("findEmailV2Country", "General")
