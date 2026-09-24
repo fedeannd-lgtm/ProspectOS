@@ -5,6 +5,7 @@ import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { enrichProspect, type EnrichmentKeys } from "@/lib/enrichment"
 import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
+import { getClassificationRules, applyIcpRules, applyOsScoreRules } from "@/lib/classification-rules"
 import { findPhoneDatagma } from "@/lib/datagma"
 import { findPhoneProspeo } from "@/lib/prospeo"
 import { normalizeCompanyName, normalizePersonName } from "@/lib/process-search-results"
@@ -61,7 +62,10 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   if (!p) throw new Error("Prospecto no encontrado")
 
   const tenantId = await getTenantId()
-  const tenantCfg = await getTenantConfig(tenantId)
+  const [tenantCfg, classRules] = await Promise.all([
+    getTenantConfig(tenantId),
+    getClassificationRules(tenantId),
+  ])
   const enrichKeys: EnrichmentKeys = {
     apollo_api_key: tenantCfg.apollo_api_key,
     zerobounce_api_key: tenantCfg.zerobounce_api_key,
@@ -71,11 +75,13 @@ export async function enrichOneProspect(prospectId: string): Promise<{
   }
 
   const osScore = calculateOsScore(p.job_title)
+  const osSegment = applyOsScoreRules(p.job_title ?? "", classRules.osScore)
+  const osSegment2 = applyOsScoreRules(p.job_title ?? "", classRules.osScore2)
 
   // Skip if already has a valid email (unknown = ZB couldn't verify, but we trust the source)
   if (p.email && (p.email_status === "valid" || p.email_status === "catch-all" || p.email_status === "unknown")) {
-    const { category, score } = classifyIcp(p.job_title ?? "")
-    await supabaseAdmin.from("prospects").update({ os_score: osScore }).eq("id", prospectId)
+    const { category, score } = applyIcpRules(p.job_title ?? "", classRules.icp)
+    await supabaseAdmin.from("prospects").update({ os_score: osScore, os_segment: osSegment, os_segment2: osSegment2 }).eq("id", prospectId)
     return { email: p.email, provider: null, zbStatus: p.email_status, icpCategory: category, icpScore: score, osScore, apolloId: null }
   }
 
@@ -100,7 +106,7 @@ export async function enrichOneProspect(prospectId: string): Promise<{
     company_linkedin_url: accountLinkedIn,
   }, enrichKeys)
 
-  const { category, score } = classifyIcp(p.job_title ?? "")
+  const { category, score } = applyIcpRules(p.job_title ?? "", classRules.icp)
 
   const updatePayload: Record<string, unknown> = {
     email: result.email ?? null,
@@ -110,6 +116,8 @@ export async function enrichOneProspect(prospectId: string): Promise<{
     icp_category: category,
     icp_score: score,
     os_score: osScore,
+    os_segment: osSegment,
+    os_segment2: osSegment2,
     apollo_id: result.apolloId ?? null,
     status: result.enriched ? "enriched" : "not_found",
   }
@@ -157,13 +165,18 @@ export async function classifyAllIcp(campaignId: string): Promise<number> {
   if (error) throw new Error(error.message)
   if (!data?.length) return 0
 
+  const tenantId = await getTenantId()
+  const classRules = await getClassificationRules(tenantId)
+
   let updated = 0
   for (const p of data) {
-    const { category, score } = classifyIcp(p.job_title ?? "")
+    const { category, score } = applyIcpRules(p.job_title ?? "", classRules.icp)
     const osScore = calculateOsScore(p.job_title)
+    const osSegment = applyOsScoreRules(p.job_title ?? "", classRules.osScore)
+    const osSegment2 = applyOsScoreRules(p.job_title ?? "", classRules.osScore2)
     await supabaseAdmin
       .from("prospects")
-      .update({ icp_category: category, icp_score: score, os_score: osScore })
+      .update({ icp_category: category, icp_score: score, os_score: osScore, os_segment: osSegment, os_segment2: osSegment2 })
       .eq("id", p.id)
     updated++
   }

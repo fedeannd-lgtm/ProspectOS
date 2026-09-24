@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { addExclusionListsToUrl, updateAccountListInUrl } from "@/lib/sales-nav-lists"
 import { enrichProspect, type EnrichmentKeys } from "@/lib/enrichment"
 import { getTenantConfig } from "@/lib/tenant-config"
+import { getClassificationRules, applyIcpRules, applyOsScoreRules } from "@/lib/classification-rules"
 import { classifyIcp } from "@/lib/icp"
 import { calculateOsScore } from "@/lib/scoring"
 import { findPhoneDatagma } from "@/lib/datagma"
@@ -282,6 +283,20 @@ async function enrichOneProspect(
   auto: AutoCampaign,
   prospect: { id: string; job_title: string | null; email: string | null; email_status: string | null }
 ) {
+  const { data: camp } = await supabaseAdmin.from("campaigns").select("tenant_id").eq("id", auto.campaign_id).maybeSingle()
+  const tenantId = camp?.tenant_id ?? ""
+  const [tenantCfg, classRules] = await Promise.all([
+    tenantId ? getTenantConfig(tenantId) : Promise.resolve({}),
+    tenantId ? getClassificationRules(tenantId) : Promise.resolve({ icp: [], osScore: [], osScore2: [] }),
+  ])
+  const enrichKeys: EnrichmentKeys = {
+    apollo_api_key: (tenantCfg as { apollo_api_key?: string | null }).apollo_api_key,
+    zerobounce_api_key: (tenantCfg as { zerobounce_api_key?: string | null }).zerobounce_api_key,
+    findymail_api_key: (tenantCfg as { findymail_api_key?: string | null }).findymail_api_key,
+    prospeo_api_key: (tenantCfg as { prospeo_api_key?: string | null }).prospeo_api_key,
+    datagma_api_key: (tenantCfg as { datagma_api_key?: string | null }).datagma_api_key,
+  }
+
   if (auto.enrich_emails) {
     const { data: p } = await supabaseAdmin
       .from("prospects")
@@ -303,16 +318,6 @@ async function enrichOneProspect(
         const accountLinkedIn = acct?.linkedin_url ?? null
         const accountDomain = acct?.domain ?? null
 
-        const { data: camp } = await supabaseAdmin.from("campaigns").select("tenant_id").eq("id", auto.campaign_id).maybeSingle()
-        const tenantCfg = camp?.tenant_id ? await getTenantConfig(camp.tenant_id) : {}
-        const enrichKeys: EnrichmentKeys = {
-          apollo_api_key: tenantCfg.apollo_api_key,
-          zerobounce_api_key: tenantCfg.zerobounce_api_key,
-          findymail_api_key: tenantCfg.findymail_api_key,
-          prospeo_api_key: tenantCfg.prospeo_api_key,
-          datagma_api_key: tenantCfg.datagma_api_key,
-        }
-
         const result = await enrichProspect({
           first_name: p.first_name ?? "",
           last_name: p.last_name ?? "",
@@ -322,7 +327,9 @@ async function enrichOneProspect(
           linkedin_url: p.linkedin_url ?? "",
           company_linkedin_url: accountLinkedIn,
         }, enrichKeys)
-        const { category, score } = classifyIcp(p.job_title ?? "")
+        const { category, score } = applyIcpRules(p.job_title ?? "", classRules.icp)
+        const osSegment = applyOsScoreRules(p.job_title ?? "", classRules.osScore)
+        const osSegment2 = applyOsScoreRules(p.job_title ?? "", classRules.osScore2)
         await supabaseAdmin.from("prospects").update({
           email: result.email,
           email_status: result.zbStatus,
@@ -331,14 +338,20 @@ async function enrichOneProspect(
           icp_category: category,
           icp_score: score,
           os_score: osScore,
+          os_segment: osSegment,
+          os_segment2: osSegment2,
           apollo_id: result.apolloId ?? null,
         }).eq("id", p.id)
       } else if (auto.classify_icp) {
-        const { category, score } = classifyIcp(p.job_title ?? "")
+        const { category, score } = applyIcpRules(p.job_title ?? "", classRules.icp)
+        const osSegment = applyOsScoreRules(p.job_title ?? "", classRules.osScore)
+        const osSegment2 = applyOsScoreRules(p.job_title ?? "", classRules.osScore2)
         await supabaseAdmin.from("prospects").update({
           icp_category: category,
           icp_score: score,
           os_score: osScore,
+          os_segment: osSegment,
+          os_segment2: osSegment2,
         }).eq("id", p.id)
       }
     }
@@ -349,12 +362,16 @@ async function enrichOneProspect(
       .eq("id", prospect.id)
       .single()
     if (p) {
-      const { category, score } = classifyIcp(p.job_title ?? "")
+      const { category, score } = applyIcpRules(p.job_title ?? "", classRules.icp)
       const osScore = calculateOsScore(p.job_title ?? "")
+      const osSegment = applyOsScoreRules(p.job_title ?? "", classRules.osScore)
+      const osSegment2 = applyOsScoreRules(p.job_title ?? "", classRules.osScore2)
       await supabaseAdmin.from("prospects").update({
         icp_category: category,
         icp_score: score,
         os_score: osScore,
+        os_segment: osSegment,
+        os_segment2: osSegment2,
       }).eq("id", p.id)
     }
   }

@@ -62,12 +62,12 @@ export async function deleteSavedUrl(id: string) {
   revalidatePath("/settings")
 }
 
-import { getTenantReps } from "@/lib/reps-server"
+import { getTenantReps as getClerkTenantReps } from "@/lib/reps-server"
 
 export async function getRepConfigs() {
   const tenantId = await getTenantId()
   const [reps, { data, error }] = await Promise.all([
-    getTenantReps(),
+    getClerkTenantReps(),
     supabase
       .from("rep_configs")
       .select("rep_name, linkedin_cookie, updated_at")
@@ -471,4 +471,84 @@ export async function syncHubspotDeals(): Promise<{ updated: number; error?: str
   } catch (e) {
     return { updated: 0, error: e instanceof Error ? e.message : "Error desconocido" }
   }
+}
+
+// ── Tenant reps ───────────────────────────────────────────────────────────────
+
+export async function getTenantReps(): Promise<string[]> {
+  const tenantId = await getTenantId()
+  const { data } = await supabaseAdmin
+    .from("tenant_reps")
+    .select("name")
+    .eq("tenant_id", tenantId)
+    .order("created_at")
+  return (data ?? []).map((r: { name: string }) => r.name)
+}
+
+export async function addTenantRep(name: string): Promise<void> {
+  const tenantId = await getTenantId()
+  await supabaseAdmin
+    .from("tenant_reps")
+    .insert({ tenant_id: tenantId, name: name.trim() })
+  revalidatePath("/settings")
+}
+
+export async function deleteTenantRep(name: string): Promise<void> {
+  const tenantId = await getTenantId()
+  await supabaseAdmin
+    .from("tenant_reps")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("name", name)
+  revalidatePath("/settings")
+}
+
+// ── Classification rules ──────────────────────────────────────────────────────
+
+import type { IcpRule, OsScoreRule } from "@/lib/classification-rules"
+
+export type { IcpRule, OsScoreRule }
+
+export async function getIcpRules(): Promise<IcpRule[]> {
+  const tenantId = await getTenantId()
+  const { data } = await supabaseAdmin
+    .from("icp_rules")
+    .select("id, label, score, keywords, priority")
+    .eq("tenant_id", tenantId)
+    .order("priority")
+  return (data ?? []) as IcpRule[]
+}
+
+export async function saveIcpRules(rules: Omit<IcpRule, "id">[]): Promise<void> {
+  const tenantId = await getTenantId()
+  await supabaseAdmin.from("icp_rules").delete().eq("tenant_id", tenantId)
+  if (rules.length > 0) {
+    await supabaseAdmin.from("icp_rules").insert(
+      rules.map((r, i) => ({ ...r, tenant_id: tenantId, priority: i }))
+    )
+  }
+  revalidatePath("/settings")
+}
+
+export async function getOsScoreRules(dimension: 1 | 2): Promise<OsScoreRule[]> {
+  const tenantId = await getTenantId()
+  const table = dimension === 1 ? "os_score_rules" : "os_score2_rules"
+  const { data } = await supabaseAdmin
+    .from(table)
+    .select("id, segment, keywords, priority")
+    .eq("tenant_id", tenantId)
+    .order("priority")
+  return (data ?? []) as OsScoreRule[]
+}
+
+export async function saveOsScoreRules(rules: Omit<OsScoreRule, "id">[], dimension: 1 | 2): Promise<void> {
+  const tenantId = await getTenantId()
+  const table = dimension === 1 ? "os_score_rules" : "os_score2_rules"
+  await supabaseAdmin.from(table).delete().eq("tenant_id", tenantId)
+  if (rules.length > 0) {
+    await supabaseAdmin.from(table).insert(
+      rules.map((r, i) => ({ ...r, tenant_id: tenantId, priority: i }))
+    )
+  }
+  revalidatePath("/settings")
 }

@@ -956,12 +956,12 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contexto del producto (Lara)</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contexto del producto</label>
           <textarea
             value={productContext}
             onChange={(e) => setProductContext(e.target.value)}
             rows={10}
-            placeholder="Describí las features de Lara, casos de uso por industria, y los pain points que resuelve. La IA usará este texto para generar respuestas personalizadas."
+            placeholder="Describí las features del producto, casos de uso por industria, y los pain points que resuelve. La IA usará este texto para generar secuencias y respuestas personalizadas."
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
           />
           <p className="text-xs text-muted-foreground">
