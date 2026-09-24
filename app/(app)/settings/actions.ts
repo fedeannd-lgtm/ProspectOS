@@ -505,9 +505,6 @@ export async function deleteTenantRep(name: string): Promise<void> {
 
 // ── Classification rules ──────────────────────────────────────────────────────
 
-import type { IcpRule, OsScoreRule } from "@/lib/classification-rules"
-
-export type { IcpRule, OsScoreRule }
 
 export async function getIcpRules(): Promise<IcpRule[]> {
   const tenantId = await getTenantId()
