@@ -14,7 +14,6 @@ import { Badge } from "@/components/ui/badge"
 import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, saveTenantApiKeys, getTenantReps, addTenantRep, deleteTenantRep, addTenantNiche, deleteTenantNiche, saveIcpRules, saveOsScoreRules, type SavedUrl, type ClientCompany, type TenantApiKeys } from "./actions"
 import type { IcpRule, OsScoreRule } from "@/lib/classification-rules"
 import { getProviderStatus } from "./provider-status"
-import { REPS } from "@/lib/reps"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/lib/sequence-configs"
@@ -92,7 +91,7 @@ type NewUrlForm = {
 
 const EMPTY_URL_FORM: NewUrlForm = { rep_name: "", industry: "", url_type: "", url: "", label: "" }
 
-function AddUrlForm({ onAdded, allIndustries }: { onAdded: (url: SavedUrl) => void; allIndustries: string[] }) {
+function AddUrlForm({ onAdded, allIndustries, reps }: { onAdded: (url: SavedUrl) => void; allIndustries: string[]; reps: string[] }) {
   const [form, setForm] = useState<NewUrlForm>(EMPTY_URL_FORM)
   const [industryOpen, setIndustryOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -129,7 +128,7 @@ function AddUrlForm({ onAdded, allIndustries }: { onAdded: (url: SavedUrl) => vo
             <SelectValue placeholder="SDR" />
           </SelectTrigger>
           <SelectContent>
-            {REPS.map((r) => <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>)}
+            {reps.map((r) => <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -217,7 +216,7 @@ function AddUrlForm({ onAdded, allIndustries }: { onAdded: (url: SavedUrl) => vo
 
 // ─── Saved URLs card ──────────────────────────────────────────────────────────
 
-function SavedUrlsCard({ initialUrls, allIndustries }: { initialUrls: SavedUrl[]; allIndustries: string[] }) {
+function SavedUrlsCard({ initialUrls, allIndustries, reps }: { initialUrls: SavedUrl[]; allIndustries: string[]; reps: string[] }) {
   const [urls, setUrls] = useState<SavedUrl[]>(initialUrls)
   const [showAdd, setShowAdd] = useState(false)
   const [filterRep, setFilterRep] = useState("all")
@@ -259,7 +258,7 @@ function SavedUrlsCard({ initialUrls, allIndustries }: { initialUrls: SavedUrl[]
       </CardHeader>
       <CardContent className="space-y-4">
         {showAdd && (
-          <AddUrlForm allIndustries={allIndustries} onAdded={(newUrl) => {
+          <AddUrlForm allIndustries={allIndustries} reps={reps} onAdded={(newUrl) => {
             setUrls((prev) => [...prev, newUrl])
             setShowAdd(false)
           }} />
@@ -273,7 +272,7 @@ function SavedUrlsCard({ initialUrls, allIndustries }: { initialUrls: SavedUrl[]
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs">Todos los SDR</SelectItem>
-              {REPS.map((r) => <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>)}
+              {reps.map((r) => <SelectItem key={r} value={r} className="text-xs">{r}</SelectItem>)}
             </SelectContent>
           </Select>
 
@@ -1067,7 +1066,7 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
         initialExclude={inboxConfig.exclude_clients ?? false}
         initialExcludePrevious={inboxConfig.exclude_previous ?? false}
       />
-      <SavedUrlsCard initialUrls={savedUrls} allIndustries={allIndustries} />
+      <SavedUrlsCard initialUrls={savedUrls} allIndustries={allIndustries} reps={initialReps} />
       <ChromeExtensionCard />
 
       {/* ── Sección 2: Enriquecimiento ── */}
