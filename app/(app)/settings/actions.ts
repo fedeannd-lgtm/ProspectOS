@@ -319,6 +319,20 @@ export async function saveTenantApiKeys(keys: Partial<TenantApiKeys>): Promise<v
   revalidatePath("/settings")
 }
 
+export async function testKaironConnection(): Promise<{ tools: { name: string }[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const { data } = await supabaseAdmin.from("tenant_configs").select("linkedin_api_key").eq("tenant_id", tenantId).maybeSingle()
+    const apiKey = (data as any)?.linkedin_api_key
+    if (!apiKey) return { tools: [], error: "No hay API key de Kairon configurada" }
+    const { listKaironTools } = await import("@/lib/kairon")
+    const tools = await listKaironTools(apiKey)
+    return { tools }
+  } catch (e) {
+    return { tools: [], error: e instanceof Error ? e.message : "Error desconocido" }
+  }
+}
+
 export async function syncHubspotDeals(): Promise<{ updated: number; error?: string }> {
   try {
     const { getDealPipelineStages, getAllDeals, getContactEmails, getCompanyInfo } = await import("@/lib/hubspot")

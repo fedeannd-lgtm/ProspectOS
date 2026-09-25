@@ -2,24 +2,28 @@ const MCP_URL = "https://app.heykairon.com/mcp"
 
 type McpResult = { content?: { type: string; text: string }[] } | null
 
-async function kaironCall(apiKey: string, toolName: string, args: Record<string, unknown>): Promise<McpResult> {
+async function kaironRpc(apiKey: string, method: string, params?: unknown): Promise<unknown> {
   const res = await fetch(MCP_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: Date.now(),
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-    }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
   const json = await res.json()
   if (json.error) throw new Error(json.error.message ?? "Kairon error")
   return json.result ?? null
+}
+
+async function kaironCall(apiKey: string, toolName: string, args: Record<string, unknown>): Promise<McpResult> {
+  return kaironRpc(apiKey, "tools/call", { name: toolName, arguments: args }) as Promise<McpResult>
+}
+
+export async function listKaironTools(apiKey: string): Promise<{ name: string; description?: string }[]> {
+  const result = await kaironRpc(apiKey, "tools/list") as any
+  return result?.tools ?? []
 }
 
 function parseResult(result: McpResult): unknown {

@@ -1505,6 +1505,8 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
   const [keys, setKeys] = useState<TenantApiKeys>(initialKeys)
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
+  const [kaironTest, setKaironTest] = useState<string | null>(null)
+  const [testingKairon, startTestKairon] = useTransition()
 
   function update(field: keyof TenantApiKeys, value: string | null) {
     setKeys((k) => ({ ...k, [field]: value || null }))
@@ -1515,6 +1517,18 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
       await saveTenantApiKeys(keys)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
+    })
+  }
+
+  function handleTestKairon() {
+    startTestKairon(async () => {
+      const { testKaironConnection } = await import("./actions")
+      const res = await testKaironConnection()
+      if (res.error) {
+        setKaironTest(`Error: ${res.error}`)
+      } else {
+        setKaironTest(`Tools (${res.tools.length}): ${res.tools.slice(0, 8).map((t) => t.name).join(", ")}`)
+      }
     })
   }
 
@@ -1574,15 +1588,24 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 pt-2">
+        <div className="flex items-center gap-3 pt-2 flex-wrap">
           <Button size="sm" onClick={handleSave} disabled={isPending}>
             {isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
             Guardar
           </Button>
+          {keys.linkedin_tool === "Kairon" && keys.linkedin_api_key && (
+            <Button size="sm" variant="outline" onClick={handleTestKairon} disabled={testingKairon}>
+              {testingKairon ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+              Test Kairon
+            </Button>
+          )}
           {saved && (
             <span className="inline-flex items-center gap-1 text-xs text-green-700">
               <CheckCircle2 className="size-3" /> Guardado
             </span>
+          )}
+          {kaironTest && (
+            <span className="text-xs text-muted-foreground font-mono break-all">{kaironTest}</span>
           )}
         </div>
       </CardContent>
