@@ -985,7 +985,7 @@ function InboxSettingsCard({ initialConfig }: { initialConfig: InboxConfig }) {
   )
 }
 
-export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies, tenantApiKeys, tenantReps: initialReps, icpRules: initialIcpRules, osScoreRules: initialOsScoreRules, osScore2Rules: initialOsScore2Rules }: {
+export function SettingsClient({ savedUrls, providerStatus: initialProviderStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies, tenantApiKeys, tenantReps: initialReps, tenantNiches, icpRules: initialIcpRules, osScoreRules: initialOsScoreRules, osScore2Rules: initialOsScore2Rules }: {
   savedUrls: SavedUrl[]
   providerStatus: ProviderStatus[]
   providerUsage: ProviderUsage[]
