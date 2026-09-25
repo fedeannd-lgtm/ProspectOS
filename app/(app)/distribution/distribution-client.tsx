@@ -423,10 +423,11 @@ function DestinationSelect({ label, options, value, onChange }: {
   )
 }
 
-function DestinationsSection({ route, onChange, integrationCampaigns }: {
+function DestinationsSection({ route, onChange, integrationCampaigns, linkedinTool }: {
   route: DistributionRoute
   onChange: (r: DistributionRoute) => void
   integrationCampaigns: { smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null
+  linkedinTool?: string
 }) {
   return (
     <div className="space-y-2 pt-1 border-t">
@@ -438,7 +439,7 @@ function DestinationsSection({ route, onChange, integrationCampaigns }: {
         onChange={(v) => onChange({ ...route, smartlead_campaign_id: v })}
       />
       <DestinationSelect
-        label="HeyReach"
+        label={linkedinTool ?? "HeyReach"}
         options={integrationCampaigns?.heyreach ?? null}
         value={route.heyreach_campaign_id}
         onChange={(v) => onChange({ ...route, heyreach_campaign_id: v })}
@@ -449,7 +450,7 @@ function DestinationsSection({ route, onChange, integrationCampaigns }: {
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
-function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClone, onRemove, integrationCampaigns }: {
+function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClone, onRemove, integrationCampaigns, linkedinTool }: {
   route: DistributionRoute
   index: number
   total: number
@@ -459,6 +460,7 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClon
   onClone: () => void
   onRemove: () => void
   integrationCampaigns: { smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null
+  linkedinTool?: string
 }) {
   return (
     <div className="border rounded-lg p-4 space-y-3 bg-muted/20">
@@ -544,7 +546,7 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClon
       </div>
 
       {/* Destinations */}
-      <DestinationsSection route={route} onChange={onChange} integrationCampaigns={integrationCampaigns} />
+      <DestinationsSection route={route} onChange={onChange} integrationCampaigns={integrationCampaigns} linkedinTool={linkedinTool} />
     </div>
   )
 }
@@ -682,7 +684,7 @@ function RunHistory({ runs }: { runs: DistributionRun[] }) {
                     <div className="flex items-center gap-3">
                       <span>{r.matched} matchearon</span>
                       {r.smartlead > 0 && <Badge variant="outline" className="text-[10px] py-0">SL: {r.smartlead}</Badge>}
-                      {r.heyreach > 0 && <Badge variant="outline" className="text-[10px] py-0">HR: {r.heyreach}</Badge>}
+                      {r.heyreach > 0 && <Badge variant="outline" className="text-[10px] py-0">{(linkedinTool ?? "HR").slice(0, 2).toUpperCase()}: {r.heyreach}</Badge>}
                     </div>
                   </div>
                 ))}
@@ -840,7 +842,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
           <Button variant="ghost" size="sm" onClick={() => setShowPreview(true)} disabled={routes.length === 0} title="Vista previa del flujo">
             <Eye className="size-3.5 mr-1" /> Vista previa
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleLoadCampaigns} disabled={loadingCampaigns} title="Cargar campañas de Smartlead y HeyReach">
+          <Button variant="ghost" size="sm" onClick={handleLoadCampaigns} disabled={loadingCampaigns} title={`Cargar campañas de Smartlead y ${linkedinTool}`}>
             {loadingCampaigns ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <RotateCcw className="size-3.5 mr-1" />}
             {integrationCampaigns ? `${integrationCampaigns.smartlead.length + integrationCampaigns.heyreach.length} campañas` : "Cargar campañas"}
           </Button>
@@ -885,6 +887,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
             onClone={() => cloneRoute(i)}
             onRemove={() => removeRoute(i)}
             integrationCampaigns={integrationCampaigns}
+            linkedinTool={linkedinTool}
           />
         ))}
         <button
@@ -938,9 +941,10 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function DistributionClient({ templates: initialTemplates, campaigns }: {
+export function DistributionClient({ templates: initialTemplates, campaigns, linkedinTool = "HeyReach" }: {
   templates: DistributionTemplate[]
   campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
+  linkedinTool?: string
 }) {
   const [templates, setTemplates] = useState(initialTemplates)
   const [selected, setSelected] = useState<DistributionTemplate | null | "new">(null)
