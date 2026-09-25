@@ -643,7 +643,7 @@ function RunModal({ template, campaigns, onClose, onRun }: {
 
 // ─── Run history ──────────────────────────────────────────────────────────────
 
-function RunHistory({ runs }: { runs: DistributionRun[] }) {
+function RunHistory({ runs, linkedinTool }: { runs: DistributionRun[]; linkedinTool?: string }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   if (!runs.length) return (
@@ -908,7 +908,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose }: {
             <RotateCcw className={`size-3 ${loadingRuns ? "animate-spin" : ""}`} />
             Historial de corridas
           </button>
-          <RunHistory runs={runs} />
+          <RunHistory runs={runs} linkedinTool={linkedinTool} />
         </div>
       )}
 
