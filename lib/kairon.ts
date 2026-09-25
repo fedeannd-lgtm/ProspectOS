@@ -7,6 +7,7 @@ async function kaironRpc(apiKey: string, method: string, params?: unknown): Prom
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Accept": "application/json",
       "Authorization": `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
@@ -42,9 +43,9 @@ export type KaironLead = {
 
 export async function fetchKaironCampaigns(apiKey: string): Promise<{ id: string; name: string }[]> {
   try {
-    const result = await kaironCall(apiKey, "campaign_list", { status: "active" })
+    const result = await kaironCall(apiKey, "campaign_list", { limit: 100 })
     const data = parseResult(result)
-    const list: unknown[] = (data as any)?.campaigns ?? (Array.isArray(data) ? data : [])
+    const list: unknown[] = (data as any)?.campaigns ?? (data as any)?.items ?? (Array.isArray(data) ? data : [])
     return list
       .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
       .map((c) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }))
