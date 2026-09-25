@@ -700,11 +700,12 @@ function RunHistory({ runs, linkedinTool }: { runs: DistributionRun[]; linkedinT
 
 // ─── Template editor ──────────────────────────────────────────────────────────
 
-function TemplateEditor({ template, campaigns, onSaved, onClose }: {
+function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool }: {
   template: DistributionTemplate | null
   campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
   onSaved: (id: string) => void
   onClose: () => void
+  linkedinTool?: string
 }) {
   const isNew = !template?.id
   const [name, setName] = useState(template?.name ?? "")
@@ -1046,6 +1047,7 @@ export function DistributionClient({ templates: initialTemplates, campaigns, lin
             campaigns={campaigns}
             onSaved={handleSaved}
             onClose={() => setSelected(null)}
+            linkedinTool={linkedinTool}
           />
         )}
       </div>
