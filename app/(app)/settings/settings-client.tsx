@@ -1478,7 +1478,7 @@ function ChromeExtensionCard() {
 // ── Tenant API keys card ──────────────────────────────────────────────────────
 
 const COLD_EMAIL_TOOLS = ["Smartlead", "HeyReach", "Instantly", "Lemlist", "Otro"]
-const LINKEDIN_TOOLS = ["HeyReach", "Expandi", "LinkedHelper", "Dripify", "Otro"]
+const LINKEDIN_TOOLS = ["HeyReach", "Kairon", "Expandi", "LinkedHelper", "Dripify", "Otro"]
 
 function ApiKeyField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   const [show, setShow] = useState(false)

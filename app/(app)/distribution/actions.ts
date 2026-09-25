@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
+import { addLeadsToKairon, fetchKaironCampaigns } from "@/lib/kairon"
 import { getTenantId } from "@/lib/tenant"
+import { getTenantConfig } from "@/lib/tenant-config"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -361,6 +363,12 @@ export async function runDistribution(
       allProspects = allProspects.filter((p) => p.shortlisted !== true)
     }
 
+    // Tenant LinkedIn config
+    const tenantId = await getTenantId()
+    const tenantCfg = await getTenantConfig(tenantId)
+    const linkedinTool = tenantCfg?.linkedin_tool ?? null
+    const linkedinApiKey = tenantCfg?.linkedin_api_key ?? null
+
     // Evaluate each route
     const routeResults: RunResults["routes"] = []
     const sentProspectIds = new Set<string>()
@@ -388,21 +396,26 @@ export async function runDistribution(
         }
       }
 
-      // HeyReach
+      // LinkedIn (HeyReach o Kairon según configuración del tenant)
       if (route.heyreach_campaign_id && matched.length > 0) {
         const leads = matched
           .filter((p) => p.linkedin_url)
           .map((p) => ({
-            linkedInProfileUrl: p.linkedin_url,
-            firstName: p.first_name,
-            lastName: p.last_name,
-            companyName: p.company_name,
-            email: p.email || undefined,
+            linkedInProfileUrl: p.linkedin_url!,
+            firstName: p.first_name ?? undefined,
+            lastName: p.last_name ?? undefined,
+            companyName: p.company_name ?? undefined,
           }))
         if (leads.length > 0) {
-          const res = await addLeadsToHeyReach(route.heyreach_campaign_id, leads)
-          hrCount = res.success
-          if (res.error) errors.push(`HeyReach: ${res.error}`)
+          if (linkedinTool === "Kairon" && linkedinApiKey) {
+            const res = await addLeadsToKairon(linkedinApiKey, route.heyreach_campaign_id, leads)
+            hrCount = res.success
+            if (res.error) errors.push(`Kairon: ${res.error}`)
+          } else {
+            const res = await addLeadsToHeyReach(route.heyreach_campaign_id, leads)
+            hrCount = res.success
+            if (res.error) errors.push(`HeyReach: ${res.error}`)
+          }
         }
       }
 
@@ -471,9 +484,19 @@ export async function loadIntegrationCampaigns(): Promise<{
   smartlead: IntegrationCampaign[]
   heyreach: IntegrationCampaign[]
 }> {
+  const tenantId = await getTenantId()
+  const tenantCfg = await getTenantConfig(tenantId)
+  const linkedinTool = tenantCfg?.linkedin_tool ?? null
+  const linkedinApiKey = tenantCfg?.linkedin_api_key ?? null
+
+  const linkedinCampaigns =
+    linkedinTool === "Kairon" && linkedinApiKey
+      ? fetchKaironCampaigns(linkedinApiKey)
+      : fetchHeyReachCampaigns()
+
   const [smartlead, heyreach] = await Promise.all([
     fetchSmartleadCampaigns(),
-    fetchHeyReachCampaigns(),
+    linkedinCampaigns,
   ])
   return { smartlead, heyreach }
 }
