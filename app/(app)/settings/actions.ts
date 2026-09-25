@@ -504,6 +504,36 @@ export async function deleteTenantRep(name: string): Promise<void> {
   revalidatePath("/settings")
 }
 
+// ── Tenant niches ─────────────────────────────────────────────────────────────
+
+export async function getTenantNiches(): Promise<string[]> {
+  const tenantId = await getTenantId()
+  const { data } = await supabaseAdmin
+    .from("tenant_niches")
+    .select("name")
+    .eq("tenant_id", tenantId)
+    .order("created_at")
+  return (data ?? []).map((r: { name: string }) => r.name)
+}
+
+export async function addTenantNiche(name: string): Promise<void> {
+  const tenantId = await getTenantId()
+  await supabaseAdmin
+    .from("tenant_niches")
+    .insert({ tenant_id: tenantId, name: name.trim() })
+  revalidatePath("/settings")
+}
+
+export async function deleteTenantNiche(name: string): Promise<void> {
+  const tenantId = await getTenantId()
+  await supabaseAdmin
+    .from("tenant_niches")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("name", name)
+  revalidatePath("/settings")
+}
+
 // ── Classification rules ──────────────────────────────────────────────────────
 
 

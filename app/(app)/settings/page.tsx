@@ -1,12 +1,12 @@
 export const dynamic = "force-dynamic"
 
-import { getSavedUrls, getProviderUsage, getCampaignIndustries, getClientCompanies, getTenantApiKeys, getTenantReps, getIcpRules, getOsScoreRules } from "./actions"
+import { getSavedUrls, getProviderUsage, getCampaignIndustries, getClientCompanies, getTenantApiKeys, getTenantReps, getTenantNiches, getIcpRules, getOsScoreRules } from "./actions"
 import { getProviderStatus } from "./provider-status"
 import { SettingsClient } from "./settings-client"
 import { getInboxConfig } from "../inbox/actions"
 
 export default async function SettingsPage() {
-  const [savedUrls, providerStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies, tenantApiKeys, tenantReps, icpRules, osScoreRules, osScore2Rules] = await Promise.all([
+  const [savedUrls, providerStatus, providerUsage, inboxConfig, campaignIndustries, clientCompanies, tenantApiKeys, tenantReps, tenantNiches, icpRules, osScoreRules, osScore2Rules] = await Promise.all([
     getSavedUrls(),
     getProviderStatus(),
     getProviderUsage(),
@@ -15,6 +15,7 @@ export default async function SettingsPage() {
     getClientCompanies(),
     getTenantApiKeys(),
     getTenantReps(),
+    getTenantNiches(),
     getIcpRules(),
     getOsScoreRules(1),
     getOsScoreRules(2),
@@ -29,6 +30,7 @@ export default async function SettingsPage() {
       clientCompanies={clientCompanies}
       tenantApiKeys={tenantApiKeys}
       tenantReps={tenantReps}
+      tenantNiches={tenantNiches}
       icpRules={icpRules}
       osScoreRules={osScoreRules}
       osScore2Rules={osScore2Rules}

@@ -1,19 +1,19 @@
 export const dynamic = "force-dynamic"
 
-import { getCampaigns, getIcpStats, getIcpCategoryStats, getCampaignIndustries, getAutoActionMap, getScorecardData, getMeetingProspects } from "./actions"
+import { getCampaigns, getIcpStats, getIcpCategoryStats, getAutoActionMap, getScorecardData, getMeetingProspects } from "./actions"
 import { DashboardClient } from "./dashboard-client"
-import { getTenantReps } from "@/lib/reps-server"
+import { getTenantReps, getTenantNiches } from "@/lib/reps-server"
 
 export default async function DashboardPage() {
-  const [campaigns, icpStats, icpCategoryStats, campaignIndustries, autoActionMap, scorecardData, meetingProspects, tenantReps] = await Promise.all([
+  const [campaigns, icpStats, icpCategoryStats, autoActionMap, scorecardData, meetingProspects, tenantReps, tenantNiches] = await Promise.all([
     getCampaigns(),
     getIcpStats(),
     getIcpCategoryStats(),
-    getCampaignIndustries(),
     getAutoActionMap(),
     getScorecardData(),
     getMeetingProspects(),
     getTenantReps(),
+    getTenantNiches(),
   ])
-  return <DashboardClient initialCampaigns={campaigns} icpStats={icpStats} icpCategoryStats={icpCategoryStats} campaignIndustries={campaignIndustries} autoActionMap={autoActionMap} scorecardData={scorecardData} meetingProspects={meetingProspects} reps={tenantReps} />
+  return <DashboardClient initialCampaigns={campaigns} icpStats={icpStats} icpCategoryStats={icpCategoryStats} niches={tenantNiches} autoActionMap={autoActionMap} scorecardData={scorecardData} meetingProspects={meetingProspects} reps={tenantReps} />
 }

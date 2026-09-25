@@ -2,7 +2,6 @@
 
 import { useState, useTransition, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { INDUSTRIES } from "@/lib/reps"
 import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from "recharts"
 import Link from "next/link"
@@ -1102,9 +1101,10 @@ function ScorecardView({ data, meetings = [] }: { data: WeekScorecardRow[]; meet
   )
 }
 
-export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, campaignIndustries = [], autoActionMap = {}, scorecardData = [], meetingProspects = [], reps: repsProp = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; campaignIndustries?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }>; scorecardData?: WeekScorecardRow[]; meetingProspects?: MeetingProspect[]; reps?: string[] }) {
+export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, niches: nichesProp = [], autoActionMap = {}, scorecardData = [], meetingProspects = [], reps: repsProp = [] }: { initialCampaigns: Campaign[]; icpStats: IcpStat[]; icpCategoryStats: IcpCategoryStat[]; niches?: string[]; autoActionMap?: Record<string, { autoStatus: string; jobUrl: string | null }>; scorecardData?: WeekScorecardRow[]; meetingProspects?: MeetingProspect[]; reps?: string[] }) {
   const REPS = ["Todos", ...repsProp]
   const REP_OPTIONS = repsProp
+  const NICHES = nichesProp
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
   const [view, setView] = useState<"week" | "list" | "charts" | "scorecard">("week")
   const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))
@@ -1138,9 +1138,10 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
   const [psUrlOpen, setPsUrlOpen] = useState(false)
 
   const allIndustries = useMemo(() => {
-    const merged = new Set([...INDUSTRIES, ...campaignIndustries])
+    const fromCampaigns = initialCampaigns.map((c) => c.industry).filter(Boolean)
+    const merged = new Set([...NICHES, ...fromCampaigns])
     return [...merged].sort()
-  }, [campaignIndustries])
+  }, [NICHES, initialCampaigns])
 
   const weekCampaigns = useMemo(() => {
     const weekKey = getISOWeekInfo(new Date(selectedWeek + "T12:00:00")).key
@@ -1494,11 +1495,11 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Industria</label>
+                  <label className="text-sm font-medium">Nicho</label>
                   <Popover open={industryOpen} onOpenChange={setIndustryOpen}>
                     <PopoverTrigger className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm font-normal hover:bg-accent hover:text-accent-foreground">
                       <span className={form.industry ? "" : "text-muted-foreground"}>
-                        {form.industry || "Seleccionar o escribir industria…"}
+                        {form.industry || "Seleccionar o escribir nicho…"}
                       </span>
                       <ChevronsUpDown className="size-4 text-muted-foreground" />
                     </PopoverTrigger>

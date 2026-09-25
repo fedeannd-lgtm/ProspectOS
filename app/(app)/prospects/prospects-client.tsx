@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Users, ExternalLink, Search, Download, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
 import { getFilteredProspects, getCampaignsForFilter, getAllFilteredProspects, deleteProspects, type ProspectRow } from "./actions"
-import { INDUSTRIES } from "@/lib/reps"
 
 const STATUS_LABELS: Record<string, { label: string; class: string }> = {
   scraped:   { label: "Scrapeado",   class: "bg-zinc-100 text-zinc-600" },
@@ -42,7 +41,7 @@ function exportCsv(rows: ProspectRow[]) {
   a.click(); URL.revokeObjectURL(url)
 }
 
-export function ProspectsClient({ reps = [] }: { reps?: string[] }) {
+export function ProspectsClient({ reps = [], niches = [] }: { reps?: string[]; niches?: string[] }) {
   const [repFilter, setRepFilter] = useState("all")
   const [industryFilter, setIndustryFilter] = useState("all")
   const [campaignFilter, setCampaignFilter] = useState("all")
@@ -164,8 +163,8 @@ export function ProspectsClient({ reps = [] }: { reps?: string[] }) {
               <select value={industryFilter}
                 onChange={(e) => { setIndustryFilter(e.target.value); setPage(1) }}
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm">
-                <option value="all">Todas las industrias</option>
-                {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
+                <option value="all">Todos los nichos</option>
+                {niches.map((i) => <option key={i} value={i}>{i}</option>)}
               </select>
               <select value={campaignFilter}
                 onChange={(e) => { setCampaignFilter(e.target.value); setPage(1) }}

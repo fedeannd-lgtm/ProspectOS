@@ -16,6 +16,20 @@ export async function getTenantReps(): Promise<string[]> {
   }
 }
 
+export async function getTenantNiches(): Promise<string[]> {
+  try {
+    const tenantId = await getTenantId()
+    const { data } = await supabaseAdmin
+      .from("tenant_niches")
+      .select("name")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: true })
+    return data?.map((r: { name: string }) => r.name) ?? []
+  } catch {
+    return []
+  }
+}
+
 export async function getTenantIndustries(): Promise<string[]> {
-  return INDUSTRIES
+  return getTenantNiches()
 }

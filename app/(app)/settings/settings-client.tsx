@@ -11,10 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
-import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, saveTenantApiKeys, getTenantReps, addTenantRep, deleteTenantRep, saveIcpRules, saveOsScoreRules, type SavedUrl, type ClientCompany, type TenantApiKeys } from "./actions"
+import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, saveTenantApiKeys, getTenantReps, addTenantRep, deleteTenantRep, addTenantNiche, deleteTenantNiche, saveIcpRules, saveOsScoreRules, type SavedUrl, type ClientCompany, type TenantApiKeys } from "./actions"
 import type { IcpRule, OsScoreRule } from "@/lib/classification-rules"
 import { getProviderStatus } from "./provider-status"
-import { REPS, INDUSTRIES } from "@/lib/reps"
+import { REPS } from "@/lib/reps"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { DEFAULT_LINKEDIN_CONFIG, DEFAULT_EMAIL_CONFIG } from "@/lib/sequence-configs"
@@ -137,7 +137,7 @@ function AddUrlForm({ onAdded, allIndustries }: { onAdded: (url: SavedUrl) => vo
         <Popover open={industryOpen} onOpenChange={setIndustryOpen}>
           <PopoverTrigger className="flex h-8 w-full items-center justify-between rounded-md border border-input bg-background px-2 text-xs hover:bg-accent hover:text-accent-foreground">
             <span className={form.industry ? "" : "text-muted-foreground"}>
-              {form.industry || "Industria"}
+              {form.industry || "Nicho"}
             </span>
             <ChevronsUpDown className="size-3 text-muted-foreground" />
           </PopoverTrigger>
@@ -282,7 +282,7 @@ function SavedUrlsCard({ initialUrls, allIndustries }: { initialUrls: SavedUrl[]
               <SelectValue placeholder="Industria" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all" className="text-xs">Todas las industrias</SelectItem>
+              <SelectItem value="all" className="text-xs">Todos los nichos</SelectItem>
               {allIndustries.map((i) => <SelectItem key={i} value={i} className="text-xs">{i}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -994,15 +994,15 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
   clientCompanies: ClientCompany[]
   tenantApiKeys: TenantApiKeys
   tenantReps: string[]
+  tenantNiches: string[]
   icpRules: IcpRule[]
   osScoreRules: OsScoreRule[]
   osScore2Rules: OsScoreRule[]
 }) {
-  // Merge predefined industries with custom ones from campaigns, deduplicated and sorted
   const allIndustries = useMemo(() => {
-    const merged = [...new Set([...INDUSTRIES, ...campaignIndustries])]
+    const merged = [...new Set([...tenantNiches, ...campaignIndustries])]
     return merged.sort()
-  }, [campaignIndustries])
+  }, [tenantNiches, campaignIndustries])
   const [providerStatus, setProviderStatus] = useState<ProviderStatus[]>(initialProviderStatus)
   const [refreshing, startRefresh] = useTransition()
 
@@ -1015,6 +1015,7 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
 
   const checklistItems = [
     { label: "Reps", ok: initialReps.length > 0 },
+    { label: "Nichos", ok: tenantNiches.length > 0 },
     { label: "Lista de clientes", ok: clientCompanies.length > 0 },
     { label: "Extensión de Chrome", ok: false, manual: true },
     { label: "ICP rules", ok: initialIcpRules.length > 0 },
@@ -1060,6 +1061,7 @@ export function SettingsClient({ savedUrls, providerStatus: initialProviderStatu
       {/* ── Sección 1: Listas de prospección ── */}
       <SectionHeader title="Listas de prospección" subtitle="Setup inicial para poder buscar y organizar prospectos." />
       <RepsCard initialReps={initialReps} />
+      <NichosCard initialNiches={tenantNiches} />
       <ClientListCard
         initialCompanies={clientCompanies}
         initialExclude={inboxConfig.exclude_clients ?? false}
@@ -1209,6 +1211,77 @@ function RepsCard({ initialReps }: { initialReps: string[] }) {
             className="text-sm max-w-xs"
           />
           <Button size="sm" onClick={handleAdd} disabled={adding || !newRep.trim()}>
+            {adding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            <span className="ml-1">Agregar</span>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Niches card ───────────────────────────────────────────────────────────────
+
+function NichosCard({ initialNiches }: { initialNiches: string[] }) {
+  const [niches, setNiches] = useState<string[]>(initialNiches)
+  const [newNiche, setNewNiche] = useState("")
+  const [adding, startAdd] = useTransition()
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  function handleAdd() {
+    const name = newNiche.trim()
+    if (!name) return
+    startAdd(async () => {
+      await addTenantNiche(name)
+      const { getTenantNiches } = await import("./actions")
+      setNiches(await getTenantNiches())
+      setNewNiche("")
+    })
+  }
+
+  function handleDelete(name: string) {
+    setDeleting(name)
+    deleteTenantNiche(name).then(async () => {
+      const { getTenantNiches } = await import("./actions")
+      setNiches(await getTenantNiches())
+      setDeleting(null)
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2"><Users className="size-4" /> Nichos</CardTitle>
+        <CardDescription>Segmentos de mercado o industrias que prospectás. Reemplaza la lista de industrias fija.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {niches.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {niches.map((n) => (
+              <div key={n} className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-sm">
+                <span>{n}</span>
+                <button
+                  onClick={() => handleDelete(n)}
+                  disabled={deleting === n}
+                  className="text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  {deleting === n ? <Loader2 className="size-3 animate-spin" /> : <XCircle className="size-3.5" />}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No hay nichos configurados todavía.</p>
+        )}
+        <div className="flex gap-2">
+          <Input
+            value={newNiche}
+            onChange={(e) => setNewNiche(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd() }}
+            placeholder="Ej: Retail, SaaS, Manufactura"
+            className="text-sm max-w-xs"
+          />
+          <Button size="sm" onClick={handleAdd} disabled={adding || !newNiche.trim()}>
             {adding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
             <span className="ml-1">Agregar</span>
           </Button>
