@@ -541,9 +541,11 @@ export async function previewDistributionRoutes(
 // ─── Campaigns for select ─────────────────────────────────────────────────────
 
 export async function getCampaignsForDistribution() {
+  const tenantId = await getTenantId()
   const { data } = await supabase
     .from("campaigns")
     .select("id, week_label, rep_name, industry, prospects_found")
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
   return data ?? []
 }

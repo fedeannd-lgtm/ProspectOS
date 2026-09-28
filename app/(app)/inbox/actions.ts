@@ -51,6 +51,10 @@ export type InboxConfig = {
 }
 
 export async function getReplies(filter: "pending_review" | "draft_ready" | "sent" | "dismissed" | "all" = "all"): Promise<ProspectReply[]> {
+  const tenantId = await getTenantId()
+  const { data: camps } = await supabase.from("campaigns").select("id").eq("tenant_id", tenantId)
+  const campIds = (camps ?? []).map((c: { id: string }) => c.id)
+
   let q = supabase
     .from("prospect_replies")
     .select(`
@@ -64,6 +68,7 @@ export async function getReplies(filter: "pending_review" | "draft_ready" | "sen
         accounts ( industry )
       )
     `)
+    .in("campaign_id", campIds)
     .order("replied_at", { ascending: false })
 
   if (filter !== "all") q = q.eq("status", filter)
@@ -74,9 +79,13 @@ export async function getReplies(filter: "pending_review" | "draft_ready" | "sen
 }
 
 export async function getPendingCount(): Promise<number> {
+  const tenantId = await getTenantId()
+  const { data: camps } = await supabase.from("campaigns").select("id").eq("tenant_id", tenantId)
+  const campIds = (camps ?? []).map((c: { id: string }) => c.id)
   const { count, error } = await supabase
     .from("prospect_replies")
     .select("id", { count: "exact", head: true })
+    .in("campaign_id", campIds)
     .in("status", ["pending_review", "draft_ready"])
   if (error) return 0
   return count ?? 0

@@ -322,9 +322,14 @@ export async function getAutoCampaignForCampaign(campaignId: string): Promise<Au
 }
 
 export async function getAutoActionMap(): Promise<Record<string, { autoStatus: string; jobUrl: string | null }>> {
+  const tenantId = await getTenantId()
+  const { data: tenantCamps } = await supabaseAdmin.from("campaigns").select("id").eq("tenant_id", tenantId)
+  const tenantCampIds = (tenantCamps ?? []).map((c: { id: string }) => c.id)
+
   const { data: autos } = await supabaseAdmin
     .from("auto_campaigns")
     .select("campaign_id, status")
+    .in("campaign_id", tenantCampIds)
     .in("status", ["company_search", "creating_list", "people_search", "enriching", "distributing", "pending", "done", "error"])
 
   if (!autos?.length) return {}

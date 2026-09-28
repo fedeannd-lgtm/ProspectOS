@@ -465,9 +465,11 @@ export type MessageTemplate = {
 }
 
 export async function getMessageTemplates(channel: "linkedin" | "email" | "whatsapp"): Promise<MessageTemplate[]> {
+  const tenantId = await getTenantId()
   const { data } = await supabaseAdmin
     .from("message_templates")
     .select("*")
+    .eq("tenant_id", tenantId)
     .eq("channel", channel)
     .order("name", { ascending: true })
   return (data ?? []) as MessageTemplate[]
@@ -479,9 +481,10 @@ export async function saveMessageTemplate(
   content: string,
   industry?: string | null
 ): Promise<{ id: string } | { error: string }> {
+  const tenantId = await getTenantId()
   const { data, error } = await supabaseAdmin
     .from("message_templates")
-    .insert({ name, channel, content, industry: industry ?? null })
+    .insert({ tenant_id: tenantId, name, channel, content, industry: industry ?? null })
     .select("id")
     .single()
   if (error) return { error: error.message }
@@ -489,9 +492,11 @@ export async function saveMessageTemplate(
 }
 
 export async function deleteMessageTemplate(id: string): Promise<void> {
-  await supabaseAdmin.from("message_templates").delete().eq("id", id)
+  const tenantId = await getTenantId()
+  await supabaseAdmin.from("message_templates").delete().eq("id", id).eq("tenant_id", tenantId)
 }
 
 export async function updateMessageTemplate(id: string, content: string): Promise<void> {
-  await supabaseAdmin.from("message_templates").update({ content }).eq("id", id)
+  const tenantId = await getTenantId()
+  await supabaseAdmin.from("message_templates").update({ content }).eq("id", id).eq("tenant_id", tenantId)
 }

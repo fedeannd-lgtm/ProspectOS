@@ -20,10 +20,14 @@ export async function getCampaigns() {
 }
 
 export async function getCompanySearchJobs() {
+  const tenantId = await getTenantId()
+  const { data: camps } = await supabase.from("campaigns").select("id").eq("tenant_id", tenantId)
+  const campIds = (camps ?? []).map((c: { id: string }) => c.id)
   const { data, error } = await supabase
     .from("search_jobs")
     .select("*, campaigns(week_label, rep_name, industry, list_id, list_name)")
     .eq("job_type", "company_search")
+    .in("campaign_id", campIds)
     .order("created_at", { ascending: false })
     .limit(20)
   if (error) throw new Error(error.message)
