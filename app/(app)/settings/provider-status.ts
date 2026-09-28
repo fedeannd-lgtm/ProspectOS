@@ -1,5 +1,7 @@
 "use server"
 
+import { getTenantApiKeys } from "./actions"
+
 export type ProviderStatus = {
   name: string
   label: string
@@ -8,8 +10,15 @@ export type ProviderStatus = {
   detail: string
 }
 
-async function checkZeroBounce(): Promise<ProviderStatus> {
-  const key = process.env.ZEROBOUNCE_API_KEY
+type Keys = {
+  apollo_api_key: string | null
+  zerobounce_api_key: string | null
+  findymail_api_key: string | null
+  prospeo_api_key: string | null
+  datagma_api_key: string | null
+}
+
+async function checkZeroBounce(key: string | null): Promise<ProviderStatus> {
   if (!key) return { name: "zerobounce", label: "ZeroBounce", status: "unconfigured", detail: "API key no configurada" }
   try {
     const res = await fetch(`https://api.zerobounce.net/v2/getcredits?api_key=${key}`)
@@ -25,75 +34,31 @@ async function checkZeroBounce(): Promise<ProviderStatus> {
   }
 }
 
-async function checkHunter(): Promise<ProviderStatus> {
-  const key = process.env.HUNTER_API_KEY
-  if (!key) return { name: "hunter", label: "Hunter", status: "unconfigured", detail: "API key no configurada" }
-  try {
-    const res = await fetch(`https://api.hunter.io/v2/usage?api_key=${key}`)
-    if (!res.ok) return { name: "hunter", label: "Hunter", status: "error", detail: "API key inválida" }
-    const data = await res.json()
-    // Formato: { data: { requests: { searches: { remaining }, verifications: { remaining } } } }
-    const searches = data?.data?.requests?.searches?.remaining ?? data?.data?.requests?.credits?.remaining ?? null
-    const verifications = data?.data?.requests?.verifications?.remaining ?? null
-    const remaining = searches ?? verifications ?? null
-    if (remaining === null) return { name: "hunter", label: "Hunter", status: "ok", detail: "Configurado" }
-    if (remaining <= 0) return { name: "hunter", label: "Hunter", status: "out", credits: 0, detail: "Sin créditos" }
-    if (remaining < 50) return { name: "hunter", label: "Hunter", status: "low", credits: remaining, detail: `${remaining} búsquedas restantes` }
-    const detail = verifications !== null
-      ? `${searches?.toLocaleString()} búsquedas · ${verifications.toLocaleString()} verificaciones`
-      : `${remaining.toLocaleString()} requests`
-    return { name: "hunter", label: "Hunter", status: "ok", credits: remaining, detail }
-  } catch {
-    return { name: "hunter", label: "Hunter", status: "error", detail: "Error al consultar" }
-  }
-}
-
-function checkKey(name: string, label: string, envVar: string): ProviderStatus {
-  const key = process.env[envVar]
-  if (!key) return { name, label, status: "unconfigured", detail: "API key no configurada" }
-  return { name, label, status: "ok", detail: "Configurado" }
-}
-
-async function checkApollo(): Promise<ProviderStatus> {
-  const key = process.env.APOLLO_API_KEY
+async function checkApollo(key: string | null): Promise<ProviderStatus> {
   if (!key) return { name: "apollo", label: "Apollo", status: "unconfigured", detail: "API key no configurada" }
   try {
-    // credit_usage_stats — créditos de email reveal (0 créditos consumidos)
     const res = await fetch("https://api.apollo.io/api/v1/usage_stats/credit_usage_stats", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "x-api-key": key },
     })
-
     if (res.status === 401) return { name: "apollo", label: "Apollo", status: "error", detail: "API key inválida" }
     if (res.status === 403) return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado (key sin scope de stats)" }
     if (!res.ok) return { name: "apollo", label: "Apollo", status: "error", detail: `HTTP ${res.status}` }
-
     const data = await res.json()
-
-    // Formato real: { credit_usage_stats: { lead_credit: { limit, consumed, left_over } } }
     const leadCredit = data?.credit_usage_stats?.lead_credit
     const remaining = leadCredit?.left_over ?? null
     const limit     = leadCredit?.limit ?? null
     const consumed  = leadCredit?.consumed ?? null
-
-    if (remaining === null) {
-      return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado" }
-    }
-
-    if (remaining <= 0) {
-      return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Sin créditos${limit ? ` (${consumed}/${limit} usados)` : ""}` }
-    }
-    if (remaining < 100) {
-      return { name: "apollo", label: "Apollo", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
-    }
+    if (remaining === null) return { name: "apollo", label: "Apollo", status: "ok", detail: "Configurado" }
+    if (remaining <= 0) return { name: "apollo", label: "Apollo", status: "out", credits: 0, detail: `Sin créditos${limit ? ` (${consumed}/${limit} usados)` : ""}` }
+    if (remaining < 100) return { name: "apollo", label: "Apollo", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
     return { name: "apollo", label: "Apollo", status: "ok", credits: remaining, detail: `${remaining} créditos disponibles` }
   } catch {
     return { name: "apollo", label: "Apollo", status: "error", detail: "Error al consultar" }
   }
 }
 
-async function checkFindymail(): Promise<ProviderStatus> {
-  const key = process.env.FINDYMAIL_API_KEY
+async function checkFindymail(key: string | null): Promise<ProviderStatus> {
   if (!key) return { name: "findymail", label: "FindyEmail", status: "unconfigured", detail: "API key no configurada" }
   try {
     const res = await fetch("https://app.findymail.com/api/credits", {
@@ -110,8 +75,7 @@ async function checkFindymail(): Promise<ProviderStatus> {
   }
 }
 
-async function checkProspeo(): Promise<ProviderStatus> {
-  const key = process.env.PROSPEO_API_KEY
+async function checkProspeo(key: string | null): Promise<ProviderStatus> {
   if (!key) return { name: "prospeo", label: "Prospeo", status: "unconfigured", detail: "API key no configurada" }
   try {
     const res = await fetch("https://api.prospeo.io/account-information", {
@@ -131,8 +95,7 @@ async function checkProspeo(): Promise<ProviderStatus> {
   }
 }
 
-async function checkDatagma(): Promise<ProviderStatus> {
-  const key = process.env.DATAGMA_API_KEY
+async function checkDatagma(key: string | null): Promise<ProviderStatus> {
   if (!key) return { name: "datagma", label: "Datagma", status: "unconfigured", detail: "API key no configurada" }
   try {
     const res = await fetch(`https://gateway.datagma.net/api/ingress/v1/mine?apiId=${encodeURIComponent(key)}`)
@@ -149,13 +112,13 @@ async function checkDatagma(): Promise<ProviderStatus> {
 }
 
 export async function getProviderStatus(): Promise<ProviderStatus[]> {
-  const [apollo, zb, hunter, findymail, prospeo, datagma] = await Promise.all([checkApollo(), checkZeroBounce(), checkHunter(), checkFindymail(), checkProspeo(), checkDatagma()])
-  return [
-    apollo,
-    findymail,
-    prospeo,
-    hunter,
-    datagma,
-    zb,
-  ]
+  const keys = await getTenantApiKeys()
+  const [apollo, zb, findymail, prospeo, datagma] = await Promise.all([
+    checkApollo(keys.apollo_api_key ?? process.env.APOLLO_API_KEY ?? null),
+    checkZeroBounce(keys.zerobounce_api_key ?? process.env.ZEROBOUNCE_API_KEY ?? null),
+    checkFindymail(keys.findymail_api_key ?? process.env.FINDYMAIL_API_KEY ?? null),
+    checkProspeo(keys.prospeo_api_key ?? process.env.PROSPEO_API_KEY ?? null),
+    checkDatagma(keys.datagma_api_key ?? process.env.DATAGMA_API_KEY ?? null),
+  ])
+  return [apollo, findymail, prospeo, datagma, zb]
 }
