@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
+import { getTenantId } from "@/lib/tenant"
 
 const SELECT = "id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, connection_degree, location, email, icp_score, is_premium, status, started_role_months, highlights, created_at, campaign_id, campaigns(week_label, rep_name, industry)"
 
@@ -23,30 +24,31 @@ export async function getFilteredProspects(
   page: number,
   search?: string
 ): Promise<{ data: ProspectRow[]; total: number }> {
+  const tenantId = await getTenantId()
   const PAGE_SIZE = 100
+
+  // Get all campaign IDs for this tenant (base filter)
+  let campQuery = supabaseAdmin.from("campaigns").select("id").eq("tenant_id", tenantId)
+  if (rep !== "all") campQuery = campQuery.eq("rep_name", rep)
+  if (industry !== "all") campQuery = campQuery.eq("industry", industry)
+  const { data: tenantCampaigns } = await campQuery
+  const tenantCampaignIds = (tenantCampaigns ?? []).map((c: { id: string }) => c.id)
+
+  if (campaignId !== "all" && !tenantCampaignIds.includes(campaignId)) {
+    return { data: [], total: 0 }
+  }
+
   let query = supabaseAdmin
     .from("prospects")
     .select(SELECT, { count: "exact" })
     .order("created_at", { ascending: false })
 
-  // Join-based filters via campaigns relationship
-  if (rep !== "all") {
-    const { data: campaignIds } = await supabaseAdmin
-      .from("campaigns")
-      .select("id")
-      .eq("rep_name", rep)
-    query = query.in("campaign_id", (campaignIds ?? []).map((c: { id: string }) => c.id))
-  }
-  if (industry !== "all") {
-    const { data: campaignIds } = await supabaseAdmin
-      .from("campaigns")
-      .select("id")
-      .eq("industry", industry)
-    query = query.in("campaign_id", (campaignIds ?? []).map((c: { id: string }) => c.id))
-  }
   if (campaignId !== "all") {
     query = query.eq("campaign_id", campaignId)
+  } else {
+    query = query.in("campaign_id", tenantCampaignIds)
   }
+
   if (search?.trim()) {
     const q = `%${search.trim()}%`
     query = query.or(`full_name.ilike.${q},job_title.ilike.${q},company_name.ilike.${q},email.ilike.${q}`)
@@ -59,7 +61,8 @@ export async function getFilteredProspects(
 }
 
 export async function getCampaignsForFilter(rep: string, industry: string) {
-  let query = supabaseAdmin.from("campaigns").select("id, week_label, rep_name, industry")
+  const tenantId = await getTenantId()
+  let query = supabaseAdmin.from("campaigns").select("id, week_label, rep_name, industry").eq("tenant_id", tenantId)
   if (rep !== "all") query = query.eq("rep_name", rep)
   if (industry !== "all") query = query.eq("industry", industry)
   const { data, error } = await query.order("created_at", { ascending: false })
@@ -72,9 +75,17 @@ export async function getAllFilteredProspects(
   industry: string,
   campaignId: string
 ): Promise<ProspectRow[]> {
+  const tenantId = await getTenantId()
   const BATCH = 1000
   let all: ProspectRow[] = []
   let from = 0
+
+  // Resolve tenant campaign IDs once
+  let campQuery = supabaseAdmin.from("campaigns").select("id").eq("tenant_id", tenantId)
+  if (rep !== "all") campQuery = campQuery.eq("rep_name", rep)
+  if (industry !== "all") campQuery = campQuery.eq("industry", industry)
+  const { data: tenantCampaigns } = await campQuery
+  const tenantCampaignIds = (tenantCampaigns ?? []).map((c: { id: string }) => c.id)
 
   while (true) {
     let query = supabaseAdmin
@@ -82,15 +93,11 @@ export async function getAllFilteredProspects(
       .select(SELECT)
       .order("created_at", { ascending: false })
 
-    if (rep !== "all") {
-      const { data: ids } = await supabaseAdmin.from("campaigns").select("id").eq("rep_name", rep)
-      query = query.in("campaign_id", (ids ?? []).map((c: { id: string }) => c.id))
+    if (campaignId !== "all") {
+      query = query.eq("campaign_id", campaignId)
+    } else {
+      query = query.in("campaign_id", tenantCampaignIds)
     }
-    if (industry !== "all") {
-      const { data: ids } = await supabaseAdmin.from("campaigns").select("id").eq("industry", industry)
-      query = query.in("campaign_id", (ids ?? []).map((c: { id: string }) => c.id))
-    }
-    if (campaignId !== "all") query = query.eq("campaign_id", campaignId)
 
     const { data, error } = await query.range(from, from + BATCH - 1)
     if (error) throw new Error(error.message)
