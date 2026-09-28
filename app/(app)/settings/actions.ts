@@ -319,6 +319,79 @@ export async function saveTenantApiKeys(keys: Partial<TenantApiKeys>): Promise<v
   revalidatePath("/settings")
 }
 
+export async function testProviderKeys(keys: {
+  apollo_api_key?: string | null
+  zerobounce_api_key?: string | null
+  findymail_api_key?: string | null
+  prospeo_api_key?: string | null
+}): Promise<{ results: { name: string; label: string; ok: boolean; detail: string }[] }> {
+  const results: { name: string; label: string; ok: boolean; detail: string }[] = []
+
+  if (keys.apollo_api_key) {
+    try {
+      const res = await fetch("https://api.apollo.io/api/v1/usage_stats/credit_usage_stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "x-api-key": keys.apollo_api_key },
+      })
+      if (res.status === 401) { results.push({ name: "apollo", label: "Apollo", ok: false, detail: "API key inválida (401)" }) }
+      else if (!res.ok) { results.push({ name: "apollo", label: "Apollo", ok: false, detail: `HTTP ${res.status}` }) }
+      else {
+        const data = await res.json()
+        const left = data?.credit_usage_stats?.lead_credit?.left_over
+        results.push({ name: "apollo", label: "Apollo", ok: true, detail: left != null ? `${left} créditos disponibles` : "Configurado" })
+      }
+    } catch { results.push({ name: "apollo", label: "Apollo", ok: false, detail: "Error de red" }) }
+  } else {
+    results.push({ name: "apollo", label: "Apollo", ok: false, detail: "No configurado" })
+  }
+
+  if (keys.zerobounce_api_key) {
+    try {
+      const res = await fetch(`https://api.zerobounce.net/v2/getcredits?api_key=${keys.zerobounce_api_key}`)
+      if (!res.ok) { results.push({ name: "zerobounce", label: "ZeroBounce", ok: false, detail: `HTTP ${res.status}` }) }
+      else {
+        const data = await res.json()
+        const credits = parseInt(data?.Credits ?? data?.credits ?? "-1", 10)
+        results.push({ name: "zerobounce", label: "ZeroBounce", ok: credits > 0, detail: credits >= 0 ? `${credits.toLocaleString()} créditos` : "API key inválida" })
+      }
+    } catch { results.push({ name: "zerobounce", label: "ZeroBounce", ok: false, detail: "Error de red" }) }
+  } else {
+    results.push({ name: "zerobounce", label: "ZeroBounce", ok: false, detail: "No configurado" })
+  }
+
+  if (keys.findymail_api_key) {
+    try {
+      const res = await fetch("https://app.findymail.com/api/credits", {
+        headers: { "Authorization": `Bearer ${keys.findymail_api_key}`, "Content-Type": "application/json" },
+      })
+      if (!res.ok) { results.push({ name: "findymail", label: "FindyMail", ok: false, detail: `HTTP ${res.status}` }) }
+      else {
+        const data = await res.json()
+        const c = data?.credits ?? data?.remaining ?? null
+        results.push({ name: "findymail", label: "FindyMail", ok: c == null || c > 0, detail: c != null ? `${c} créditos` : "Configurado" })
+      }
+    } catch { results.push({ name: "findymail", label: "FindyMail", ok: false, detail: "Error de red" }) }
+  } else {
+    results.push({ name: "findymail", label: "FindyMail", ok: false, detail: "No configurado" })
+  }
+
+  if (keys.prospeo_api_key) {
+    try {
+      const res = await fetch("https://api.prospeo.io/account-information", { headers: { "X-KEY": keys.prospeo_api_key } })
+      if (!res.ok) { results.push({ name: "prospeo", label: "Prospeo", ok: false, detail: `HTTP ${res.status}` }) }
+      else {
+        const data = await res.json()
+        const rem = data?.response?.remaining_credits ?? null
+        results.push({ name: "prospeo", label: "Prospeo", ok: !data?.error && (rem == null || rem > 0), detail: rem != null ? `${rem} créditos` : (data?.error ? "API key inválida" : "Configurado") })
+      }
+    } catch { results.push({ name: "prospeo", label: "Prospeo", ok: false, detail: "Error de red" }) }
+  } else {
+    results.push({ name: "prospeo", label: "Prospeo", ok: false, detail: "No configurado" })
+  }
+
+  return { results }
+}
+
 export async function testKaironConnection(): Promise<{ tools: { name: string }[]; error?: string }> {
   try {
     const tenantId = await getTenantId()

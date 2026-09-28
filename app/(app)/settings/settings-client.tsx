@@ -1507,6 +1507,8 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
   const [saved, setSaved] = useState(false)
   const [kaironTest, setKaironTest] = useState<string | null>(null)
   const [testingKairon, startTestKairon] = useTransition()
+  const [apiTestResults, setApiTestResults] = useState<{ name: string; label: string; ok: boolean; detail: string }[] | null>(null)
+  const [testingApis, startTestApis] = useTransition()
 
   function update(field: keyof TenantApiKeys, value: string | null) {
     setKeys((k) => ({ ...k, [field]: value || null }))
@@ -1517,6 +1519,19 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
       await saveTenantApiKeys(keys)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
+    })
+  }
+
+  function handleTestApis() {
+    startTestApis(async () => {
+      const { testProviderKeys } = await import("./actions")
+      const res = await testProviderKeys({
+        apollo_api_key: keys.apollo_api_key,
+        zerobounce_api_key: keys.zerobounce_api_key,
+        findymail_api_key: keys.findymail_api_key,
+        prospeo_api_key: keys.prospeo_api_key,
+      })
+      setApiTestResults(res.results)
     })
   }
 
@@ -1593,6 +1608,10 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
             {isPending ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
             Guardar
           </Button>
+          <Button size="sm" variant="outline" onClick={handleTestApis} disabled={testingApis}>
+            {testingApis ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+            Test APIs
+          </Button>
           {keys.linkedin_tool === "Kairon" && keys.linkedin_api_key && (
             <Button size="sm" variant="outline" onClick={handleTestKairon} disabled={testingKairon}>
               {testingKairon ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
@@ -1608,6 +1627,17 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
             <span className="text-xs text-muted-foreground font-mono break-all">{kaironTest}</span>
           )}
         </div>
+        {apiTestResults && (
+          <div className="mt-3 rounded-md border p-3 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Resultado del test</p>
+            {apiTestResults.map((r) => (
+              <div key={r.name} className="flex items-center justify-between text-xs">
+                <span className="font-medium">{r.label}</span>
+                <span className={r.ok ? "text-green-600" : "text-red-500"}>{r.detail}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
