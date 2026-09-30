@@ -559,3 +559,22 @@ export async function getCampaignsForDistribution() {
     .order("created_at", { ascending: false })
   return data ?? []
 }
+
+// ─── Distinct ICP categories for this tenant ──────────────────────────────────
+
+export async function getIcpCategories(): Promise<string[]> {
+  const tenantId = await getTenantId()
+  const { data: campaignIds } = await supabase
+    .from("campaigns")
+    .select("id")
+    .eq("tenant_id", tenantId)
+  const ids = (campaignIds ?? []).map((c) => c.id)
+  if (!ids.length) return []
+  const { data } = await supabase
+    .from("prospects")
+    .select("icp_category")
+    .in("campaign_id", ids)
+    .not("icp_category", "is", null)
+  const unique = [...new Set((data ?? []).map((p) => p.icp_category as string).filter(Boolean))].sort()
+  return unique
+}

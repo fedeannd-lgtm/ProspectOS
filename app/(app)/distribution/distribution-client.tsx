@@ -236,7 +236,7 @@ const OPERATORS_FOR_FIELD: Record<string, { value: string; label: string }[]> = 
   shortlisted: [{ value: "eq", label: "=" }],
 }
 
-const VALUES_FOR_FIELD: Record<string, { value: string; label: string }[] | null> = {
+const VALUES_FOR_FIELD_BASE: Record<string, { value: string; label: string }[] | null> = {
   has_email: [{ value: "true", label: "Sí" }, { value: "false", label: "No" }],
   email_status: [
     { value: "valid", label: "Válido" },
@@ -246,13 +246,7 @@ const VALUES_FOR_FIELD: Record<string, { value: string; label: string }[] | null
   ],
   icp_score: null,
   os_score: null,
-  icp_category: [
-    { value: "Experience", label: "Experience" },
-    { value: "Helpdesk", label: "Helpdesk" },
-    { value: "Onboarding", label: "Onboarding" },
-    { value: "Communication", label: "Communication" },
-    { value: "Genérico", label: "Genérico" },
-  ],
+  icp_category: null,
   is_premium: [{ value: "true", label: "Sí" }, { value: "false", label: "No" }],
   connection_degree: [
     { value: "FIRST", label: "1er grado" },
@@ -261,6 +255,13 @@ const VALUES_FOR_FIELD: Record<string, { value: string; label: string }[] | null
   ],
   started_role_months: null,
   shortlisted: [{ value: "true", label: "Sí (en shortlist)" }, { value: "false", label: "No (no shortlisted)" }],
+}
+
+function getValuesForField(field: string, icpCategories: string[]): { value: string; label: string }[] | null {
+  if (field === "icp_category") {
+    return icpCategories.length > 0 ? icpCategories.map((c) => ({ value: c, label: c })) : null
+  }
+  return VALUES_FOR_FIELD_BASE[field] ?? null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -275,18 +276,19 @@ function newRoute(priority: number): DistributionRoute {
 
 // ─── ConditionRow ─────────────────────────────────────────────────────────────
 
-function ConditionRow({ cond, onChange, onRemove }: {
+function ConditionRow({ cond, onChange, onRemove, icpCategories = [] }: {
   cond: Condition
   onChange: (c: Condition) => void
   onRemove: () => void
+  icpCategories?: string[]
 }) {
   const operators = OPERATORS_FOR_FIELD[cond.field] ?? [{ value: "eq", label: "=" }]
-  const valueOptions = VALUES_FOR_FIELD[cond.field]
+  const valueOptions = getValuesForField(cond.field, icpCategories)
 
   function handleFieldChange(field: string | null) {
     if (!field) return
     const ops = OPERATORS_FOR_FIELD[field] ?? [{ value: "eq", label: "=" }]
-    const vals = VALUES_FOR_FIELD[field]
+    const vals = getValuesForField(field, icpCategories)
     onChange({ field, operator: ops[0].value, value: vals ? vals[0].value : "" })
   }
 
@@ -450,7 +452,7 @@ function DestinationsSection({ route, onChange, integrationCampaigns, linkedinTo
 
 // ─── RouteCard ────────────────────────────────────────────────────────────────
 
-function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClone, onRemove, integrationCampaigns, linkedinTool }: {
+function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClone, onRemove, integrationCampaigns, linkedinTool, icpCategories = [] }: {
   route: DistributionRoute
   index: number
   total: number
@@ -461,6 +463,7 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClon
   onRemove: () => void
   integrationCampaigns: { smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null
   linkedinTool?: string
+  icpCategories?: string[]
 }) {
   return (
     <div className="border rounded-lg p-4 space-y-3 bg-muted/20">
@@ -508,6 +511,7 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClon
                 <ConditionRow
                   key={ci}
                   cond={cond}
+                  icpCategories={icpCategories}
                   onChange={(c) => {
                     const conditions: ConditionGroup[] = route.conditions.map((g, i) =>
                       i === gi ? g.map((x, j) => (j === ci ? c : x)) : g
@@ -703,12 +707,13 @@ function RunHistory({ runs, linkedinTool }: { runs: DistributionRun[]; linkedinT
 
 // ─── Template editor ──────────────────────────────────────────────────────────
 
-function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool }: {
+function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, icpCategories = [] }: {
   template: DistributionTemplate | null
   campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
   onSaved: (id: string) => void
   onClose: () => void
   linkedinTool?: string
+  icpCategories?: string[]
 }) {
   const isNew = !template?.id
   const [name, setName] = useState(template?.name ?? "")
@@ -892,6 +897,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool }:
             onRemove={() => removeRoute(i)}
             integrationCampaigns={integrationCampaigns}
             linkedinTool={linkedinTool}
+            icpCategories={icpCategories}
           />
         ))}
         <button
@@ -945,10 +951,11 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool }:
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function DistributionClient({ templates: initialTemplates, campaigns, linkedinTool = "HeyReach" }: {
+export function DistributionClient({ templates: initialTemplates, campaigns, linkedinTool = "HeyReach", icpCategories = [] }: {
   templates: DistributionTemplate[]
   campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
   linkedinTool?: string
+  icpCategories?: string[]
 }) {
   const [templates, setTemplates] = useState(initialTemplates)
   const [selected, setSelected] = useState<DistributionTemplate | null | "new">(null)
@@ -1051,6 +1058,7 @@ export function DistributionClient({ templates: initialTemplates, campaigns, lin
             onSaved={handleSaved}
             onClose={() => setSelected(null)}
             linkedinTool={linkedinTool}
+            icpCategories={icpCategories}
           />
         )}
       </div>
