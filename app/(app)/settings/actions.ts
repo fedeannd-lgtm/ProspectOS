@@ -398,9 +398,10 @@ export async function testKaironConnection(): Promise<{ tools: { name: string }[
     const { data } = await supabaseAdmin.from("tenant_configs").select("linkedin_api_key").eq("tenant_id", tenantId).maybeSingle()
     const apiKey = (data as any)?.linkedin_api_key
     if (!apiKey) return { tools: [], error: "No hay API key de Kairon configurada" }
-    const { listKaironTools } = await import("@/lib/kairon")
-    const tools = await listKaironTools(apiKey)
-    return { tools }
+    const { testKaironConnection: ping } = await import("@/lib/kairon")
+    const result = await ping(apiKey)
+    if (!result.ok) return { tools: [], error: result.detail }
+    return { tools: [{ name: result.detail }] }
   } catch (e) {
     return { tools: [], error: e instanceof Error ? e.message : "Error desconocido" }
   }

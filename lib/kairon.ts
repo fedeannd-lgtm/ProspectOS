@@ -1,36 +1,21 @@
-const MCP_URL = "https://app.heykairon.com/mcp"
+const BASE_URL = "https://app.heykairon.com/api"
 
-type McpResult = { content?: { type: string; text: string }[] } | null
-
-async function kaironRpc(apiKey: string, method: string, params?: unknown): Promise<unknown> {
-  const res = await fetch(MCP_URL, {
-    method: "POST",
+async function kaironFetch(apiKey: string, path: string, options: RequestInit = {}): Promise<unknown> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
+      ...(options.headers ?? {}),
     },
-    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
-  const json = await res.json()
-  if (json.error) throw new Error(json.error.message ?? "Kairon error")
-  return json.result ?? null
-}
-
-async function kaironCall(apiKey: string, toolName: string, args: Record<string, unknown>): Promise<McpResult> {
-  return kaironRpc(apiKey, "tools/call", { name: toolName, arguments: args }) as Promise<McpResult>
-}
-
-export async function listKaironTools(apiKey: string): Promise<{ name: string; description?: string }[]> {
-  const result = await kaironRpc(apiKey, "tools/list") as any
-  return result?.tools ?? []
-}
-
-function parseResult(result: McpResult): unknown {
-  const text = result?.content?.find((c) => c.type === "text")?.text
-  if (!text) return null
-  try { return JSON.parse(text) } catch { return text }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "")
+    throw new Error(`HTTP ${res.status}: ${body}`)
+  }
+  const text = await res.text()
+  return text ? JSON.parse(text) : null
 }
 
 export type KaironLead = {
@@ -43,9 +28,8 @@ export type KaironLead = {
 
 export async function fetchKaironCampaigns(apiKey: string): Promise<{ id: string; name: string }[]> {
   try {
-    const result = await kaironCall(apiKey, "campaign_list", { limit: 100 })
-    const data = parseResult(result)
-    const list: unknown[] = (data as any)?.campaigns ?? (data as any)?.items ?? (Array.isArray(data) ? data : [])
+    const data = await kaironFetch(apiKey, "/campaigns?limit=100&status=active,draft,paused") as any
+    const list: unknown[] = data?.items ?? data?.campaigns ?? (Array.isArray(data) ? data : [])
     return list
       .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
       .map((c) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }))
@@ -66,13 +50,15 @@ export async function addLeadsToKairon(
 
   for (const lead of leads) {
     try {
-      await kaironCall(apiKey, "campaign_lead_start", {
-        campaignId,
-        profileUrl: lead.linkedInProfileUrl,
-        firstName: lead.firstName,
-        lastName: lead.lastName,
-        companyName: lead.companyName,
-        position: lead.position,
+      await kaironFetch(apiKey, `/campaigns/${campaignId}/leads`, {
+        method: "POST",
+        body: JSON.stringify({
+          profileUrl: lead.linkedInProfileUrl,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          companyName: lead.companyName,
+          position: lead.position,
+        }),
       })
       success++
     } catch (e) {
@@ -82,4 +68,14 @@ export async function addLeadsToKairon(
 
   const failed = leads.length - success
   return { success, failed, error: errors.length > 0 ? errors[0] : undefined }
+}
+
+export async function testKaironConnection(apiKey: string): Promise<{ ok: boolean; detail: string }> {
+  try {
+    await kaironFetch(apiKey, "/campaigns?limit=1")
+    return { ok: true, detail: "Conexión exitosa" }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error desconocido"
+    return { ok: false, detail: msg }
+  }
 }
