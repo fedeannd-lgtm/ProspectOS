@@ -8,6 +8,16 @@ import { addLeadsToKairon, fetchKaironCampaigns } from "@/lib/kairon"
 import { getTenantId } from "@/lib/tenant"
 import { getTenantConfig } from "@/lib/tenant-config"
 
+// Convert Sales Navigator URL to regular LinkedIn profile URL
+function normalizeLinkedInUrl(url: string): string {
+  if (!url) return url
+  if (url.includes("/in/")) return url
+  // Sales Nav URL: .../sales/people/ACwAAA,name=john-doe,email=...
+  const nameMatch = url.match(/[,?&]name=([^,&]+)/)
+  if (nameMatch) return `https://www.linkedin.com/in/${nameMatch[1]}/`
+  return url
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Condition = {
@@ -401,7 +411,7 @@ export async function runDistribution(
         const leads = matched
           .filter((p) => p.linkedin_url)
           .map((p) => ({
-            linkedInProfileUrl: p.linkedin_url!,
+            linkedInProfileUrl: normalizeLinkedInUrl(p.linkedin_url!),
             firstName: p.first_name ?? undefined,
             lastName: p.last_name ?? undefined,
             companyName: p.company_name ?? undefined,
