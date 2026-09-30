@@ -685,6 +685,9 @@ function RunHistory({ runs, linkedinTool }: { runs: DistributionRun[]; linkedinT
                       <span>{r.matched} matchearon</span>
                       {r.smartlead > 0 && <Badge variant="outline" className="text-[10px] py-0">SL: {r.smartlead}</Badge>}
                       {r.heyreach > 0 && <Badge variant="outline" className="text-[10px] py-0">{(linkedinTool ?? "HR").slice(0, 2).toUpperCase()}: {r.heyreach}</Badge>}
+                      {r.errors?.map((err, i) => (
+                        <span key={i} className="text-destructive text-[10px] truncate max-w-[200px]" title={err}>{err}</span>
+                      ))}
                     </div>
                   </div>
                 ))}
