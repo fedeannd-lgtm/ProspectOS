@@ -50,16 +50,27 @@ export async function addLeadsToKairon(
 
   for (const lead of leads) {
     try {
-      await kaironFetch(apiKey, `/campaigns/${campaignId}/leads`, {
+      // Step 1: create or find the lead
+      const created = await kaironFetch(apiKey, "/leads", {
         method: "POST",
         body: JSON.stringify({
-          profileUrl: lead.linkedInProfileUrl,
+          linkedInUrl: lead.linkedInProfileUrl,
           firstName: lead.firstName,
           lastName: lead.lastName,
           companyName: lead.companyName,
           position: lead.position,
         }),
+      }) as { id?: string } | null
+
+      const leadId = created?.id
+      if (!leadId) throw new Error("Lead creado pero sin ID en respuesta")
+
+      // Step 2: enroll in campaign
+      await kaironFetch(apiKey, `/campaigns/${campaignId}/leads/${leadId}/start`, {
+        method: "POST",
+        body: JSON.stringify({}),
       })
+
       success++
     } catch (e) {
       errors.push(e instanceof Error ? e.message : "Error desconocido")
