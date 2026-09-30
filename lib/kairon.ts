@@ -65,6 +65,19 @@ export async function addLeadsToKairon(
       })
     }
 
+    // Kairon resolves LinkedIn URLs asynchronously — wait before binding
+    // so the list has members at snapshot time
+    await new Promise(r => setTimeout(r, 8000))
+
+    // Check list status to detect silent failures
+    const listStatus = await kaironFetch(apiKey, `/lead-lists/${listId}`).catch(() => null) as any
+    const resolvedCount = listStatus?.membersCount ?? listStatus?.totalCount ?? listStatus?.count ?? 0
+    if (resolvedCount === 0) {
+      // Still 0 after wait — include the URLs sent for debugging
+      const urlSample = items.slice(0, 3).map(i => i.url).join(", ")
+      throw new Error(`Lista creada pero sin miembros luego de 8s. URLs enviadas: ${urlSample}`)
+    }
+
     // Step 3: bind the list to the campaign
     await kaironFetch(apiKey, `/campaigns/${campaignId}/lists`, {
       method: "POST",
