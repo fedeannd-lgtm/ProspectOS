@@ -208,7 +208,10 @@ export async function processPeopleSearch(
 
   const prospects = people.map((p) => {
     const matched = findBestMatch(p.companyName ?? "")
-    const startedOnMonth = p.currentPositions?.[0]?.startedOn?.month ?? null
+    const pos0 = p.currentPositions?.[0]?.startedOn
+    const startedOnMonth = pos0?.year && pos0?.month
+      ? Math.max(0, (new Date().getFullYear() - pos0.year) * 12 + (new Date().getMonth() + 1 - pos0.month))
+      : null
     const highlights = p.highlights
       ?.map((h) => h.name || h.description || "")
       .filter(Boolean)
@@ -227,7 +230,7 @@ export async function processPeopleSearch(
       is_premium: p.premium ?? false,
       connection_degree: p.connectionType ? (degreeLabel[p.connectionType] ?? String(p.connectionType)) : "",
       location: p.location ?? "",
-      started_role_months: startedOnMonth,
+      started_role_months: startedOnMonth,  // months elapsed since role start
       highlights,
     }
   })

@@ -129,7 +129,13 @@ export async function POST(req: NextRequest) {
             is_premium: p.premium ?? false,
             connection_degree: p.connectionType ? (degreeLabel[p.connectionType] ?? String(p.connectionType)) : "",
             location: p.location ?? "",
-            started_role_months: p.startedRoleMonths ?? p.currentPositions?.[0]?.startedOn?.month ?? null,
+            started_role_months: (() => {
+              // Prefer pre-computed duration; otherwise compute from startedOn year+month
+              if (p.startedRoleMonths != null) return p.startedRoleMonths
+              const s = p.currentPositions?.[0]?.startedOn
+              if (!s?.year || !s?.month) return null
+              return Math.max(0, (new Date().getFullYear() - s.year) * 12 + (new Date().getMonth() + 1 - s.month))
+            })(),
             highlights: p.highlights?.map((h) => h.name || h.description || "").filter(Boolean).join(", ") || null,
           }
         })

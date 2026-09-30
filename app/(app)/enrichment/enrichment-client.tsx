@@ -227,7 +227,7 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
   const [osScoreFilter, setOsScoreFilter] = useState<Set<"tier1" | "tier2" | "tier3" | "non_icp">>(new Set())
   const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set())
   const [emailFilter, setEmailFilter] = useState<"all" | "pending" | "enriched">("all")
-  const [mesInicioFilter, setMesInicioFilter] = useState<"all" | "con" | "sin">("all")
+  const [mesInicioFilter, setMesInicioFilter] = useState<"all" | "lt6" | "6to18" | "gt18" | "sin">("all")
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -306,8 +306,16 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
     if (categoryFilter.size > 0 && !categoryFilter.has(p.os_segment2 ?? "")) return false
     if (emailFilter === "pending" && hasValidEmail(p)) return false
     if (emailFilter === "enriched" && !hasValidEmail(p)) return false
-    if (mesInicioFilter === "con" && p.started_role_months == null) return false
     if (mesInicioFilter === "sin" && p.started_role_months != null) return false
+    if (mesInicioFilter === "lt6") {
+      if (p.started_role_months == null || p.started_role_months >= 6) return false
+    }
+    if (mesInicioFilter === "6to18") {
+      if (p.started_role_months == null || p.started_role_months < 6 || p.started_role_months > 18) return false
+    }
+    if (mesInicioFilter === "gt18") {
+      if (p.started_role_months == null || p.started_role_months <= 18) return false
+    }
     return true
   })
 
@@ -710,13 +718,15 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
             </Select>
 
             <Select value={mesInicioFilter} onValueChange={(v) => setMesInicioFilter(v as typeof mesInicioFilter)}>
-              <SelectTrigger className="h-8 text-xs w-36">
-                <SelectValue placeholder="Mes inicio" />
+              <SelectTrigger className="h-8 text-xs w-40">
+                <SelectValue placeholder="Tiempo en rol" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="con">Con mes inicio</SelectItem>
-                <SelectItem value="sin">Sin mes inicio</SelectItem>
+                <SelectItem value="lt6">{"< 6 meses"}</SelectItem>
+                <SelectItem value="6to18">6 – 18 meses</SelectItem>
+                <SelectItem value="gt18">{"> 18 meses"}</SelectItem>
+                <SelectItem value="sin">Sin dato</SelectItem>
               </SelectContent>
             </Select>
 
