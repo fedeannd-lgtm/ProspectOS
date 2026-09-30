@@ -45,40 +45,37 @@ export async function addLeadsToKairon(
   leads: KaironLead[]
 ): Promise<{ success: number; failed: number; error?: string }> {
   if (!leads.length) return { success: 0, failed: 0 }
-  let success = 0
-  const errors: string[] = []
 
-  for (const lead of leads) {
-    try {
-      // Step 1: create or find the lead
-      const created = await kaironFetch(apiKey, "/leads", {
+  try {
+    // Step 1: create a temporary lead list
+    const list = await kaironFetch(apiKey, "/lead-lists", {
+      method: "POST",
+      body: JSON.stringify({ name: `ProspectOS-${campaignId}-${Date.now()}` }),
+    }) as { id?: string } | null
+
+    const listId = list?.id
+    if (!listId) throw new Error("No se pudo crear la lead list en Kairon")
+
+    // Step 2: add leads by LinkedIn URL (up to 500 per batch)
+    const items = leads.map((l) => ({ url: l.linkedInProfileUrl }))
+    for (let i = 0; i < items.length; i += 500) {
+      await kaironFetch(apiKey, `/lead-lists/${listId}/members`, {
         method: "POST",
-        body: JSON.stringify({
-          linkedInUrl: lead.linkedInProfileUrl,
-          firstName: lead.firstName,
-          lastName: lead.lastName,
-          companyName: lead.companyName,
-          position: lead.position,
-        }),
-      }) as { id?: string } | null
-
-      const leadId = created?.id
-      if (!leadId) throw new Error("Lead creado pero sin ID en respuesta")
-
-      // Step 2: enroll in campaign
-      await kaironFetch(apiKey, `/campaigns/${campaignId}/leads/${leadId}/start`, {
-        method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ items: items.slice(i, i + 500) }),
       })
-
-      success++
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : "Error desconocido")
     }
-  }
 
-  const failed = leads.length - success
-  return { success, failed, error: errors.length > 0 ? errors[0] : undefined }
+    // Step 3: bind the list to the campaign
+    await kaironFetch(apiKey, `/campaigns/${campaignId}/lists`, {
+      method: "POST",
+      body: JSON.stringify({ leadListId: listId }),
+    })
+
+    return { success: leads.length, failed: 0 }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error desconocido"
+    return { success: 0, failed: leads.length, error: msg }
+  }
 }
 
 export async function testKaironConnection(apiKey: string): Promise<{ ok: boolean; detail: string }> {
