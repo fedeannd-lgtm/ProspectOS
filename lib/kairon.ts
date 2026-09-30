@@ -47,16 +47,31 @@ export async function addLeadsToKairon(
   if (!leads.length) return { success: 0, failed: 0 }
 
   try {
-    // Step 1: create a temporary lead list
-    const list = await kaironFetch(apiKey, "/lead-lists", {
-      method: "POST",
-      body: JSON.stringify({ name: `ProspectOS-${campaignId}-${Date.now()}` }),
-    }) as { id?: string } | null
+    // Get the list already bound to this campaign (avoids creating new lists)
+    let listId: string | null = null
+    const bound = await kaironFetch(apiKey, `/campaigns/${campaignId}/lists`).catch(() => null) as any
+    const firstBound = bound?.items?.[0] ?? bound?.leadLists?.[0] ?? (Array.isArray(bound) ? bound[0] : null)
+    if (firstBound?.id) {
+      listId = String(firstBound.id)
+    } else if (firstBound?.leadListId) {
+      listId = String(firstBound.leadListId)
+    }
 
-    const listId = list?.id
-    if (!listId) throw new Error("No se pudo crear la lead list en Kairon")
+    if (!listId) {
+      // No list bound yet — create one and bind it (one-time setup)
+      const newList = await kaironFetch(apiKey, "/lead-lists", {
+        method: "POST",
+        body: JSON.stringify({ name: `ProspectOS - ${campaignId}` }),
+      }) as { id?: string } | null
+      listId = newList?.id ?? null
+      if (!listId) throw new Error("No se pudo crear la lead list en Kairon")
+      await kaironFetch(apiKey, `/campaigns/${campaignId}/lists`, {
+        method: "POST",
+        body: JSON.stringify({ leadListId: listId }),
+      })
+    }
 
-    // Step 2: add leads by LinkedIn URL (up to 500 per batch)
+    // Add leads by LinkedIn URL directly to the campaign's existing list
     const items = leads.map((l) => ({ url: l.linkedInProfileUrl }))
     for (let i = 0; i < items.length; i += 500) {
       await kaironFetch(apiKey, `/lead-lists/${listId}/members`, {
@@ -64,25 +79,6 @@ export async function addLeadsToKairon(
         body: JSON.stringify({ items: items.slice(i, i + 500) }),
       })
     }
-
-    // Kairon resolves LinkedIn URLs asynchronously — wait before binding
-    // so the list has members at snapshot time
-    await new Promise(r => setTimeout(r, 8000))
-
-    // Check list status to detect silent failures
-    const listStatus = await kaironFetch(apiKey, `/lead-lists/${listId}`).catch(() => null) as any
-    const resolvedCount = listStatus?.membersCount ?? listStatus?.totalCount ?? listStatus?.count ?? 0
-    if (resolvedCount === 0) {
-      // Still 0 after wait — include the URLs sent for debugging
-      const urlSample = items.slice(0, 3).map(i => i.url).join(", ")
-      throw new Error(`Lista creada pero sin miembros luego de 8s. URLs enviadas: ${urlSample}`)
-    }
-
-    // Step 3: bind the list to the campaign
-    await kaironFetch(apiKey, `/campaigns/${campaignId}/lists`, {
-      method: "POST",
-      body: JSON.stringify({ leadListId: listId }),
-    })
 
     return { success: leads.length, failed: 0 }
   } catch (e) {
