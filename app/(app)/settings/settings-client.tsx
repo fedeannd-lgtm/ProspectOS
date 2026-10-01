@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useMemo } from "react"
-import { CheckCircle2, XCircle, Loader2, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity, ChevronsUpDown, Users, ExternalLink, Download } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Plus, Trash2, Copy, Check, Link2, AlertTriangle, AlertCircle, MinusCircle, Activity, ChevronsUpDown, Users, ExternalLink, Download, ChevronDown } from "lucide-react"
 import type { ProviderStatus } from "./provider-status"
 import type { ProviderUsage } from "./actions"
 import { Button } from "@/components/ui/button"
@@ -1298,9 +1298,12 @@ function IcpRulesCard({ initialRules }: { initialRules: IcpRule[] }) {
   )
   const [saving, startSave] = useTransition()
   const [saved, setSaved] = useState(false)
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
 
   function addRow() {
+    const newIdx = rules.length
     setRules((prev) => [...prev, { label: "", score: 5, keywords: [], priority: prev.length }])
+    setExpandedIdx(newIdx)
   }
 
   function updateRow(i: number, field: keyof Omit<IcpRule, "id">, value: string | number | string[]) {
@@ -1309,6 +1312,7 @@ function IcpRulesCard({ initialRules }: { initialRules: IcpRule[] }) {
 
   function removeRow(i: number) {
     setRules((prev) => prev.filter((_, idx) => idx !== i))
+    setExpandedIdx(null)
   }
 
   function handleSave() {
@@ -1319,45 +1323,68 @@ function IcpRulesCard({ initialRules }: { initialRules: IcpRule[] }) {
     })
   }
 
+  const scoreColor = (s: number) =>
+    s === 10 ? "bg-green-500/15 text-green-600" : s === 5 ? "bg-yellow-500/15 text-yellow-600" : "bg-muted text-muted-foreground"
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">ICP Rules</CardTitle>
         <CardDescription>Niveles de seniority con su score. El primer match gana.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-1">
         {rules.length === 0 && (
-          <p className="text-sm text-muted-foreground">No hay reglas configuradas. Agregá la primera.</p>
+          <p className="text-sm text-muted-foreground py-2">No hay reglas configuradas. Agregá la primera.</p>
         )}
-        {rules.map((rule, i) => (
-          <div key={i} className="flex gap-2 items-start">
-            <Input
-              value={rule.label}
-              onChange={(e) => updateRow(i, "label", e.target.value)}
-              placeholder="Ej: C-Level / VP"
-              className="text-sm flex-1 min-w-0"
-            />
-            <select
-              value={rule.score}
-              onChange={(e) => updateRow(i, "score", Number(e.target.value))}
-              className="text-sm border border-input rounded-md px-2 py-1.5 bg-background w-20 shrink-0"
-            >
-              <option value={10}>10</option>
-              <option value={5}>5</option>
-              <option value={0}>0</option>
-            </select>
-            <Input
-              value={rule.keywords.join(", ")}
-              onChange={(e) => updateRow(i, "keywords", e.target.value.split(",").map((k) => k.trim()).filter(Boolean))}
-              placeholder="Keywords separadas por coma"
-              className="text-sm flex-[2] min-w-0"
-            />
-            <button onClick={() => removeRow(i)} className="text-muted-foreground hover:text-destructive mt-1.5 shrink-0">
-              <Trash2 className="size-4" />
-            </button>
-          </div>
-        ))}
-        <div className="flex gap-2 pt-1">
+        {rules.map((rule, i) => {
+          const isOpen = expandedIdx === i
+          return (
+            <div key={i} className="border rounded-md overflow-hidden">
+              {/* Compact row */}
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-muted/30 text-left"
+                onClick={() => setExpandedIdx(isOpen ? null : i)}
+              >
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${scoreColor(rule.score)}`}>{rule.score}</span>
+                <span className="text-xs font-medium w-28 shrink-0 truncate">{rule.label || <span className="text-muted-foreground italic">sin label</span>}</span>
+                <span className="text-[11px] text-muted-foreground truncate flex-1">{rule.keywords.join(", ") || "—"}</span>
+                <ChevronDown className={`size-3 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+              </button>
+              {/* Expanded edit form */}
+              {isOpen && (
+                <div className="border-t px-3 py-2.5 space-y-2 bg-muted/10">
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      value={rule.label}
+                      onChange={(e) => updateRow(i, "label", e.target.value)}
+                      placeholder="Ej: C-Level / VP"
+                      className="text-sm flex-1 min-w-0 h-8"
+                    />
+                    <select
+                      value={rule.score}
+                      onChange={(e) => updateRow(i, "score", Number(e.target.value))}
+                      className="text-sm border border-input rounded-md px-2 py-1 bg-background w-16 shrink-0 h-8"
+                    >
+                      <option value={10}>10</option>
+                      <option value={5}>5</option>
+                      <option value={0}>0</option>
+                    </select>
+                    <button onClick={() => removeRow(i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                  <Input
+                    value={rule.keywords.join(", ")}
+                    onChange={(e) => updateRow(i, "keywords", e.target.value.split(",").map((k) => k.trim()).filter(Boolean))}
+                    placeholder="Keywords separadas por coma"
+                    className="text-sm h-8"
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
+        <div className="flex gap-2 pt-2">
           <Button variant="outline" size="sm" onClick={addRow}>
             <Plus className="size-3.5 mr-1" /> Agregar nivel
           </Button>
