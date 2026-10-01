@@ -724,6 +724,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, i
   const [running, startRun] = useTransition()
   const [showRunModal, setShowRunModal] = useState(false)
   const [runs, setRuns] = useState<DistributionRun[]>([])
+  const [runsOpen, setRunsOpen] = useState(true)
   const [loadingRuns, startLoadRuns] = useTransition()
   const [runSuccess, setRunSuccess] = useState<string | null>(null)
   const [integrationCampaigns, setIntegrationCampaigns] = useState<{ smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null>(null)
@@ -795,6 +796,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, i
     startLoadRuns(async () => {
       const r = await getRunsForTemplate(template.id)
       setRuns(r)
+      setRunsOpen(true)
     })
   }
 
@@ -912,13 +914,14 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, i
       {!isNew && (
         <div className="border-t pt-3">
           <button
-            onClick={handleLoadRuns}
+            onClick={() => { if (runs.length === 0) handleLoadRuns(); else setRunsOpen((v) => !v) }}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-2"
           >
             <RotateCcw className={`size-3 ${loadingRuns ? "animate-spin" : ""}`} />
             Historial de corridas
+            {runs.length > 0 && <ChevronDown className={`size-3 transition-transform ${runsOpen ? "" : "-rotate-90"}`} />}
           </button>
-          <RunHistory runs={runs} linkedinTool={linkedinTool} />
+          {runsOpen && <RunHistory runs={runs} linkedinTool={linkedinTool} />}
         </div>
       )}
 
