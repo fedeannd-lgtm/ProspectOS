@@ -50,11 +50,11 @@
   }
 
   function tryCapture(url, data) {
-    // Temporary: log ALL intercepted URLs on people search pages
-    if (url && (window.location.pathname.includes('/sales/search/people') || window.location.pathname.includes('/sales/lists/people'))) {
-      console.log('[ProspectOS interceptor] URL intercepted:', url.split('?')[0]);
+    const onPeopleSearch = window.location.pathname.includes('/sales/search/people') || window.location.pathname.includes('/sales/lists/people');
+    if (url && onPeopleSearch) {
+      console.log('[ProspectOS interceptor] PEOPLE URL: ' + url.split('?')[0]);
     }
-    const isSalesApi = url.includes('/sales-api/') || url.includes('/voyager/api/');
+    const isSalesApi = url.includes('/sales-api/') || url.includes('/voyager/api/') || url.includes('/graphql') || url.includes('/api/');
     if (!isSalesApi) return;
     if (!data || typeof data !== 'object') return;
 
