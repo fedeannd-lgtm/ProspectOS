@@ -228,6 +228,7 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
   const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set())
   const [emailFilter, setEmailFilter] = useState<"all" | "pending" | "enriched">("all")
   const [mesInicioFilter, setMesInicioFilter] = useState<"all" | "con" | "sin">("all")
+  const [linkedinUrlFilter, setLinkedinUrlFilter] = useState<"all" | "publica" | "sin_publica">("all")
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -308,6 +309,9 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
     if (emailFilter === "enriched" && !hasValidEmail(p)) return false
     if (mesInicioFilter === "con" && p.started_role_months == null) return false
     if (mesInicioFilter === "sin" && p.started_role_months != null) return false
+    const hasPublicUrl = p.linkedin_url?.includes("linkedin.com/in/")
+    if (linkedinUrlFilter === "publica" && !hasPublicUrl) return false
+    if (linkedinUrlFilter === "sin_publica" && hasPublicUrl) return false
     return true
   })
 
@@ -717,6 +721,17 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="con">Con mes de inicio</SelectItem>
                 <SelectItem value="sin">Sin mes de inicio</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={linkedinUrlFilter} onValueChange={(v) => setLinkedinUrlFilter(v as typeof linkedinUrlFilter)}>
+              <SelectTrigger className="h-8 text-xs w-40">
+                <SelectValue placeholder="URL LinkedIn" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="publica">URL pública</SelectItem>
+                <SelectItem value="sin_publica">Sin URL pública</SelectItem>
               </SelectContent>
             </Select>
 
