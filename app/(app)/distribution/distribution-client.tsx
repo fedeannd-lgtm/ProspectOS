@@ -655,25 +655,25 @@ function RunHistory({ runs, linkedinTool }: { runs: DistributionRun[]; linkedinT
   )
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-0.5">
       {runs.map((run, i) => {
         const results = run.results as RunResults | null
         const isExpanded = expanded === run.id
         return (
-          <div key={run.id} className="border rounded-lg overflow-hidden">
+          <div key={run.id} className="border rounded overflow-hidden">
             <button
-              className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/30 text-left"
+              className="w-full flex items-center justify-between px-2 py-1 hover:bg-muted/30 text-left"
               onClick={() => setExpanded(isExpanded ? null : run.id)}
             >
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground font-mono">#{runs.length - i}</span>
-                <span className="text-xs truncate max-w-[180px]">{run.source_campaign_label ?? "—"}</span>
-              </div>
               <div className="flex items-center gap-2">
-                {results && <span className="text-xs text-muted-foreground">{results.sent}/{results.total}</span>}
-                {run.status === "done" && <CheckCircle2 className="size-3.5 text-green-600" />}
-                {run.status === "running" && <Loader2 className="size-3.5 animate-spin text-blue-500" />}
-                {run.status === "error" && <AlertCircle className="size-3.5 text-red-500" />}
+                <span className="text-[10px] text-muted-foreground font-mono w-5 shrink-0">#{runs.length - i}</span>
+                <span className="text-[11px] truncate max-w-[200px]">{run.source_campaign_label ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {results && <span className="text-[11px] text-muted-foreground">{results.sent}/{results.total}</span>}
+                {run.status === "done" && <CheckCircle2 className="size-3 text-green-600" />}
+                {run.status === "running" && <Loader2 className="size-3 animate-spin text-blue-500" />}
+                {run.status === "error" && <AlertCircle className="size-3 text-red-500" />}
                 <span className="text-[10px] text-muted-foreground">
                   {new Date(run.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
                 </span>
@@ -681,7 +681,7 @@ function RunHistory({ runs, linkedinTool }: { runs: DistributionRun[]; linkedinT
             </button>
 
             {isExpanded && results && (
-              <div className="border-t px-3 py-2 space-y-1.5 bg-muted/10">
+              <div className="border-t px-2 py-1.5 space-y-1 bg-muted/10">
                 {results.routes.map((r) => (
                   <div key={r.route_id} className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground truncate max-w-[140px]">{r.name}</span>
