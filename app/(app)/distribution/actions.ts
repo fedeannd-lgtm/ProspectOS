@@ -234,6 +234,7 @@ type ProspectForDistribution = {
   connection_degree: string
   linkedin_url: string
   company_name: string
+  job_title: string | null
   started_role_months: number | null
   sent_at: string | null
   shortlisted: boolean
