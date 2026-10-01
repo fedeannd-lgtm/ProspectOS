@@ -1330,7 +1330,7 @@ function IcpRulesCard({ initialRules }: { initialRules: IcpRule[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">ICP Rules</CardTitle>
-        <CardDescription>Niveles de seniority con su score. El primer match gana.</CardDescription>
+        <CardDescription>Match por seniority en el título. El primer match gana.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-1">
         {rules.length === 0 && (
@@ -1347,17 +1347,17 @@ function IcpRulesCard({ initialRules }: { initialRules: IcpRule[] }) {
               >
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${scoreColor(rule.score)}`}>{rule.score}</span>
                 <span className="text-xs font-medium w-28 shrink-0 truncate">{rule.label || <span className="text-muted-foreground italic">sin label</span>}</span>
-                <span className="text-[11px] text-muted-foreground truncate flex-1">{rule.keywords.join(", ") || "—"}</span>
+                <span className="text-[11px] text-muted-foreground truncate flex-1 italic">match por título</span>
                 <ChevronDown className={`size-3 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
               </button>
               {/* Expanded edit form */}
               {isOpen && (
-                <div className="border-t px-3 py-2.5 space-y-2 bg-muted/10">
+                <div className="border-t px-3 py-2 bg-muted/10">
                   <div className="flex gap-2 items-center">
                     <Input
                       value={rule.label}
                       onChange={(e) => updateRow(i, "label", e.target.value)}
-                      placeholder="Ej: C-Level / VP"
+                      placeholder="Ej: Gerente"
                       className="text-sm flex-1 min-w-0 h-8"
                     />
                     <select
@@ -1373,12 +1373,6 @@ function IcpRulesCard({ initialRules }: { initialRules: IcpRule[] }) {
                       <Trash2 className="size-3.5" />
                     </button>
                   </div>
-                  <Input
-                    value={rule.keywords.join(", ")}
-                    onChange={(e) => updateRow(i, "keywords", e.target.value.split(",").map((k) => k.trim()).filter(Boolean))}
-                    placeholder="Keywords separadas por coma"
-                    className="text-sm h-8"
-                  />
                 </div>
               )}
             </div>
