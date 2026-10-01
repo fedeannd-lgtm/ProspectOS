@@ -13,6 +13,7 @@ export type OsScoreRule = {
   id: string
   segment: string
   keywords: string[]
+  seniority_labels: string[]
   priority: number
 }
 
@@ -25,8 +26,8 @@ export type ClassificationRules = {
 export async function getClassificationRules(tenantId: string): Promise<ClassificationRules> {
   const [icp, os1, os2] = await Promise.all([
     supabaseAdmin.from("icp_rules").select("id, label, score, keywords, priority").eq("tenant_id", tenantId).order("priority"),
-    supabaseAdmin.from("os_score_rules").select("id, segment, keywords, priority").eq("tenant_id", tenantId).order("priority"),
-    supabaseAdmin.from("os_score2_rules").select("id, segment, keywords, priority").eq("tenant_id", tenantId).order("priority"),
+    supabaseAdmin.from("os_score_rules").select("id, segment, keywords, seniority_labels, priority").eq("tenant_id", tenantId).order("priority"),
+    supabaseAdmin.from("os_score2_rules").select("id, segment, keywords, seniority_labels, priority").eq("tenant_id", tenantId).order("priority"),
   ])
   return {
     icp: (icp.data ?? []) as IcpRule[],
@@ -67,9 +68,10 @@ export function applyOsScoreRules(
   if (!rules.length) return null
   const t = normalize(jobTitle)
   for (const rule of rules) {
-    if (rule.keywords.some((kw) => t.includes(normalize(kw)))) {
-      return rule.segment
-    }
+    const seniorityOk = !rule.seniority_labels?.length ||
+      rule.seniority_labels.some((s) => t.includes(normalize(s)))
+    const keywordOk = rule.keywords.some((kw) => t.includes(normalize(kw)))
+    if (seniorityOk && keywordOk) return rule.segment
   }
   return null
 }

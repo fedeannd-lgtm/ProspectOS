@@ -24,6 +24,8 @@ export type KaironLead = {
   lastName?: string
   companyName?: string
   position?: string
+  email?: string
+  customUserFields?: { name: string; value: string }[]
 }
 
 export async function fetchKaironCampaigns(apiKey: string): Promise<{ id: string; name: string }[]> {
@@ -58,7 +60,6 @@ export async function addLeadsToKairon(
     }
 
     if (!listId) {
-      // No list bound yet — create one and bind it (one-time setup)
       const newList = await kaironFetch(apiKey, "/lead-lists", {
         method: "POST",
         body: JSON.stringify({ name: `ProspectOS - ${campaignId}` }),
@@ -71,13 +72,57 @@ export async function addLeadsToKairon(
       })
     }
 
-    // Add leads by LinkedIn URL directly to the campaign's existing list
+    // Step 1: Add leads by LinkedIn URL
     const items = leads.map((l) => ({ url: l.linkedInProfileUrl }))
     for (let i = 0; i < items.length; i += 500) {
       await kaironFetch(apiKey, `/lead-lists/${listId}/members`, {
         method: "POST",
         body: JSON.stringify({ items: items.slice(i, i + 500) }),
       })
+    }
+
+    // Step 2: Look up leadIds by URL, then set column values with prospect data
+    const leadsWithData = leads.filter(
+      (l) => l.firstName || l.lastName || l.companyName || l.position || l.email || l.customUserFields?.length
+    )
+    if (leadsWithData.length > 0) {
+      // Fetch in batches of 100 (API limit)
+      for (let i = 0; i < leadsWithData.length; i += 100) {
+        const batch = leadsWithData.slice(i, i + 100)
+        const urlParams = batch.map((l) => `keys[]=${encodeURIComponent(l.linkedInProfileUrl)}`).join("&")
+        try {
+          const members = await kaironFetch(apiKey, `/lead-lists/${listId}/members/by-keys?${urlParams}`) as any
+          const memberList: any[] = members?.items ?? members?.members ?? (Array.isArray(members) ? members : [])
+          for (const member of memberList) {
+            const leadId: string | null = member?.leadId ?? member?.id ?? null
+            if (!leadId) continue
+            // Match back to our lead by URL
+            const memberUrl: string = member?.lead?.profileUrl ?? member?.profileUrl ?? member?.url ?? ""
+            const lead = batch.find((l) =>
+              memberUrl && l.linkedInProfileUrl && memberUrl.includes(
+                l.linkedInProfileUrl.replace(/^https?:\/\/(www\.)?linkedin\.com\/in\//, "").replace(/\/$/, "")
+              )
+            )
+            if (!lead) continue
+            // Build column values from available fields
+            const values: Record<string, string> = {}
+            if (lead.firstName) values["first_name"] = lead.firstName
+            if (lead.lastName) values["last_name"] = lead.lastName
+            if (lead.companyName) values["company"] = lead.companyName
+            if (lead.position) values["position"] = lead.position
+            if (lead.email) values["email"] = lead.email
+            for (const f of lead.customUserFields ?? []) {
+              if (f.name && f.value) values[f.name] = f.value
+            }
+            if (Object.keys(values).length > 0) {
+              await kaironFetch(apiKey, `/lead-lists/${listId}/members/${leadId}/values`, {
+                method: "PUT",
+                body: JSON.stringify({ values }),
+              }).catch(() => { /* non-fatal: column may not exist yet */ })
+            }
+          }
+        } catch { /* non-fatal: column values are best-effort */ }
+      }
     }
 
     return { success: leads.length, failed: 0 }

@@ -1402,16 +1402,16 @@ function OsScoreRulesCard({ title, description, initialRules, dimension }: {
   dimension: 1 | 2
 }) {
   const [rules, setRules] = useState<Omit<OsScoreRule, "id">[]>(
-    initialRules.map(({ segment, keywords, priority }) => ({ segment, keywords, priority }))
+    initialRules.map(({ segment, keywords, seniority_labels, priority }) => ({ segment, keywords, seniority_labels: seniority_labels ?? [], priority }))
   )
   const [saving, startSave] = useTransition()
   const [saved, setSaved] = useState(false)
 
   function addRow() {
-    setRules((prev) => [...prev, { segment: "", keywords: [], priority: prev.length }])
+    setRules((prev) => [...prev, { segment: "", keywords: [], seniority_labels: [], priority: prev.length }])
   }
 
-  function updateRow(i: number, field: "segment" | "keywords", value: string | string[]) {
+  function updateRow(i: number, field: "segment" | "keywords" | "seniority_labels", value: string | string[]) {
     setRules((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r))
   }
 
@@ -1443,7 +1443,13 @@ function OsScoreRulesCard({ title, description, initialRules, dimension }: {
               value={rule.segment}
               onChange={(e) => updateRow(i, "segment", e.target.value)}
               placeholder="Ej: Helpdesk"
-              className="text-sm w-40 shrink-0"
+              className="text-sm w-36 shrink-0"
+            />
+            <Input
+              value={(rule.seniority_labels ?? []).join(", ")}
+              onChange={(e) => updateRow(i, "seniority_labels", e.target.value.split(",").map((k) => k.trim()).filter(Boolean))}
+              placeholder="Seniority (opcional)"
+              className="text-sm w-44 shrink-0"
             />
             <Input
               value={rule.keywords.join(", ")}

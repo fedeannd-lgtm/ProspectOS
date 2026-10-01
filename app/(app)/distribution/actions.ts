@@ -357,7 +357,7 @@ export async function runDistribution(
     // Fetch prospects
     let query = supabaseAdmin
       .from("prospects")
-      .select("id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, started_role_months, sent_at, shortlisted")
+      .select("id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, job_title, started_role_months, sent_at, shortlisted")
       .eq("campaign_id", sourceCampaignId)
 
     if (!includePreviouslySent) {
@@ -415,7 +415,7 @@ export async function runDistribution(
             if (!p.linkedin_url) return []
             const linkedInProfileUrl = normalizeLinkedInUrl(p.linkedin_url)
             if (!linkedInProfileUrl) return []
-            return [{ linkedInProfileUrl, firstName: p.first_name ?? undefined, lastName: p.last_name ?? undefined, companyName: p.company_name ?? undefined }]
+            return [{ linkedInProfileUrl, firstName: p.first_name ?? undefined, lastName: p.last_name ?? undefined, companyName: p.company_name ?? undefined, position: p.job_title ?? undefined, email: p.email ?? undefined }]
           })
         if (leads.length > 0) {
           if (linkedinTool === "Kairon" && linkedinApiKey) {

@@ -651,7 +651,7 @@ export async function getOsScoreRules(dimension: 1 | 2): Promise<OsScoreRule[]> 
   const table = dimension === 1 ? "os_score_rules" : "os_score2_rules"
   const { data } = await supabaseAdmin
     .from(table)
-    .select("id, segment, keywords, priority")
+    .select("id, segment, keywords, seniority_labels, priority")
     .eq("tenant_id", tenantId)
     .order("priority")
   return (data ?? []) as OsScoreRule[]
