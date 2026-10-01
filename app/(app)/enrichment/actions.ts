@@ -274,3 +274,44 @@ export async function normalizeNamesForCampaign(campaignId: string): Promise<num
   revalidatePath("/enrichment")
   return updated
 }
+
+export async function backfillLinkedInUrlsFromApollo(campaignId: string): Promise<{ updated: number; skipped: number }> {
+  const tenantId = await getTenantId()
+  const tenantCfg = await getTenantConfig(tenantId)
+  const apiKey = tenantCfg.apollo_api_key
+  if (!apiKey) throw new Error("No hay API key de Apollo configurada")
+
+  const { data, error } = await supabaseAdmin
+    .from("prospects")
+    .select("id, apollo_id, linkedin_url")
+    .eq("campaign_id", campaignId)
+    .not("apollo_id", "is", null)
+
+  if (error) throw new Error(error.message)
+  if (!data?.length) return { updated: 0, skipped: 0 }
+
+  const toUpdate = data.filter(p => !p.linkedin_url?.includes("linkedin.com/in/"))
+  if (!toUpdate.length) return { updated: 0, skipped: data.length }
+
+  let updated = 0
+  for (const p of toUpdate) {
+    try {
+      const res = await fetch("https://api.apollo.io/api/v1/people/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "X-Api-Key": apiKey },
+        body: JSON.stringify({ api_key: apiKey, id: p.apollo_id, reveal_personal_emails: false }),
+      })
+      if (!res.ok) continue
+      const body = await res.json()
+      const linkedInUrl: string | null = body?.person?.linkedin_url ?? null
+      if (linkedInUrl?.includes("linkedin.com/in/")) {
+        await supabaseAdmin.from("prospects").update({ linkedin_url: linkedInUrl }).eq("id", p.id)
+        updated++
+      }
+    } catch { /* skip individual errors */ }
+    await new Promise(r => setTimeout(r, 150))
+  }
+
+  revalidatePath("/enrichment")
+  return { updated, skipped: toUpdate.length - updated }
+}

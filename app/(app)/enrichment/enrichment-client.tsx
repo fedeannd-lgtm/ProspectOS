@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeNamesForCampaign, addToShortlist } from "./actions"
+import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeNamesForCampaign, addToShortlist, backfillLinkedInUrlsFromApollo } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
@@ -237,6 +237,10 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
   const [enriching, setEnriching] = useState(false)
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 })
   const [rowStatus, setRowStatus] = useState<Map<string, "enriching" | "found" | "not_found" | "error">>(new Map())
+
+  // LinkedIn URL backfill state
+  const [backfillingLinkedIn, setBackfillingLinkedIn] = useState(false)
+  const [backfillResult, setBackfillResult] = useState<{ updated: number; skipped: number } | null>(null)
 
   // Phone enrichment state
   const [enrichingPhone, setEnrichingPhone] = useState(false)
@@ -736,6 +740,33 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
             </Select>
 
             <span className="ml-auto text-xs text-muted-foreground">{filtered.length} visibles</span>
+            {selectedCampaign && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={backfillingLinkedIn}
+                onClick={async () => {
+                  setBackfillingLinkedIn(true)
+                  setBackfillResult(null)
+                  try {
+                    const result = await backfillLinkedInUrlsFromApollo(selectedCampaign.id)
+                    setBackfillResult(result)
+                    if (result.updated > 0) await loadProspects(selectedCampaign.id)
+                  } catch (e) {
+                    console.error(e)
+                  } finally {
+                    setBackfillingLinkedIn(false)
+                  }
+                }}
+              >
+                {backfillingLinkedIn
+                  ? <><Loader2 className="mr-1.5 size-3 animate-spin" /> Actualizando URLs…</>
+                  : backfillResult
+                  ? `✓ ${backfillResult.updated} URLs actualizadas`
+                  : "Backfill URLs LinkedIn"}
+              </Button>
+            )}
             {filtered.length > 0 && (
               <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => exportCsv(filtered, selectedCampaign?.week_label ?? "campaña")}>
                 <Download className="mr-1.5 size-3" /> Exportar CSV
