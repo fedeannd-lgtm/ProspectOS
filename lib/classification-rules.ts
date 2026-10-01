@@ -51,7 +51,8 @@ export function applyIcpRules(
   }
   const t = normalize(jobTitle)
   for (const rule of rules) {
-    if (rule.keywords.some((kw) => t.includes(normalize(kw)))) {
+    const terms = [rule.label, ...rule.keywords]
+    if (terms.some((kw) => kw && t.includes(normalize(kw)))) {
       return { category: rule.label, score: rule.score }
     }
   }
