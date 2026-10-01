@@ -72,8 +72,25 @@ export async function addLeadsToKairon(
       })
     }
 
-    // Step 1: Add leads by LinkedIn URL
-    const items = leads.map((l) => ({ url: l.linkedInProfileUrl }))
+    // Step 1: Add leads — use snapshot format when we have profile data so Kairon
+    // doesn't need to scrape LinkedIn to populate the PERSON field
+    const items = leads.map((l) => {
+      const publicIdentifier = l.linkedInProfileUrl.match(/linkedin\.com\/in\/([^/?#]+)/i)?.[1]
+      const name = [l.firstName, l.lastName].filter(Boolean).join(" ") || undefined
+      if (publicIdentifier && (name || l.companyName || l.position)) {
+        return {
+          snapshot: {
+            providerId: publicIdentifier,
+            publicIdentifier,
+            profileUrl: l.linkedInProfileUrl,
+            ...(name ? { name } : {}),
+            ...(l.position ? { headline: l.position } : {}),
+            ...(l.companyName ? { company: l.companyName } : {}),
+          },
+        }
+      }
+      return { url: l.linkedInProfileUrl }
+    })
     for (let i = 0; i < items.length; i += 500) {
       await kaironFetch(apiKey, `/lead-lists/${listId}/members`, {
         method: "POST",
