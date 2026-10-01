@@ -50,42 +50,13 @@
   }
 
   function tryCapture(url, data) {
-    const onPeopleSearch = window.location.pathname.includes('/sales/search/people') || window.location.pathname.includes('/sales/lists/people');
-    if (url && onPeopleSearch) {
-      console.log('[ProspectOS interceptor] PEOPLE URL: ' + url.split('?')[0]);
-    }
-    const isSalesApi = url.includes('/sales-api/') || url.includes('/voyager/api/') || url.includes('/graphql') || url.includes('/api/');
+    const isSalesApi = url.includes('/sales-api/') || url.includes('/voyager/api/');
     if (!isSalesApi) return;
     if (!data || typeof data !== 'object') return;
 
     // Log ALL sales-api responses on company profile pages so we can see the fields
     if (window.location.pathname.includes('/sales/company/')) {
       console.log('[ProspectOS interceptor] sales-api response for', url.split('?')[0], JSON.stringify(data).slice(0, 500));
-    }
-
-    // Capture publicIdentifier for people search results so content.js can build /in/ URLs
-    if (window.location.pathname.includes('/sales/search/people') ||
-        window.location.pathname.includes('/sales/lists/people')) {
-      const elements = Array.isArray(data) ? data : (data.elements || data.results || data.items || []);
-      if (elements.length > 0) {
-        console.log('[ProspectOS interceptor] PEOPLE SEARCH element[0] keys: ' + JSON.stringify(Object.keys(elements[0])));
-        console.log('[ProspectOS interceptor] PEOPLE SEARCH element[0]: ' + JSON.stringify(elements[0]).slice(0, 2000));
-      }
-      elements.forEach(el => {
-        if (!el || typeof el !== 'object') return;
-        const urn = el.entityUrn || el.objectUrn || '';
-        const urnId = urn.replace(/^urn:li:[^:]+:/, '');
-        if (!urnId) return;
-        const publicId =
-          el.publicIdentifier || el.vanityName ||
-          el.memberIdentity?.publicIdentifier || el.memberIdentity?.vanityName ||
-          el.profileInfo?.publicIdentifier || el.profileInfo?.vanityName ||
-          el.profile?.publicIdentifier || el.profile?.vanityName ||
-          '';
-        if (publicId) {
-          sessionStorage.setItem('__pos_pub_' + urnId, publicId);
-        }
-      });
     }
 
     function capture(obj) {
