@@ -80,8 +80,7 @@ export async function addLeadsToKairon(
       })
     }
 
-    const urlSample = items.slice(0, 2).map(i => i.url).join(", ")
-    return { success: leads.length, failed: 0, error: `[debug] listId=${listId} urls=${urlSample}` }
+    return { success: leads.length, failed: 0 }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido"
     return { success: 0, failed: leads.length, error: msg }

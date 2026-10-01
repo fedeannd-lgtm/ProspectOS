@@ -604,6 +604,15 @@ async function scrapeWhileScrolling(globalSeen) {
         const highlights = [...new Set(highlightTexts)].map(name => ({ name }));
 
 
+        // Try to resolve the public LinkedIn /in/ URL from interceptor data
+        let resolvedProfileUrl = profileUrl;
+        const leadIdMatch = profileUrl.match(/\/sales\/(?:lead|people)\/([A-Za-z0-9+/=_-]+)/);
+        if (leadIdMatch) {
+          const memberId = leadIdMatch[1].split(',')[0];
+          const publicId = sessionStorage.getItem('__pos_pub_' + memberId);
+          if (publicId) resolvedProfileUrl = 'https://www.linkedin.com/in/' + publicId;
+        }
+
         results.push({
           firstName, lastName, fullName,
           jobTitle: titleEl?.textContent?.trim() || '',
@@ -611,7 +620,7 @@ async function scrapeWhileScrolling(globalSeen) {
           location: locationEl?.textContent?.trim() || '',
           premium,
           connectionType: connectionType || undefined,
-          profileUrl,
+          profileUrl: resolvedProfileUrl,
           startedRoleMonths,
           highlights: highlights.length ? highlights : undefined,
         });
@@ -693,7 +702,16 @@ function scrapePeopleFromPage(seen = new Set()) {
       const highlightEls = card?.querySelectorAll('.result-highlights__highlight, [data-test-highlight]') || [];
       const highlights = Array.from(highlightEls).map(el => ({ name: el.textContent?.trim() || '' }));
 
-      console.log('[ProspectOS] scraped:', { fullName, jobTitle, companyName, profileUrl });
+      // Try to resolve the public LinkedIn /in/ URL from interceptor data
+      let resolvedProfileUrl = profileUrl;
+      const leadIdMatch2 = profileUrl.match(/\/sales\/(?:lead|people)\/([A-Za-z0-9+/=_-]+)/);
+      if (leadIdMatch2) {
+        const memberId2 = leadIdMatch2[1].split(',')[0];
+        const publicId2 = sessionStorage.getItem('__pos_pub_' + memberId2);
+        if (publicId2) resolvedProfileUrl = 'https://www.linkedin.com/in/' + publicId2;
+      }
+
+      console.log('[ProspectOS] scraped:', { fullName, jobTitle, companyName, profileUrl: resolvedProfileUrl });
 
       results.push({
         firstName,
@@ -704,7 +722,7 @@ function scrapePeopleFromPage(seen = new Set()) {
         location,
         premium,
         connectionType: connectionType || undefined,
-        profileUrl,
+        profileUrl: resolvedProfileUrl,
         highlights: highlights.length ? highlights : undefined,
       });
     } catch (e) {

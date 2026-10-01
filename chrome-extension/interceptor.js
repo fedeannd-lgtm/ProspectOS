@@ -63,14 +63,27 @@
       console.log('[ProspectOS interceptor] sales-api response for', url.split('?')[0], JSON.stringify(data).slice(0, 500));
     }
 
-    // Log people search API responses to find the canonical URL field
+    // Capture publicIdentifier for people search results so content.js can build /in/ URLs
     if (window.location.pathname.includes('/sales/search/people') ||
         window.location.pathname.includes('/sales/lists/people')) {
       const elements = Array.isArray(data) ? data : (data.elements || data.results || data.items || []);
-      if (elements.length > 0) {
-        console.log('[ProspectOS interceptor] PEOPLE SEARCH element[0] keys:', Object.keys(elements[0]));
-        console.log('[ProspectOS interceptor] PEOPLE SEARCH element[0]:', JSON.stringify(elements[0]).slice(0, 1000));
-      }
+      elements.forEach(el => {
+        if (!el || typeof el !== 'object') return;
+        // The member's base64 ID appears in entityUrn: "urn:li:fsd_profile:ACwAABfrv1g..."
+        const urn = el.entityUrn || el.objectUrn || '';
+        const urnId = urn.replace(/^urn:li:[^:]+:/, '');
+        if (!urnId) return;
+        // Check multiple field names across different Sales Nav API versions
+        const publicId =
+          el.publicIdentifier || el.vanityName ||
+          el.memberIdentity?.publicIdentifier || el.memberIdentity?.vanityName ||
+          el.profileInfo?.publicIdentifier || el.profileInfo?.vanityName ||
+          el.profile?.publicIdentifier || el.profile?.vanityName ||
+          '';
+        if (publicId) {
+          sessionStorage.setItem('__pos_pub_' + urnId, publicId);
+        }
+      });
     }
 
     function capture(obj) {

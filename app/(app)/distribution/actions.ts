@@ -8,14 +8,16 @@ import { addLeadsToKairon, fetchKaironCampaigns } from "@/lib/kairon"
 import { getTenantId } from "@/lib/tenant"
 import { getTenantConfig } from "@/lib/tenant-config"
 
-// Convert Sales Navigator URL to regular LinkedIn profile URL
-function normalizeLinkedInUrl(url: string): string {
-  if (!url) return url
+// Convert Sales Navigator URL to regular LinkedIn profile URL.
+// Returns null if the URL can't be resolved to a public /in/ URL.
+function normalizeLinkedInUrl(url: string): string | null {
+  if (!url) return null
   if (url.includes("/in/")) return url
-  // Sales Nav URL: .../sales/people/ACwAAA,name=john-doe,email=...
+  // Sales Nav URL with name= param: .../sales/people/ACwAAA,name=john-doe,...
   const nameMatch = url.match(/[,?&]name=([^,&]+)/)
   if (nameMatch) return `https://www.linkedin.com/in/${nameMatch[1]}/`
-  return url
+  // Can't resolve to a public /in/ URL (e.g. /sales/lead/... format) — skip
+  return null
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -409,13 +411,12 @@ export async function runDistribution(
       // LinkedIn (HeyReach o Kairon según configuración del tenant)
       if (route.heyreach_campaign_id && matched.length > 0) {
         const leads = matched
-          .filter((p) => p.linkedin_url)
-          .map((p) => ({
-            linkedInProfileUrl: normalizeLinkedInUrl(p.linkedin_url!),
-            firstName: p.first_name ?? undefined,
-            lastName: p.last_name ?? undefined,
-            companyName: p.company_name ?? undefined,
-          }))
+          .flatMap((p) => {
+            if (!p.linkedin_url) return []
+            const linkedInProfileUrl = normalizeLinkedInUrl(p.linkedin_url)
+            if (!linkedInProfileUrl) return []
+            return [{ linkedInProfileUrl, firstName: p.first_name ?? undefined, lastName: p.last_name ?? undefined, companyName: p.company_name ?? undefined }]
+          })
         if (leads.length > 0) {
           if (linkedinTool === "Kairon" && linkedinApiKey) {
             const res = await addLeadsToKairon(linkedinApiKey, route.heyreach_campaign_id, leads)
