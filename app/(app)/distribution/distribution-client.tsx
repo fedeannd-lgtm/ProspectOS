@@ -23,13 +23,13 @@ const FIELD_LABELS: Record<string, string> = {
   os_score: "OS Score", icp_category: "Categoría", is_premium: "Premium", connection_degree: "Grado",
   started_role_months: "Mes inicio", shortlisted: "En shortlist",
 }
-const OP_LABELS: Record<string, string> = { eq: "=", neq: "≠", gte: "≥", lte: "≤" }
+const OP_LABELS: Record<string, string> = { eq: "=", neq: "≠", gte: "≥", lte: "≤", in: "en" }
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   has_email: { true: "Sí", false: "No" },
   is_premium: { true: "Sí", false: "No" },
   shortlisted: { true: "Sí", false: "No" },
   connection_degree: { FIRST: "1°", SECOND: "2°", THIRD: "3°" },
-  email_status: { valid: "Válido", "catch-all": "Catch-all", invalid: "Inválido", unknown: "Desconocido" },
+  email_status: { valid: "Válido", "catch-all": "Catch-all", invalid: "Inválido", unknown: "Desconocido", "valid,catch-all": "Válido o catch-all" },
 }
 
 function formatCondition(c: Condition): string {
@@ -226,7 +226,7 @@ const CONDITION_FIELDS = [
 
 const OPERATORS_FOR_FIELD: Record<string, { value: string; label: string }[]> = {
   has_email: [{ value: "eq", label: "=" }],
-  email_status: [{ value: "eq", label: "=" }, { value: "neq", label: "≠" }],
+  email_status: [{ value: "eq", label: "=" }, { value: "neq", label: "≠" }, { value: "in", label: "en" }],
   icp_score: [{ value: "gte", label: ">=" }, { value: "lte", label: "<=" }, { value: "eq", label: "=" }],
   os_score: [{ value: "gte", label: ">=" }, { value: "lte", label: "<=" }, { value: "eq", label: "=" }],
   icp_category: [{ value: "eq", label: "=" }],
@@ -240,6 +240,7 @@ const VALUES_FOR_FIELD_BASE: Record<string, { value: string; label: string }[] |
   has_email: [{ value: "true", label: "Sí" }, { value: "false", label: "No" }],
   email_status: [
     { value: "valid", label: "Válido" },
+    { value: "valid,catch-all", label: "Válido o catch-all" },
     { value: "catch-all", label: "Catch-all" },
     { value: "invalid", label: "Inválido" },
     { value: "unknown", label: "Desconocido" },
@@ -317,8 +318,16 @@ function ConditionRow({ cond, onChange, onRemove, icpCategories = [] }: {
       </Select>
 
       {valueOptions ? (
-        <Select value={cond.value} onValueChange={(v) => v && onChange({ ...cond, value: v })}>
-          <SelectTrigger className="h-7 text-xs w-32">
+        <Select
+          value={cond.value}
+          onValueChange={(v) => {
+            if (!v) return
+            // "valid,catch-all" is a multi-value → force operator "in"
+            const op = v.includes(",") ? "in" : (cond.operator === "in" ? "eq" : cond.operator)
+            onChange({ ...cond, operator: op, value: v })
+          }}
+        >
+          <SelectTrigger className="h-7 text-xs w-36">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

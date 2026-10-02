@@ -248,6 +248,10 @@ function evaluateCondition(prospect: ProspectForDistribution, cond: Condition): 
     return value === "true" ? has : !has
   }
   if (field === "email_status") {
+    if (operator === "in") {
+      const allowed = value.split(",").map((s) => s.trim())
+      return allowed.includes(prospect.email_status ?? "")
+    }
     return operator === "eq"
       ? prospect.email_status === value
       : operator === "neq"

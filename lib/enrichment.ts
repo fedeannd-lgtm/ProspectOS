@@ -71,8 +71,8 @@ export async function enrichProspect(prospect: ProspectInput, keys?: EnrichmentK
   // For Datagma we also pass rawUrl as fallback — Datagma resolves encoded Sales Nav URLs
   const datagmaLinkedIn = bestLinkedInUrl || rawUrl
   const REST: Array<{ name: string; selfVerified?: boolean; find: () => Promise<string | null> }> = [
-    { name: "findymail", selfVerified: true, find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl, keys?.findymail_api_key) },
-    { name: "prospeo",   selfVerified: true, find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl, keys?.prospeo_api_key) },
+    { name: "findymail", find: () => findEmailFindymail(first_name, last_name, company_domain ?? "", bestLinkedInUrl, keys?.findymail_api_key) },
+    { name: "prospeo",   find: () => findEmailProspeo(first_name, last_name, company_name, bestLinkedInUrl, keys?.prospeo_api_key) },
     { name: "hunter", selfVerified: true, find: () => findEmailHunter(first_name, last_name, company_domain ?? "") },
     { name: "datagma", selfVerified: true, find: () => findEmailDatagma(first_name, last_name, company_domain ?? "", datagmaLinkedIn, company_name, company_linkedin_url ?? undefined, keys?.datagma_api_key) },
   ]
