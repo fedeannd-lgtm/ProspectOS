@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
-import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, syncHubspotDeals, saveTenantApiKeys, getTenantReps, addTenantRep, deleteTenantRep, addTenantNiche, deleteTenantNiche, saveIcpRules, saveOsScoreRules, type SavedUrl, type ClientCompany, type TenantApiKeys } from "./actions"
+import { createSavedUrl, deleteSavedUrl, saveClientCompanies, updateClientCompanyLinkedinUrl, deleteClientCompany, clearClientCompanies, syncHubspotDeals, saveTenantApiKeys, getTenantReps, addTenantRep, deleteTenantRep, addTenantNiche, deleteTenantNiche, saveIcpRules, saveOsScoreRules, type SavedUrl, type ClientCompany, type TenantApiKeys } from "./actions"
 import type { IcpRule, OsScoreRule } from "@/lib/classification-rules"
 import { getProviderStatus } from "./provider-status"
 import { getInboxConfig, saveInboxConfig, type InboxConfig } from "../inbox/actions"
@@ -463,6 +463,27 @@ function ClientListCard({
   const [urlEdits, setUrlEdits] = useState<Record<string, string>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
 
+  async function handleDeleteOne(company: ClientCompany) {
+    await deleteClientCompany(company.id)
+    setCompanies((prev) => prev.filter((c) => c.id !== company.id))
+    setRaw((prev) =>
+      prev
+        .split("\n")
+        .filter((line) => {
+          const name = line.split(",")[0]?.trim()
+          return name !== company.company_name
+        })
+        .join("\n")
+    )
+  }
+
+  async function handleClearAll() {
+    if (!confirm("¿Borrar toda la lista de clientes?")) return
+    await clearClientCompanies()
+    setCompanies([])
+    setRaw("")
+  }
+
   async function handleSaveUrl(company: ClientCompany) {
     const url = (urlEdits[company.id] ?? company.linkedin_url ?? "").trim() || null
     setSavingId(company.id)
@@ -544,6 +565,13 @@ function ClientListCard({
                   ) : (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">Solo nombre</span>
                   )}
+                  <button
+                    onClick={() => handleDeleteOne(c)}
+                    className="text-muted-foreground hover:text-destructive transition-colors ml-1"
+                    title="Eliminar"
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -603,6 +631,11 @@ function ClientListCard({
             {isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
             Guardar lista
           </Button>
+          {companies.length > 0 && (
+            <Button size="sm" variant="outline" onClick={handleClearAll} disabled={isPending} className="text-destructive hover:text-destructive">
+              <Trash2 className="mr-1.5 size-3.5" /> Borrar todo
+            </Button>
+          )}
           {companies.length > 0 && (
             <>
               <a href={buildTriggerUrl()} target="_blank" rel="noopener noreferrer">

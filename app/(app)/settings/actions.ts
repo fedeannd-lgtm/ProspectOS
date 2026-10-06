@@ -210,6 +210,17 @@ export async function updateClientCompanyLinkedinUrl(
   revalidatePath("/settings")
 }
 
+export async function deleteClientCompany(id: string): Promise<void> {
+  await supabaseAdmin.from("client_companies").delete().eq("id", id)
+  revalidatePath("/settings")
+}
+
+export async function clearClientCompanies(): Promise<void> {
+  const tenantId = await getTenantId()
+  await supabaseAdmin.from("client_companies").delete().eq("tenant_id", tenantId)
+  revalidatePath("/settings")
+}
+
 export async function getCampaignIndustries(): Promise<string[]> {
   const tenantId = await getTenantId()
   const { data } = await supabase
