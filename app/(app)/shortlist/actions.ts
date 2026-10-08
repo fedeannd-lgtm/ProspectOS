@@ -7,10 +7,69 @@ import { generateSequences, generateLinkedinOnly, generateEmailOnly, type Sequen
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
+import { getSequences, getOwners, findContactByEmail, createContact, enrollInSequence, type HubspotSequence, type HubspotOwner } from "@/lib/hubspot"
+import { getTenantConfig } from "@/lib/tenant-config"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
 import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-results"
 
 export { fetchSmartleadCampaigns, fetchHeyReachCampaigns }
+export type { HubspotSequence, HubspotOwner }
+
+async function getHubspotApiKey(): Promise<string> {
+  const tenantId = await getTenantId()
+  const cfg = await getTenantConfig(tenantId)
+  const key = cfg?.hubspot_api_key
+  if (!key) throw new Error("HubSpot API key no configurada en Settings")
+  return key
+}
+
+export async function fetchHubspotSequences(): Promise<HubspotSequence[]> {
+  const apiKey = await getHubspotApiKey()
+  return getSequences(apiKey)
+}
+
+export async function fetchHubspotOwners(): Promise<HubspotOwner[]> {
+  const apiKey = await getHubspotApiKey()
+  return getOwners(apiKey)
+}
+
+export async function pushToHubspot(
+  prospectId: string,
+  sequenceId: string,
+  ownerId: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const apiKey = await getHubspotApiKey()
+
+    const { data: prospect } = await supabaseAdmin
+      .from("prospects")
+      .select("first_name, last_name, email, company_name, job_title, linkedin_url")
+      .eq("id", prospectId)
+      .single()
+
+    if (!prospect?.email) return { ok: false, error: "El prospecto no tiene email — requerido para HubSpot" }
+
+    // Find or create contact
+    let contactId = await findContactByEmail(apiKey, prospect.email)
+    if (!contactId) {
+      contactId = await createContact(apiKey, {
+        email: prospect.email,
+        firstName: prospect.first_name ?? undefined,
+        lastName: prospect.last_name ?? undefined,
+        company: prospect.company_name ?? undefined,
+        jobtitle: prospect.job_title ?? undefined,
+      })
+    }
+
+    await enrollInSequence(apiKey, sequenceId, contactId, ownerId)
+
+    await supabaseAdmin.from("prospects").update({ shortlist_status: "Enviado" }).eq("id", prospectId)
+    revalidatePath("/shortlist")
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" }
+  }
+}
 
 export type ShortlistedProspect = {
   id: string

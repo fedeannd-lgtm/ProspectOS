@@ -2,10 +2,118 @@
 
 const BASE = "https://api.hubapi.com"
 
-function hs_headers() {
+function hs_headers(apiKey?: string) {
   return {
-    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+    Authorization: `Bearer ${apiKey ?? process.env.HUBSPOT_API_KEY}`,
     "Content-Type": "application/json",
+  }
+}
+
+// ── Sequences ────────────────────────────────────────────────────────────────
+
+export type HubspotSequence = { id: string; name: string }
+
+export async function getSequences(apiKey: string): Promise<HubspotSequence[]> {
+  const sequences: HubspotSequence[] = []
+  let after: string | undefined
+  do {
+    const params = new URLSearchParams({ limit: "100", properties: "name" })
+    if (after) params.set("after", after)
+    const res = await fetch(`${BASE}/crm/v3/objects/sequences?${params}`, {
+      headers: hs_headers(apiKey),
+      cache: "no-store",
+    })
+    if (!res.ok) {
+      const body = await res.text()
+      throw new Error(`HubSpot sequences ${res.status}: ${body.slice(0, 300)}`)
+    }
+    const json = await res.json()
+    for (const s of json.results ?? []) {
+      if (s.properties?.name) sequences.push({ id: s.id, name: s.properties.name })
+    }
+    after = json.paging?.next?.after
+  } while (after)
+  return sequences
+}
+
+export type HubspotOwner = { id: string; email: string; name: string }
+
+export async function getOwners(apiKey: string): Promise<HubspotOwner[]> {
+  const res = await fetch(`${BASE}/crm/v3/owners?limit=100`, {
+    headers: hs_headers(apiKey),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`HubSpot owners ${res.status}: ${body.slice(0, 300)}`)
+  }
+  const json = await res.json()
+  return (json.results ?? []).map((o: { id: string; email: string; firstName?: string; lastName?: string }) => ({
+    id: o.id,
+    email: o.email ?? "",
+    name: [o.firstName, o.lastName].filter(Boolean).join(" ") || o.email,
+  }))
+}
+
+export async function findContactByEmail(apiKey: string, email: string): Promise<string | null> {
+  const res = await fetch(`${BASE}/crm/v3/objects/contacts/search`, {
+    method: "POST",
+    headers: hs_headers(apiKey),
+    body: JSON.stringify({
+      filterGroups: [{ filters: [{ propertyName: "email", operator: "EQ", value: email }] }],
+      properties: ["email"],
+      limit: 1,
+    }),
+    cache: "no-store",
+  })
+  if (!res.ok) return null
+  const json = await res.json()
+  return json.results?.[0]?.id ?? null
+}
+
+export async function createContact(apiKey: string, props: {
+  email: string
+  firstName?: string
+  lastName?: string
+  company?: string
+  jobtitle?: string
+  linkedinbio?: string
+}): Promise<string> {
+  const properties: Record<string, string> = { email: props.email }
+  if (props.firstName) properties.firstname = props.firstName
+  if (props.lastName) properties.lastname = props.lastName
+  if (props.company) properties.company = props.company
+  if (props.jobtitle) properties.jobtitle = props.jobtitle
+  if (props.linkedinbio) properties.linkedinbio = props.linkedinbio
+  const res = await fetch(`${BASE}/crm/v3/objects/contacts`, {
+    method: "POST",
+    headers: hs_headers(apiKey),
+    body: JSON.stringify({ properties }),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`HubSpot create contact ${res.status}: ${body.slice(0, 300)}`)
+  }
+  const json = await res.json()
+  return json.id
+}
+
+export async function enrollInSequence(
+  apiKey: string,
+  sequenceId: string,
+  contactId: string,
+  ownerId: string
+): Promise<void> {
+  const res = await fetch(`${BASE}/automation/v4/sequences/${sequenceId}/enrollments`, {
+    method: "POST",
+    headers: hs_headers(apiKey),
+    body: JSON.stringify({ contactId, userId: ownerId }),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`HubSpot enroll ${res.status}: ${body.slice(0, 300)}`)
   }
 }
 

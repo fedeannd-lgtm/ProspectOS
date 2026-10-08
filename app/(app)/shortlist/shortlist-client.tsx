@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput, MessageTemplate } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask, getMessageTemplates, saveMessageTemplate, deleteMessageTemplate } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, fetchHubspotSequences, fetchHubspotOwners, pushToHubspot, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask, getMessageTemplates, saveMessageTemplate, deleteMessageTemplate, type HubspotSequence, type HubspotOwner } from "./actions"
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 import type { InboxConfig } from "@/app/(app)/inbox/actions"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
@@ -711,6 +711,13 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
   const [hrCampaigns, setHrCampaigns] = useState<{ id: string; name: string; linkedInAccountId?: number }[] | null>(null)
   const [selectedHrCampaign, setSelectedHrCampaign] = useState("")
   const [hrPushResult, setHrPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
+  // HubSpot
+  const [pushing3, startPush3] = useTransition()
+  const [hsSequences, setHsSequences] = useState<HubspotSequence[] | null>(null)
+  const [selectedHsSeq, setSelectedHsSeq] = useState("")
+  const [hsOwners, setHsOwners] = useState<HubspotOwner[] | null>(null)
+  const [selectedHsOwner, setSelectedHsOwner] = useState("")
+  const [hsPushResult, setHsPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [taskDate, setTaskDate] = useState(selected?.next_task_date ?? "")
   const [taskNote, setTaskNote] = useState(selected?.next_task_note ?? "")
   const [savingTask, startSaveTask] = useTransition()
@@ -797,6 +804,29 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
     startPush2(async () => {
       const result = await pushToHeyReach(selected.id, selectedHrCampaign, hrAccountId)
       setHrPushResult(result)
+      if (result.ok) {
+        setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, shortlist_status: "Enviado" } : p))
+        setSelected((prev) => prev ? { ...prev, shortlist_status: "Enviado" } : prev)
+      }
+    })
+  }
+
+  function handleLoadHsData() {
+    if (hsSequences !== null) return
+    Promise.all([fetchHubspotSequences(), fetchHubspotOwners()]).then(([seqs, owners]) => {
+      setHsSequences(seqs)
+      setHsOwners(owners)
+      if (seqs.length > 0) setSelectedHsSeq(seqs[0].id)
+      if (owners.length > 0) setSelectedHsOwner(owners[0].id)
+    }).catch((e) => setHsPushResult({ ok: false, error: e.message }))
+  }
+
+  function handlePushHubspot() {
+    if (!selected || !selectedHsSeq || !selectedHsOwner) return
+    setHsPushResult(null)
+    startPush3(async () => {
+      const result = await pushToHubspot(selected.id, selectedHsSeq, selectedHsOwner)
+      setHsPushResult(result)
       if (result.ok) {
         setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, shortlist_status: "Enviado" } : p))
         setSelected((prev) => prev ? { ...prev, shortlist_status: "Enviado" } : prev)
@@ -1407,6 +1437,54 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
                     )}
                     {hrPushResult?.error && (
                       <p className="text-xs text-destructive">{hrPushResult.error}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Push to HubSpot */}
+            {sequences && (
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Send className="size-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Enrollar en HubSpot Sequence</p>
+                </div>
+                {!selected.email && (
+                  <p className="text-xs text-amber-600">Este prospecto no tiene email — requerido para HubSpot.</p>
+                )}
+                {selected.email && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={selectedHsSeq}
+                        onChange={(e) => setSelectedHsSeq(e.target.value)}
+                        onFocus={handleLoadHsData}
+                        className="h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {hsSequences === null && <option value="">Click para cargar secuencias…</option>}
+                        {hsSequences?.length === 0 && <option value="">Sin secuencias en HubSpot</option>}
+                        {hsSequences?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                    {hsOwners && hsOwners.length > 0 && (
+                      <select
+                        value={selectedHsOwner}
+                        onChange={(e) => setSelectedHsOwner(e.target.value)}
+                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {hsOwners.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.email})</option>)}
+                      </select>
+                    )}
+                    <Button size="sm" onClick={handlePushHubspot} disabled={pushing3 || !selectedHsSeq || !selectedHsOwner}>
+                      {pushing3 ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Send className="mr-1.5 size-3.5" />}
+                      Enrollar
+                    </Button>
+                    {hsPushResult?.ok && (
+                      <p className="text-xs text-green-600 flex items-center gap-1"><Check className="size-3" /> Contacto enrollado en la secuencia</p>
+                    )}
+                    {hsPushResult?.error && (
+                      <p className="text-xs text-destructive">{hsPushResult.error}</p>
                     )}
                   </div>
                 )}
