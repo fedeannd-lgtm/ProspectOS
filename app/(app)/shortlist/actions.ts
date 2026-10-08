@@ -13,7 +13,6 @@ import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichmen
 import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-results"
 
 export { fetchSmartleadCampaigns, fetchHeyReachCampaigns }
-export type { HubspotSequence, HubspotOwner }
 
 async function getHubspotApiKey(): Promise<string> {
   const tenantId = await getTenantId()

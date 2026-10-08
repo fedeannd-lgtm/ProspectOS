@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput, MessageTemplate } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, fetchHubspotSequences, fetchHubspotOwners, pushToHubspot, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask, getMessageTemplates, saveMessageTemplate, deleteMessageTemplate, type HubspotSequence, type HubspotOwner } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, fetchHubspotSequences, fetchHubspotOwners, pushToHubspot, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask, getMessageTemplates, saveMessageTemplate, deleteMessageTemplate } from "./actions"
+
+type HubspotSequence = { id: string; name: string }
+type HubspotOwner = { id: string; email: string; name: string }
 import type { EmailStep, LinkedinStep, Sequences } from "@/lib/ai-sequences"
 import type { InboxConfig } from "@/app/(app)/inbox/actions"
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
