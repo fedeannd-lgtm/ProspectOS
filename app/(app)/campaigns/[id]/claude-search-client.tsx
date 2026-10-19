@@ -24,9 +24,13 @@ export function ClaudeSearchClient({
     setResults([])
     startTransition(async () => {
       try {
-        const companies = await generateCompaniesWithClaude(campaignId, prompt, industry)
-        setResults(companies)
-        setDone(true)
+        const res = await generateCompaniesWithClaude(campaignId, prompt, industry)
+        if ("error" in res) {
+          setError(res.error)
+        } else {
+          setResults(res.companies)
+          setDone(true)
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error inesperado")
       }

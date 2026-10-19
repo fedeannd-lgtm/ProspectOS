@@ -154,16 +154,17 @@ export async function generateCompaniesWithClaude(
   campaignId: string,
   prompt: string,
   industry: string
-): Promise<ClaudeCompany[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no está configurada en las variables de entorno")
+): Promise<{ companies: ClaudeCompany[] } | { error: string }> {
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return { error: "ANTHROPIC_API_KEY no configurada" }
 
-  const anthropic = new Anthropic({ apiKey })
+    const anthropic = new Anthropic({ apiKey })
 
-  const message = await anthropic.messages.create({
-    model: "claude-haiku-5-5",
-    max_tokens: 2048,
-    system: `Sos un asistente experto en prospección B2B para el mercado latinoamericano.
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-5-5",
+      max_tokens: 2048,
+      system: `Sos un asistente experto en prospección B2B para el mercado latinoamericano.
 El usuario va a describir el tipo de empresa que quiere prospectar.
 Tu tarea es devolver una lista de empresas REALES que matchean ese perfil.
 Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura exacta:
@@ -173,35 +174,38 @@ Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura ex
 - why: 1 oración explicando por qué encaja con el ICP
 - Devolvé entre 10 y 30 empresas
 - No incluyas texto fuera del JSON`,
-    messages: [{
-      role: "user",
-      content: `Industria/contexto de la campaña: ${industry}\n\nDescripción del ICP: ${prompt}`,
-    }],
-  })
+      messages: [{
+        role: "user",
+        content: `Industria/contexto de la campaña: ${industry}\n\nDescripción del ICP: ${prompt}`,
+      }],
+    })
 
-  const text = message.content[0].type === "text" ? message.content[0].text : ""
-  const jsonMatch = text.match(/\[[\s\S]*\]/)
-  if (!jsonMatch) throw new Error("Claude no devolvió JSON válido")
+    const text = message.content[0].type === "text" ? message.content[0].text : ""
+    const jsonMatch = text.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) return { error: "Claude no devolvió JSON válido" }
 
-  const companies: ClaudeCompany[] = JSON.parse(jsonMatch[0])
+    const companies: ClaudeCompany[] = JSON.parse(jsonMatch[0])
 
-  const inserts = companies.map((c) => ({
-    campaign_id: campaignId,
-    company_name: c.company_name,
-    domain: c.domain ?? null,
-    industry: c.industry ?? industry,
-    headcount_range: c.headcount_range ?? null,
-    status: "discovered" as const,
-  }))
+    const inserts = companies.map((c) => ({
+      campaign_id: campaignId,
+      company_name: c.company_name,
+      domain: c.domain ?? null,
+      industry: c.industry ?? industry,
+      headcount_range: c.headcount_range ?? null,
+      status: "discovered" as const,
+    }))
 
-  const { error } = await supabaseAdmin.from("accounts").insert(inserts)
-  if (error) throw new Error(error.message)
+    const { error: dbError } = await supabaseAdmin.from("accounts").insert(inserts)
+    if (dbError) return { error: dbError.message }
 
-  await supabaseAdmin
-    .from("campaigns")
-    .update({ accounts_found: companies.length })
-    .eq("id", campaignId)
+    await supabaseAdmin
+      .from("campaigns")
+      .update({ accounts_found: companies.length })
+      .eq("id", campaignId)
 
-  revalidatePath(`/campaigns/${campaignId}`)
-  return companies
+    revalidatePath(`/campaigns/${campaignId}`)
+    return { companies }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error desconocido" }
+  }
 }
