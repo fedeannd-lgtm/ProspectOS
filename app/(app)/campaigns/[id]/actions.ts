@@ -125,7 +125,7 @@ export async function importProspectsFromCsv(campaignId: string, rows: ImportRow
     job_title: r.job_title?.trim() || null,
     email: r.email?.trim().toLowerCase() || null,
     linkedin_url: r.linkedin_url?.trim() || null,
-    status: "new" as const,
+    status: "scraped" as const,
   }))
 
   const { error } = await supabaseAdmin.from("prospects").insert(inserts)
@@ -188,7 +188,7 @@ Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura ex
     domain: c.domain ?? null,
     industry: c.industry ?? industry,
     headcount_range: c.headcount_range ?? null,
-    status: "new" as const,
+    status: "discovered" as const,
   }))
 
   const { error } = await supabaseAdmin.from("accounts").insert(inserts)
