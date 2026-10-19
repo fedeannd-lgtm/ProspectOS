@@ -67,6 +67,7 @@ export function ImportClient({ campaignId }: { campaignId: string }) {
   const [result, setResult] = useState<{ imported: number } | null>(null)
   const [isPending, startTransition] = useTransition()
   const [dragOver, setDragOver] = useState(false)
+  const [importError, setImportError] = useState("")
 
   function handleFile(file: File) {
     setParseError("")
@@ -100,10 +101,15 @@ export function ImportClient({ campaignId }: { campaignId: string }) {
   }
 
   function handleImport() {
+    setImportError("")
     startTransition(async () => {
-      const res = await importProspectsFromCsv(campaignId, rows)
-      setResult(res)
-      setRows([])
+      try {
+        const res = await importProspectsFromCsv(campaignId, rows)
+        setResult(res)
+        setRows([])
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : "Error al importar")
+      }
     })
   }
 
@@ -212,6 +218,12 @@ export function ImportClient({ campaignId }: { campaignId: string }) {
           <Button onClick={handleImport} disabled={isPending}>
             {isPending ? "Importando..." : `Importar ${rows.length} prospectos`}
           </Button>
+          {importError && (
+            <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+              <AlertCircle className="size-4 shrink-0" />
+              {importError}
+            </div>
+          )}
         </div>
       )}
     </div>
