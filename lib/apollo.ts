@@ -132,7 +132,21 @@ export async function findEmailApollo(
       console.log(`[Apollo] pass2 skipped — url is encoded Sales Nav or empty: ${linkedinUrl?.slice(0, 60)}`)
     }
 
-    // 3. name + domain (if domain available and previous attempts failed)
+    // 3. Compound last name fallback — try first word only (e.g. "Gonzalez Caceres" → "Gonzalez")
+    const lastNameFirst = lastName.split(" ")[0]
+    if (!person && lastNameFirst !== lastName) {
+      const shortLast = await matchPerson({
+        first_name: apolloFirstName,
+        last_name: lastNameFirst,
+        name: apolloFullName || undefined,
+        domain: companyDomain || undefined,
+        organization_name: !companyDomain && companyName ? companyName : undefined,
+      }, key)
+      person = shortLast?.person as Record<string, unknown> | undefined
+      console.log(`[Apollo] pass3 (compound last_name fallback: ${lastNameFirst}) for ${fullName}: person=${!!person}`)
+    }
+
+    // 4. name + domain (if domain available and previous attempts failed)
     if (!person && companyDomain) {
       const withDomain = await matchPerson({
         first_name: firstName,
@@ -140,7 +154,7 @@ export async function findEmailApollo(
         domain: companyDomain,
       }, key)
       person = withDomain?.person as Record<string, unknown> | undefined
-      console.log(`[Apollo] pass3 (name+domain fallback) for ${fullName}: person=${!!person}`)
+      console.log(`[Apollo] pass4 (name+domain fallback) for ${fullName}: person=${!!person}`)
     }
 
     if (person) {
@@ -168,7 +182,7 @@ export async function findEmailApollo(
       return { email: null, canonicalLinkedInUrl: apolloLinkedIn, apolloEmailStatus: null, phone, apolloId }
     }
 
-    // 4. mixed_people/search by company domain + name match
+    // 5. mixed_people/search by company domain + name match
     if (companyDomain) {
       const found = await searchPeopleAtCompany(firstName, lastName, companyDomain, key)
       if (found) return { email: found.email, canonicalLinkedInUrl: found.linkedInUrl, apolloEmailStatus: null, phone: null, apolloId: null }
