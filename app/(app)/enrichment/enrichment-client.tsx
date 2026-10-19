@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeNamesForCampaign, addToShortlist, backfillLinkedInUrlsFromApollo } from "./actions"
+import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeNamesForCampaign, addToShortlist, backfillLinkedInUrlsFromApollo, lookupDomainsForCampaign } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
 type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
@@ -241,6 +241,10 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
   // LinkedIn URL backfill state
   const [backfillingLinkedIn, setBackfillingLinkedIn] = useState(false)
   const [backfillResult, setBackfillResult] = useState<{ updated: number; skipped: number } | null>(null)
+
+  // Domain lookup state
+  const [lookingUpDomains, setLookingUpDomains] = useState(false)
+  const [domainLookupResult, setDomainLookupResult] = useState<{ found: number; skipped: number } | null>(null)
 
   // Phone enrichment state
   const [enrichingPhone, setEnrichingPhone] = useState(false)
@@ -765,6 +769,36 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
                   : backfillResult
                   ? `✓ ${backfillResult.updated} URLs actualizadas`
                   : "Backfill URLs LinkedIn"}
+              </Button>
+            )}
+            {selectedCampaign && prospects.some((p) => !p.company_domain && p.company_name) && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={lookingUpDomains}
+                onClick={async () => {
+                  if (!selectedCampaign) return
+                  setLookingUpDomains(true)
+                  setDomainLookupResult(null)
+                  try {
+                    const res = await lookupDomainsForCampaign(selectedCampaign.id)
+                    setDomainLookupResult(res)
+                    // Reload prospects to show updated domains
+                    const updated = await getProspectsForEnrichment(selectedCampaign.id)
+                    setProspects(updated)
+                  } catch (err) {
+                    console.error("[lookupDomains]", err)
+                  } finally {
+                    setLookingUpDomains(false)
+                  }
+                }}
+              >
+                {lookingUpDomains
+                  ? <><Loader2 className="mr-1.5 size-3 animate-spin" /> Buscando dominios…</>
+                  : domainLookupResult
+                  ? `✓ ${domainLookupResult.found} dominios encontrados`
+                  : "Buscar dominios"}
               </Button>
             )}
             {filtered.length > 0 && (

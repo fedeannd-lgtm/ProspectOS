@@ -315,3 +315,48 @@ export async function backfillLinkedInUrlsFromApollo(campaignId: string): Promis
   revalidatePath("/enrichment")
   return { updated, skipped: toUpdate.length - updated }
 }
+
+// ── Domain Lookup ──────────────────────────────────────────────────────────────
+// Uses Apollo organizations/search (no lead credits) to find the primary domain
+// of companies that came in from external lists without a domain.
+
+export async function lookupDomainsForCampaign(
+  campaignId: string
+): Promise<{ found: number; skipped: number }> {
+  const tenantId = await getTenantId()
+  const tenantCfg = await getTenantConfig(tenantId)
+  const apiKey = tenantCfg.apollo_api_key || process.env.APOLLO_API_KEY || ""
+  if (!apiKey) throw new Error("No hay API key de Apollo configurada")
+
+  // Only prospects without domain and with a company name
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("id, company_name, company_domain")
+    .eq("campaign_id", campaignId)
+    .is("company_domain", null)
+    .not("company_name", "is", null)
+
+  if (error) throw new Error(error.message)
+  if (!data?.length) return { found: 0, skipped: 0 }
+
+  const { apolloOrgLookup } = await import("@/lib/apollo")
+
+  let found = 0
+  for (const p of data) {
+    if (!p.company_name) continue
+    try {
+      const domain = await apolloOrgLookup(p.company_name, apiKey)
+      if (domain) {
+        await supabaseAdmin
+          .from("prospects")
+          .update({ company_domain: domain })
+          .eq("id", p.id)
+        found++
+      }
+    } catch { /* skip individual errors */ }
+    await new Promise(r => setTimeout(r, 100))
+  }
+
+  revalidatePath("/enrichment")
+  return { found, skipped: data.length - found }
+}
