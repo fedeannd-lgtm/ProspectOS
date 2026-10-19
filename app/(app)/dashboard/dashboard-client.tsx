@@ -1154,6 +1154,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
   const [distTemplates, setDistTemplates] = useState<DistributionTemplate[]>([])
   const [csUrlOpen, setCsUrlOpen] = useState(false)
   const [psUrlOpen, setPsUrlOpen] = useState(false)
+  const [autoError, setAutoError] = useState<string | null>(null)
 
   const allIndustries = useMemo(() => {
     const merged = new Set([...INDUSTRIES, ...campaignIndustries])
