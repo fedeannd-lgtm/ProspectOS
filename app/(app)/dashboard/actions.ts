@@ -95,8 +95,12 @@ export async function createCampaign(form: {
   rep_name: string
   industry: string
   notes: string
+  campaign_type?: string
 }) {
-  const { error } = await supabase.from("campaigns").insert(form)
+  const { error } = await supabase.from("campaigns").insert({
+    ...form,
+    campaign_type: form.campaign_type ?? "sales_navigator",
+  })
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard")
 }

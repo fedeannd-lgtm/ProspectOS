@@ -59,12 +59,15 @@ function addWeeks(isoMonday: string, n: number): string {
 
 type CampaignStatus = "pending" | "searching" | "enriching" | "distributing" | "done"
 
+type CampaignType = "sales_navigator" | "list_import" | "crm_sync" | "claude_search"
+
 type Campaign = {
   id: string
   week_label: string
   rep_name: string
   industry: string
   status: CampaignStatus
+  campaign_type: CampaignType
   accounts_found: number
   prospects_found: number
   prospects_sent: number
@@ -76,6 +79,7 @@ type FormData = {
   rep_name: string
   industry: string
   notes: string
+  campaign_type: CampaignType
 }
 
 type SavedUrl = { id: string; url: string; label: string | null; url_type: string }
@@ -148,8 +152,28 @@ const STATUS_CLASSES: Record<CampaignStatus, string> = {
   done: "bg-green-50 text-green-700 border border-green-200",
 }
 
+const CAMPAIGN_TYPES: { value: CampaignType; label: string; desc: string }[] = [
+  { value: "sales_navigator", label: "Sales Navigator", desc: "Búsqueda por Sales Nav + Apify" },
+  { value: "claude_search",   label: "Claude",          desc: "Claude busca empresas por ICP en lenguaje natural" },
+  { value: "list_import",     label: "Lista externa",   desc: "CSV de webinar, feria o base de datos" },
+  { value: "crm_sync",        label: "CRM",             desc: "Contactos de HubSpot" },
+]
+
 function emptyForm(): FormData {
-  return { week_label: formatDate(new Date()), rep_name: "", industry: "", notes: "" }
+  return { week_label: formatDate(new Date()), rep_name: "", industry: "", notes: "", campaign_type: "sales_navigator" }
+}
+
+// ─── Campaign Type Badge ──────────────────────────────────────────────────────
+
+function CampaignTypeBadge({ type }: { type: CampaignType | undefined | null }) {
+  if (!type || type === "sales_navigator") return null
+  const cfg = {
+    list_import:   { label: "Lista",   cls: "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800" },
+    crm_sync:      { label: "CRM",     cls: "bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-900/20 dark:text-violet-400 dark:border-violet-800" },
+    claude_search: { label: "Claude",  cls: "bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800" },
+  }[type]
+  if (!cfg) return null
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.cls}`}>{cfg.label}</span>
 }
 
 // ─── Auto Campaign Badge ───────────────────────────────────────────────────────
@@ -247,6 +271,7 @@ function CampaignTable({
               <div className="flex items-center gap-1.5 flex-wrap">
                 <StatusBadge status={c.status} />
                 {autoData && <AutoBadge status={autoData.autoStatus} />}
+                <CampaignTypeBadge type={c.campaign_type} />
               </div>
             </TableCell>
             <TableCell className="text-right tabular-nums">{c.accounts_found}</TableCell>
@@ -379,6 +404,7 @@ function WeeklyView({ campaigns, autoActionMap = {} }: { campaigns: Campaign[]; 
                         </div>
                         <div className="flex flex-col items-end gap-1">
                           <StatusBadge status={c.status} />
+                          <CampaignTypeBadge type={c.campaign_type} />
                           {autoData && (
                             <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
                               <Zap className="size-2.5" /> Auto
@@ -1174,7 +1200,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
   function openEdit(c: Campaign) {
     setEditingId(c.id)
     setCampaignMode("manual")
-    setForm({ week_label: c.week_label, rep_name: c.rep_name, industry: c.industry, notes: c.notes ?? "" })
+    setForm({ week_label: c.week_label, rep_name: c.rep_name, industry: c.industry, notes: c.notes ?? "", campaign_type: c.campaign_type ?? "sales_navigator" })
     setDialogOpen(true)
   }
 
@@ -1199,6 +1225,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
         const newCampaign: Campaign = {
           id: crypto.randomUUID(),
           ...form,
+          campaign_type: form.campaign_type ?? "sales_navigator",
           status: "pending",
           accounts_found: 0,
           prospects_found: 0,
@@ -1214,37 +1241,46 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
     if (!form.rep_name || !form.industry || !form.week_label) return
     if (!autoForm.company_search_url || !autoForm.people_search_url) return
     startTransition(async () => {
-      const scheduledAt = new Date().toISOString()
-      const config: AutoCampaignConfig = {
-        company_search_url: autoForm.company_search_url,
-        company_count: autoForm.company_count,
-        exclude_previous: autoForm.exclude_previous,
-        exclusion_date_from: autoForm.exclusion_date_from || null,
-        exclusion_date_to: autoForm.exclusion_date_to || null,
-        start_page: autoForm.start_page,
-        people_search_url: autoForm.people_search_url,
-        people_count: autoForm.people_count,
-        enrich_emails: autoForm.enrich_emails,
-        enrich_phones: autoForm.enrich_phones,
-        classify_icp: autoForm.classify_icp,
-        normalize_names: autoForm.normalize_names,
-        shortlist_icp_min: autoForm.auto_shortlist ? autoForm.shortlist_icp_min : null,
-        shortlist_title_keywords: autoForm.auto_shortlist ? autoForm.shortlist_title_keywords || null : null,
-        distribution_template_id: autoForm.distribution_template_id || null,
-        distribution_template_name: autoForm.distribution_template_name || null,
-        scheduled_at: scheduledAt,
+      try {
+        const scheduledAt = new Date().toISOString()
+        const config: AutoCampaignConfig = {
+          company_search_url: autoForm.company_search_url,
+          company_count: autoForm.company_count,
+          exclude_previous: autoForm.exclude_previous,
+          exclusion_date_from: autoForm.exclusion_date_from || null,
+          exclusion_date_to: autoForm.exclusion_date_to || null,
+          start_page: autoForm.start_page,
+          people_search_url: autoForm.people_search_url,
+          people_count: autoForm.people_count,
+          enrich_emails: autoForm.enrich_emails,
+          enrich_phones: autoForm.enrich_phones,
+          classify_icp: autoForm.classify_icp,
+          normalize_names: autoForm.normalize_names,
+          shortlist_icp_min: autoForm.auto_shortlist ? autoForm.shortlist_icp_min : null,
+          shortlist_title_keywords: autoForm.auto_shortlist ? autoForm.shortlist_title_keywords || null : null,
+          distribution_template_id: autoForm.distribution_template_id || null,
+          distribution_template_name: autoForm.distribution_template_name || null,
+          scheduled_at: scheduledAt,
+        }
+        const result = await createAutoCampaign(form, config)
+        if ("error" in result) {
+          setAutoError(result.error)
+          return
+        }
+        const newCampaign: Campaign = {
+          id: result.id,
+          ...form,
+          campaign_type: form.campaign_type ?? "sales_navigator",
+          status: "pending",
+          accounts_found: 0,
+          prospects_found: 0,
+          prospects_sent: 0,
+        }
+        setCampaigns((prev) => [newCampaign, ...prev])
+        setDialogOpen(false)
+      } catch (err) {
+        setAutoError(err instanceof Error ? err.message : "Error al crear campaña automática")
       }
-      const newId = await createAutoCampaign(form, config)
-      const newCampaign: Campaign = {
-        id: newId,
-        ...form,
-        status: "pending",
-        accounts_found: 0,
-        prospects_found: 0,
-        prospects_sent: 0,
-      }
-      setCampaigns((prev) => [newCampaign, ...prev])
-      setDialogOpen(false)
     })
   }
 
@@ -1446,6 +1482,27 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
             {/* Step 1: Campaign data */}
             {(campaignMode === "manual" || autoStep === 1) && (
               <>
+                {/* Source type selector */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Origen de prospectos</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {CAMPAIGN_TYPES.map((ct) => (
+                      <button
+                        key={ct.value}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, campaign_type: ct.value }))}
+                        className={`flex flex-col items-start gap-0.5 rounded-md border p-2.5 text-left transition-colors ${
+                          form.campaign_type === ct.value
+                            ? "border-primary bg-primary/5"
+                            : "border-input hover:bg-muted/40"
+                        }`}
+                      >
+                        <span className="text-xs font-semibold">{ct.label}</span>
+                        <span className="text-[11px] text-muted-foreground leading-tight">{ct.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Fecha</label>
                   <Popover open={calOpen} onOpenChange={setCalOpen}>
