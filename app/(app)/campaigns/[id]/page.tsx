@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic"
 import { getCampaignWithAccounts, getAutoCampaignForCampaign, getCompanySearchJobForCampaign } from "./actions"
 import { AccountsClient } from "./accounts-client"
 import { AutoCampaignPanel } from "./auto-campaign-panel"
+import { ImportClient } from "./import-client"
+import { ClaudeSearchClient } from "./claude-search-client"
 import { notFound } from "next/navigation"
 
 export default async function CampaignPage({ params }: { params: { id: string } }) {
@@ -22,14 +24,24 @@ export default async function CampaignPage({ params }: { params: { id: string } 
     getCompanySearchJobForCampaign(id),
   ])
 
+  const campaignType = data.campaign.campaign_type ?? "sales_navigator"
+  const isSalesNav = campaignType === "sales_navigator"
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-      {autoCampaign && (
+      {autoCampaign && isSalesNav && (
         <AutoCampaignPanel
           campaignId={id}
           initialData={autoCampaign}
           latestJobUrl={latestJob?.sales_nav_url ?? null}
           latestJobStatus={latestJob?.status ?? null}
+        />
+      )}
+      {campaignType === "list_import" && <ImportClient campaignId={id} />}
+      {campaignType === "claude_search" && (
+        <ClaudeSearchClient
+          campaignId={id}
+          industry={data.campaign.industry ?? ""}
         />
       )}
       <AccountsClient campaign={data.campaign} initialAccounts={data.accounts} />

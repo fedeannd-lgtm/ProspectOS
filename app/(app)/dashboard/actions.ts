@@ -96,9 +96,14 @@ export async function createCampaign(form: {
   rep_name: string
   industry: string
   notes: string
+  campaign_type?: string
 }) {
   const tenantId = await getTenantId()
-  const { error } = await supabase.from("campaigns").insert({ ...form, tenant_id: tenantId })
+  const { error } = await supabase.from("campaigns").insert({
+    ...form,
+    campaign_type: form.campaign_type ?? "sales_navigator",
+    tenant_id: tenantId,
+  })
   if (error) throw new Error(error.message)
   revalidatePath("/dashboard")
 }

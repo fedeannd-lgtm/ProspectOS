@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
+import Anthropic from "@anthropic-ai/sdk"
 
 export type AutoCampaignData = {
   id: string
@@ -47,7 +48,7 @@ export async function getCampaignWithAccounts(campaignId: string) {
   const [campaignRes, accountsRes] = await Promise.all([
     supabase
       .from("campaigns")
-      .select("id, week_label, rep_name, industry, status, accounts_found, prospects_found, list_id, list_name")
+      .select("id, week_label, rep_name, industry, status, campaign_type, accounts_found, prospects_found, list_id, list_name")
       .eq("id", campaignId)
       .single(),
     supabase
@@ -98,4 +99,106 @@ export async function deleteAccount(accountId: string, campaignId: string) {
     .eq("id", campaignId)
 
   revalidatePath(`/campaigns/${campaignId}`)
+}
+
+// ── Import CSV ────────────────────────────────────────────────────────────────
+
+export type ImportRow = {
+  first_name?: string
+  last_name?: string
+  full_name?: string
+  company_name?: string
+  job_title?: string
+  email?: string
+  linkedin_url?: string
+}
+
+export async function importProspectsFromCsv(campaignId: string, rows: ImportRow[]) {
+  if (!rows.length) throw new Error("No hay filas para importar")
+
+  const inserts = rows.map((r) => ({
+    campaign_id: campaignId,
+    first_name: r.first_name?.trim() || null,
+    last_name: r.last_name?.trim() || null,
+    full_name: r.full_name?.trim() || [r.first_name, r.last_name].filter(Boolean).join(" ") || null,
+    company_name: r.company_name?.trim() || null,
+    job_title: r.job_title?.trim() || null,
+    email: r.email?.trim().toLowerCase() || null,
+    linkedin_url: r.linkedin_url?.trim() || null,
+    status: "new" as const,
+  }))
+
+  const { error } = await supabaseAdmin.from("prospects").insert(inserts)
+  if (error) throw new Error(error.message)
+
+  await supabaseAdmin
+    .from("campaigns")
+    .update({ prospects_found: rows.length })
+    .eq("id", campaignId)
+
+  revalidatePath(`/campaigns/${campaignId}`)
+  return { imported: rows.length }
+}
+
+// ── Claude Search ─────────────────────────────────────────────────────────────
+
+export type ClaudeCompany = {
+  company_name: string
+  domain: string | null
+  industry: string | null
+  headcount_range: string | null
+  why: string
+}
+
+export async function generateCompaniesWithClaude(
+  campaignId: string,
+  prompt: string,
+  industry: string
+): Promise<ClaudeCompany[]> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  const message = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 2048,
+    system: `Sos un asistente experto en prospección B2B para el mercado latinoamericano.
+El usuario va a describir el tipo de empresa que quiere prospectar.
+Tu tarea es devolver una lista de empresas REALES que matchean ese perfil.
+Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura exacta:
+[{"company_name":"...","domain":"...","industry":"...","headcount_range":"...","why":"..."}]
+- domain: solo el dominio principal (ej: "empresa.com"), null si no lo sabés con certeza
+- headcount_range: rango aproximado ("1-50", "51-200", "201-500", "501-1000", "1000+") o null
+- why: 1 oración explicando por qué encaja con el ICP
+- Devolvé entre 10 y 30 empresas
+- No incluyas texto fuera del JSON`,
+    messages: [{
+      role: "user",
+      content: `Industria/contexto de la campaña: ${industry}\n\nDescripción del ICP: ${prompt}`,
+    }],
+  })
+
+  const text = message.content[0].type === "text" ? message.content[0].text : ""
+  const jsonMatch = text.match(/\[[\s\S]*\]/)
+  if (!jsonMatch) throw new Error("Claude no devolvió JSON válido")
+
+  const companies: ClaudeCompany[] = JSON.parse(jsonMatch[0])
+
+  const inserts = companies.map((c) => ({
+    campaign_id: campaignId,
+    company_name: c.company_name,
+    domain: c.domain ?? null,
+    industry: c.industry ?? industry,
+    headcount_range: c.headcount_range ?? null,
+    status: "new" as const,
+  }))
+
+  const { error } = await supabaseAdmin.from("accounts").insert(inserts)
+  if (error) throw new Error(error.message)
+
+  await supabaseAdmin
+    .from("campaigns")
+    .update({ accounts_found: companies.length })
+    .eq("id", campaignId)
+
+  revalidatePath(`/campaigns/${campaignId}`)
+  return companies
 }
