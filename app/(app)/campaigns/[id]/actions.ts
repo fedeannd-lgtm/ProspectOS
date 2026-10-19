@@ -213,10 +213,20 @@ Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura ex
 
 // ── CRM Sync (HubSpot) ────────────────────────────────────────────────────────
 
+async function getHubspotApiKey(): Promise<string> {
+  const { getTenantId } = await import("@/lib/tenant")
+  const { getTenantConfig } = await import("@/lib/tenant-config")
+  const tenantId = await getTenantId()
+  const cfg = await getTenantConfig(tenantId)
+  const key = cfg?.hubspot_api_key
+  if (!key) throw new Error("HubSpot API key no configurada en Settings")
+  return key
+}
+
 export async function getHubspotLists(): Promise<{ lists: HubspotList[] } | { error: string }> {
   try {
-    if (!process.env.HUBSPOT_API_KEY) return { error: "HUBSPOT_API_KEY no configurada" }
-    const lists = await getContactLists()
+    const apiKey = await getHubspotApiKey()
+    const lists = await getContactLists(apiKey)
     return { lists }
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error al obtener listas" }
@@ -228,9 +238,8 @@ export async function importFromHubspotList(
   listId: string
 ): Promise<{ imported: number; skipped: number } | { error: string }> {
   try {
-    if (!process.env.HUBSPOT_API_KEY) return { error: "HUBSPOT_API_KEY no configurada" }
-
-    const contacts = await getContactsFromList(listId)
+    const apiKey = await getHubspotApiKey()
+    const contacts = await getContactsFromList(apiKey, listId)
     if (contacts.length === 0) return { imported: 0, skipped: 0 }
 
     const rows = contacts.map((c) => ({
