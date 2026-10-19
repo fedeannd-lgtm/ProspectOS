@@ -5,6 +5,7 @@ import { AccountsClient } from "./accounts-client"
 import { AutoCampaignPanel } from "./auto-campaign-panel"
 import { ImportClient } from "./import-client"
 import { ClaudeSearchClient } from "./claude-search-client"
+import { CrmImportClient } from "./crm-import-client"
 import { notFound } from "next/navigation"
 
 export default async function CampaignPage({ params }: { params: { id: string } }) {
@@ -38,6 +39,7 @@ export default async function CampaignPage({ params }: { params: { id: string } 
         />
       )}
       {campaignType === "list_import" && <ImportClient campaignId={id} />}
+      {campaignType === "crm_sync" && <CrmImportClient campaignId={id} />}
       {campaignType === "claude_search" && (
         <ClaudeSearchClient
           campaignId={id}

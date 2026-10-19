@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import Anthropic from "@anthropic-ai/sdk"
+import { getContactLists, getContactsFromList, type HubspotList } from "@/lib/hubspot"
 
 export type AutoCampaignData = {
   id: string
@@ -207,5 +208,57 @@ Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura ex
     return { companies }
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error desconocido" }
+  }
+}
+
+// ── CRM Sync (HubSpot) ────────────────────────────────────────────────────────
+
+export async function getHubspotLists(): Promise<{ lists: HubspotList[] } | { error: string }> {
+  try {
+    if (!process.env.HUBSPOT_API_KEY) return { error: "HUBSPOT_API_KEY no configurada" }
+    const lists = await getContactLists()
+    return { lists }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error al obtener listas" }
+  }
+}
+
+export async function importFromHubspotList(
+  campaignId: string,
+  listId: string
+): Promise<{ imported: number; skipped: number } | { error: string }> {
+  try {
+    if (!process.env.HUBSPOT_API_KEY) return { error: "HUBSPOT_API_KEY no configurada" }
+
+    const contacts = await getContactsFromList(listId)
+    if (contacts.length === 0) return { imported: 0, skipped: 0 }
+
+    const rows = contacts.map((c) => ({
+      campaign_id: campaignId,
+      first_name: c.firstName ?? "",
+      last_name: c.lastName ?? "",
+      full_name: [c.firstName, c.lastName].filter(Boolean).join(" ") || null,
+      email: c.email ?? null,
+      email_status: c.email ? "unknown" : null,
+      job_title: c.jobTitle ?? null,
+      company_name: c.company ?? null,
+      company_domain: c.domain ?? null,
+      phone: c.phone ?? null,
+      linkedin_url: c.linkedinUrl ?? null,
+      status: "scraped" as const,
+    }))
+
+    const { error: dbError } = await supabaseAdmin.from("prospects").insert(rows)
+    if (dbError) return { error: dbError.message }
+
+    await supabaseAdmin
+      .from("campaigns")
+      .update({ prospects_found: rows.length })
+      .eq("id", campaignId)
+
+    revalidatePath(`/campaigns/${campaignId}`)
+    return { imported: rows.length, skipped: 0 }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error al importar" }
   }
 }
