@@ -155,10 +155,13 @@ export async function generateCompaniesWithClaude(
   prompt: string,
   industry: string
 ): Promise<ClaudeCompany[]> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY no está configurada en las variables de entorno")
+
+  const anthropic = new Anthropic({ apiKey })
 
   const message = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-haiku-5-5",
     max_tokens: 2048,
     system: `Sos un asistente experto en prospección B2B para el mercado latinoamericano.
 El usuario va a describir el tipo de empresa que quiere prospectar.
