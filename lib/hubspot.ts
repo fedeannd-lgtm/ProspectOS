@@ -242,29 +242,25 @@ export async function getContactLists(apiKey: string): Promise<HubspotList[]> {
   const count = 250
 
   do {
-    const params = new URLSearchParams({
-      objectTypeId: "0-1",
-      count: String(count),
-      offset: String(offset),
-    })
-    const res = await fetch(`${BASE}/crm/v3/lists?${params}`, {
+    const params = new URLSearchParams({ count: String(count), offset: String(offset) })
+    const res = await fetch(`${BASE}/contacts/v1/lists?${params}`, {
       headers: hs_headers(apiKey),
       cache: "no-store",
     })
     if (!res.ok) {
       const body = await res.text()
-      throw new Error(`HubSpot lists ${res.status}: ${body.slice(0, 200)}`)
+      throw new Error(`HubSpot lists ${res.status}: ${body.slice(0, 300)}`)
     }
     const json = await res.json()
     for (const l of json.lists ?? []) {
       lists.push({
-        listId: String(l.listId ?? l.id),
+        listId: String(l.listId),
         name: l.name ?? "",
-        listType: l.listType ?? "STATIC",
-        size: l.additionalProperties?.hs_list_size ?? l.memberCount ?? 0,
+        listType: l.dynamic ? "DYNAMIC" : "STATIC",
+        size: l.metaData?.size ?? 0,
       })
     }
-    if (!json.hasMore) break
+    if (!json["has-more"]) break
     offset += count
   } while (true)
 
