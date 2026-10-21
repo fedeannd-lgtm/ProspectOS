@@ -164,26 +164,28 @@ export async function generateCompaniesWithClaude(
 
     const message = await anthropic.messages.create({
       model: "claude-haiku-5-5",
-      max_tokens: 2048,
-      system: `Sos un asistente experto en prospección B2B para el mercado latinoamericano.
-El usuario va a describir el tipo de empresa que quiere prospectar.
-Tu tarea es devolver una lista de empresas REALES que matchean ese perfil.
-Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura exacta:
+      max_tokens: 4096,
+      system: `You are a B2B prospecting expert for the Latin American market.
+The user will describe the type of company they want to prospect.
+Your task is to return a list of REAL companies matching that profile.
+IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no extra text.
+Use exactly this structure:
 [{"company_name":"...","domain":"...","industry":"...","headcount_range":"...","why":"..."}]
-- domain: solo el dominio principal (ej: "empresa.com"), null si no lo sabés con certeza
-- headcount_range: rango aproximado ("1-50", "51-200", "201-500", "501-1000", "1000+") o null
-- why: 1 oración explicando por qué encaja con el ICP
-- Devolvé entre 10 y 30 empresas
-- No incluyas texto fuera del JSON`,
-      messages: [{
-        role: "user",
-        content: `Industria/contexto de la campaña: ${industry}\n\nDescripción del ICP: ${prompt}`,
-      }],
+Rules:
+- domain: primary domain only (e.g. "empresa.com"), null if unsure
+- headcount_range: approximate range ("1-50","51-200","201-500","501-1000","1000+") or null
+- why: 1 sentence explaining why it matches the ICP
+- Return between 10 and 30 companies
+- Output ONLY the JSON array, nothing else`,
+      messages: [
+        { role: "user", content: `Campaign industry/context: ${industry}\n\nICP description: ${prompt}` },
+      ],
     })
 
-    const text = message.content[0].type === "text" ? message.content[0].text : ""
+    const textBlock = message.content.find((b) => b.type === "text")
+    const text = textBlock?.type === "text" ? textBlock.text.trim() : ""
     const jsonStr = (text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/)?.[1]) ?? text.match(/\[[\s\S]*\]/)?.[0]
-    if (!jsonStr) return { error: "Claude no devolvió JSON válido" }
+    if (!jsonStr) return { error: `Sin JSON. Modelo: ${message.model}. Respuesta: ${text.slice(0, 400)}` }
 
     const companies: ClaudeCompany[] = JSON.parse(jsonStr)
 
