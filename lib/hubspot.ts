@@ -280,59 +280,42 @@ export type HubspotContactRow = {
 }
 
 export async function getContactsFromList(apiKey: string, listId: string): Promise<HubspotContactRow[]> {
-  // Step 1: get member IDs (paginated)
-  const memberIds: string[] = []
-  let after: string | undefined
+  const contacts: HubspotContactRow[] = []
+  const PROPS = ["firstname", "lastname", "email", "jobtitle", "company", "hs_email_domain", "phone", "linkedinbio"]
+  let vidOffset: number | undefined
 
   do {
-    const params = new URLSearchParams({ limit: "250" })
-    if (after) params.set("after", after)
-    const res = await fetch(`${BASE}/crm/v3/lists/${listId}/memberships/join-order?${params}`, {
+    const params = new URLSearchParams({ count: "100" })
+    for (const p of PROPS) params.append("property", p)
+    if (vidOffset !== undefined) params.set("vidOffset", String(vidOffset))
+
+    const res = await fetch(`${BASE}/contacts/v1/lists/${listId}/contacts/all?${params}`, {
       headers: hs_headers(apiKey),
       cache: "no-store",
     })
     if (!res.ok) {
       const body = await res.text()
-      throw new Error(`HubSpot list members ${res.status}: ${body.slice(0, 200)}`)
+      throw new Error(`HubSpot list members ${res.status}: ${body.slice(0, 300)}`)
     }
     const json = await res.json()
-    for (const m of json.results ?? []) memberIds.push(String(m.recordId))
-    after = json.paging?.next?.after
-  } while (after)
-
-  if (memberIds.length === 0) return []
-
-  // Step 2: batch-read contact properties
-  const contacts: HubspotContactRow[] = []
-  const PROPS = ["firstname", "lastname", "email", "jobtitle", "company", "hs_email_domain", "phone", "linkedinbio"]
-
-  for (let i = 0; i < memberIds.length; i += 100) {
-    const batch = memberIds.slice(i, i + 100)
-    const res = await fetch(`${BASE}/crm/v3/objects/contacts/batch/read`, {
-      method: "POST",
-      headers: hs_headers(apiKey),
-      body: JSON.stringify({ inputs: batch.map((id) => ({ id })), properties: PROPS }),
-      cache: "no-store",
-    })
-    if (!res.ok) continue
-    const json = await res.json()
-    for (const c of json.results ?? []) {
-      const p = c.properties ?? {}
-      const email: string | null = p.email ?? null
-      const domain: string | null = p.hs_email_domain ?? (email ? email.split("@")[1] ?? null : null)
+    for (const c of json.contacts ?? []) {
+      const p: Record<string, { value: string }> = c.properties ?? {}
+      const email: string | null = p.email?.value ?? null
+      const domain: string | null = p.hs_email_domain?.value ?? (email ? email.split("@")[1] ?? null : null)
       contacts.push({
-        id: c.id,
-        firstName: p.firstname ?? null,
-        lastName: p.lastname ?? null,
+        id: String(c.vid),
+        firstName: p.firstname?.value ?? null,
+        lastName: p.lastname?.value ?? null,
         email,
-        jobTitle: p.jobtitle ?? null,
-        company: p.company ?? null,
+        jobTitle: p.jobtitle?.value ?? null,
+        company: p.company?.value ?? null,
         domain,
-        phone: p.phone ?? null,
-        linkedinUrl: p.linkedinbio ?? null,
+        phone: p.phone?.value ?? null,
+        linkedinUrl: p.linkedinbio?.value ?? null,
       })
     }
-  }
+    vidOffset = json["has-more"] ? json["vid-offset"] : undefined
+  } while (vidOffset !== undefined)
 
   return contacts
 }
