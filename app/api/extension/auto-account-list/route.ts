@@ -35,7 +35,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Campaña no encontrada" }, { status: 404, headers: CORS })
   }
 
-  // Fetch scraped company IDs
+  const listName = `${campaign.week_label} - ${campaign.industry}`
+  const mode = req.nextUrl.searchParams.get("mode")
+
+  if (mode === "names") {
+    // Claude Search mode: return company names + linkedin_urls (no Sales Nav IDs yet)
+    const { data: accounts, error: accErr } = await supabaseAdmin
+      .from("accounts")
+      .select("company_name, linkedin_url")
+      .eq("campaign_id", campaignId)
+      .is("sales_nav_id", null)
+
+    if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500, headers: CORS })
+
+    const companies = (accounts ?? []).map((a) => ({
+      company_name: a.company_name,
+      linkedin_url: a.linkedin_url ?? null,
+    }))
+
+    return NextResponse.json({ listName, companies, campaignId }, { headers: CORS })
+  }
+
+  // Default mode: return Sales Nav IDs for accounts already resolved
   const { data: accounts, error: accErr } = await supabaseAdmin
     .from("accounts")
     .select("sales_nav_id, company_name")
@@ -49,8 +70,6 @@ export async function GET(req: NextRequest) {
   const companyIds = (accounts ?? [])
     .map((a) => a.sales_nav_id)
     .filter((id): id is string => Boolean(id))
-
-  const listName = `${campaign.week_label} - ${campaign.industry}`
 
   return NextResponse.json(
     { listName, companyIds, campaignId },
