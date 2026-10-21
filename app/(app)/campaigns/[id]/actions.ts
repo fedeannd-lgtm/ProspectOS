@@ -182,10 +182,10 @@ Devolvé ÚNICAMENTE un JSON válido: un array de objetos con esta estructura ex
     })
 
     const text = message.content[0].type === "text" ? message.content[0].text : ""
-    const jsonMatch = text.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) return { error: "Claude no devolvió JSON válido" }
+    const jsonStr = (text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/)?.[1]) ?? text.match(/\[[\s\S]*\]/)?.[0]
+    if (!jsonStr) return { error: "Claude no devolvió JSON válido" }
 
-    const companies: ClaudeCompany[] = JSON.parse(jsonMatch[0])
+    const companies: ClaudeCompany[] = JSON.parse(jsonStr)
 
     const inserts = companies.map((c) => ({
       campaign_id: campaignId,
