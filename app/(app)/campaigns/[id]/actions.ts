@@ -165,29 +165,44 @@ export async function generateCompaniesWithClaude(
     const message = await anthropic.messages.create({
       model: "claude-haiku-5-5",
       max_tokens: 4096,
-      system: `You are a B2B prospecting expert for the Latin American market.
-The user will describe the type of company they want to prospect.
-Your task is to return a list of REAL companies matching that profile.
-IMPORTANT: Return ONLY a valid JSON array. No explanation, no markdown, no extra text.
-Use exactly this structure:
-[{"company_name":"...","domain":"...","industry":"...","headcount_range":"...","why":"..."}]
-Rules:
-- domain: primary domain only (e.g. "empresa.com"), null if unsure
-- headcount_range: approximate range ("1-50","51-200","201-500","501-1000","1000+") or null
-- why: 1 sentence explaining why it matches the ICP
-- Return between 10 and 30 companies
-- Output ONLY the JSON array, nothing else`,
+      system: "You are a B2B prospecting expert for the Latin American market. Use the return_companies tool to return REAL companies matching the user's ICP profile.",
+      tools: [
+        {
+          name: "return_companies",
+          description: "Return a list of real B2B companies matching the ICP profile",
+          input_schema: {
+            type: "object" as const,
+            properties: {
+              companies: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    company_name: { type: "string" },
+                    domain: { type: ["string", "null"], description: "Primary domain only, e.g. empresa.com" },
+                    industry: { type: ["string", "null"] },
+                    headcount_range: { type: ["string", "null"], enum: ["1-50", "51-200", "201-500", "501-1000", "1000+", null] },
+                    why: { type: "string", description: "1 sentence why this company matches the ICP" },
+                  },
+                  required: ["company_name", "why"],
+                },
+                minItems: 10,
+                maxItems: 30,
+              },
+            },
+            required: ["companies"],
+          },
+        },
+      ],
+      tool_choice: { type: "tool", name: "return_companies" },
       messages: [
         { role: "user", content: `Campaign industry/context: ${industry}\n\nICP description: ${prompt}` },
       ],
     })
 
-    const textBlock = message.content.find((b) => b.type === "text")
-    const text = textBlock?.type === "text" ? textBlock.text.trim() : ""
-    const jsonStr = (text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/)?.[1]) ?? text.match(/\[[\s\S]*\]/)?.[0]
-    if (!jsonStr) return { error: `Sin JSON. Modelo: ${message.model}. Respuesta: ${text.slice(0, 400)}` }
-
-    const companies: ClaudeCompany[] = JSON.parse(jsonStr)
+    const toolUse = message.content.find((b) => b.type === "tool_use" && b.name === "return_companies")
+    if (!toolUse || toolUse.type !== "tool_use") return { error: `El modelo no llamó el tool. Stop reason: ${message.stop_reason}` }
+    const companies: ClaudeCompany[] = (toolUse.input as { companies: ClaudeCompany[] }).companies
 
     const inserts = companies.map((c) => ({
       campaign_id: campaignId,
