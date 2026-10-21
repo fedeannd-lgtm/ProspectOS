@@ -148,6 +148,7 @@ export type ClaudeCompany = {
   domain: string | null
   industry: string | null
   headcount_range: string | null
+  linkedin_url: string | null
   why: string
 }
 
@@ -182,6 +183,7 @@ export async function generateCompaniesWithClaude(
                     domain: { type: ["string", "null"], description: "Primary domain only, e.g. empresa.com" },
                     industry: { type: ["string", "null"] },
                     headcount_range: { type: ["string", "null"], enum: ["1-50", "51-200", "201-500", "501-1000", "1000+", null] },
+                    linkedin_url: { type: ["string", "null"], description: "LinkedIn company page URL, e.g. https://www.linkedin.com/company/mercadopago" },
                     why: { type: "string", description: "1 sentence why this company matches the ICP" },
                   },
                   required: ["company_name", "why"],
@@ -210,6 +212,7 @@ export async function generateCompaniesWithClaude(
       domain: c.domain ?? null,
       industry: c.industry ?? industry,
       headcount_range: c.headcount_range ?? null,
+      linkedin_url: c.linkedin_url ?? null,
       status: "discovered" as const,
     }))
 
