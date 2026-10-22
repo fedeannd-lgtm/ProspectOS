@@ -55,6 +55,19 @@ export async function getOwners(apiKey: string): Promise<HubspotOwner[]> {
   }))
 }
 
+export async function updateContactProperties(apiKey: string, contactId: string, extraProps: Record<string, string>): Promise<void> {
+  const res = await fetch(`${BASE}/crm/v3/objects/contacts/${contactId}`, {
+    method: "PATCH",
+    headers: hs_headers(apiKey),
+    body: JSON.stringify({ properties: extraProps }),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`HubSpot updateContact: ${res.status} ${text}`)
+  }
+}
+
 export async function findContactByEmail(apiKey: string, email: string): Promise<string | null> {
   const res = await fetch(`${BASE}/crm/v3/objects/contacts/search`, {
     method: "POST",
@@ -78,6 +91,7 @@ export async function createContact(apiKey: string, props: {
   company?: string
   jobtitle?: string
   linkedinbio?: string
+  extraProperties?: Record<string, string>
 }): Promise<string> {
   const properties: Record<string, string> = { email: props.email }
   if (props.firstName) properties.firstname = props.firstName
@@ -85,6 +99,7 @@ export async function createContact(apiKey: string, props: {
   if (props.company) properties.company = props.company
   if (props.jobtitle) properties.jobtitle = props.jobtitle
   if (props.linkedinbio) properties.linkedinbio = props.linkedinbio
+  if (props.extraProperties) Object.assign(properties, props.extraProperties)
   const res = await fetch(`${BASE}/crm/v3/objects/contacts`, {
     method: "POST",
     headers: hs_headers(apiKey),

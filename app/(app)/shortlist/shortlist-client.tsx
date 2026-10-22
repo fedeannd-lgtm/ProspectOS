@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useEffect } from "react"
-import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type, ChevronRight, Calendar, ChevronDown } from "lucide-react"
+import { Loader2, Star, Trash2, Copy, Check, ExternalLink, Mail, RefreshCw, Sparkles, Plus, Send, Phone, Type, ChevronRight, Calendar, ChevronDown, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -721,6 +721,7 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
   const [hsOwners, setHsOwners] = useState<HubspotOwner[] | null>(null)
   const [selectedHsOwner, setSelectedHsOwner] = useState("")
   const [hsPushResult, setHsPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
+  const [hsContactProps, setHsContactProps] = useState<Array<{ key: string; value: string }>>([{ key: "referido", value: "" }])
   const [taskDate, setTaskDate] = useState(selected?.next_task_date ?? "")
   const [taskNote, setTaskNote] = useState(selected?.next_task_note ?? "")
   const [savingTask, startSaveTask] = useTransition()
@@ -828,7 +829,10 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
     if (!selected || !selectedHsSeq || !selectedHsOwner) return
     setHsPushResult(null)
     startPush3(async () => {
-      const result = await pushToHubspot(selected.id, selectedHsSeq, selectedHsOwner)
+      const extraProperties = hsContactProps
+        .filter((p) => p.key.trim() && p.value.trim())
+        .reduce((acc, p) => ({ ...acc, [p.key.trim()]: p.value.trim() }), {} as Record<string, string>)
+      const result = await pushToHubspot(selected.id, selectedHsSeq, selectedHsOwner, extraProperties)
       setHsPushResult(result)
       if (result.ok) {
         setProspects((prev) => prev.map((p) => p.id === selected.id ? { ...p, shortlist_status: "Enviado" } : p))
@@ -1479,6 +1483,38 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
                         {hsOwners.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.email})</option>)}
                       </select>
                     )}
+                    {/* Contact properties */}
+                    <div className="space-y-2 pt-1 pb-2 border-b">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium">Propiedades del contacto</p>
+                        <Button variant="ghost" size="sm" className="h-6 text-xs px-2"
+                          onClick={() => setHsContactProps((prev) => [...prev, { key: "", value: "" }])}>
+                          <Plus className="size-3 mr-1" /> Agregar
+                        </Button>
+                      </div>
+                      {hsContactProps.map((prop, i) => (
+                        <div key={i} className="flex gap-1.5 items-center">
+                          <Input
+                            className="h-7 text-xs flex-1 font-mono"
+                            placeholder="nombre propiedad"
+                            value={prop.key}
+                            onChange={(e) => setHsContactProps((prev) => prev.map((p, j) => j === i ? { ...p, key: e.target.value } : p))}
+                          />
+                          <Input
+                            className="h-7 text-xs flex-1"
+                            placeholder="valor"
+                            value={prop.value}
+                            onChange={(e) => setHsContactProps((prev) => prev.map((p, j) => j === i ? { ...p, value: e.target.value } : p))}
+                          />
+                          <Button variant="ghost" size="icon" className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => setHsContactProps((prev) => prev.filter((_, j) => j !== i))}>
+                            <X className="size-3" />
+                          </Button>
+                        </div>
+                      ))}
+                      <p className="text-[10px] text-muted-foreground">Propiedades vacías se ignoran. Se aplican al crear o actualizar el contacto.</p>
+                    </div>
+
                     <Button size="sm" onClick={handlePushHubspot} disabled={pushing3 || !selectedHsSeq || !selectedHsOwner}>
                       {pushing3 ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Send className="mr-1.5 size-3.5" />}
                       Enrollar

@@ -7,7 +7,7 @@ import { generateSequences, generateLinkedinOnly, generateEmailOnly, type Sequen
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
-import { getSequences, getOwners, findContactByEmail, createContact, enrollInSequence, type HubspotSequence, type HubspotOwner } from "@/lib/hubspot"
+import { getSequences, getOwners, findContactByEmail, createContact, updateContactProperties, enrollInSequence, type HubspotSequence, type HubspotOwner } from "@/lib/hubspot"
 import { getTenantConfig } from "@/lib/tenant-config"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
 import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-results"
@@ -35,7 +35,8 @@ export async function fetchHubspotOwners(): Promise<HubspotOwner[]> {
 export async function pushToHubspot(
   prospectId: string,
   sequenceId: string,
-  ownerId: string
+  ownerId: string,
+  extraProperties?: Record<string, string>
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const apiKey = await getHubspotApiKey()
@@ -57,7 +58,10 @@ export async function pushToHubspot(
         lastName: prospect.last_name ?? undefined,
         company: prospect.company_name ?? undefined,
         jobtitle: prospect.job_title ?? undefined,
+        extraProperties,
       })
+    } else if (extraProperties && Object.keys(extraProperties).length > 0) {
+      await updateContactProperties(apiKey, contactId, extraProperties)
     }
 
     await enrollInSequence(apiKey, sequenceId, contactId, ownerId)
