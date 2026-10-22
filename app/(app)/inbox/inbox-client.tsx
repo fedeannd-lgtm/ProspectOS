@@ -3,13 +3,13 @@
 import { useState, useTransition } from "react"
 import {
   Loader2, Send, X, RefreshCw, Copy, Check, ExternalLink,
-  MessageSquare, Mail, ChevronDown, ChevronRight, Inbox, Sparkles,
+  MessageSquare, Mail, ChevronDown, ChevronRight, Inbox, Sparkles, RotateCcw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import type { ProspectReply } from "./actions"
-import { sendReply, dismissReply, regenerateDraft, getReplies } from "./actions"
+import { sendReply, dismissReply, reactivateReply, regenerateDraft, getReplies } from "./actions"
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -195,6 +195,14 @@ function DetailPanel({ reply, onStatusChange }: { reply: ProspectReply; onStatus
     })
   }
 
+  function handleReactivate() {
+    setAction("dismiss")
+    startTransition(async () => {
+      await reactivateReply(reply.id)
+      onStatusChange(reply.id, "pending_review")
+    })
+  }
+
   function handleRegen() {
     setAction("regen")
     startTransition(async () => {
@@ -334,6 +342,14 @@ function DetailPanel({ reply, onStatusChange }: { reply: ProspectReply; onStatus
           >
             {action === "dismiss" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <X className="mr-2 size-4" />}
             Descartar
+          </Button>
+        </div>
+      )}
+      {reply.status === "dismissed" && (
+        <div className="border-t px-5 py-3 flex items-center gap-2 shrink-0 bg-background">
+          <Button size="sm" variant="outline" onClick={handleReactivate} disabled={isPending}>
+            {action === "dismiss" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RotateCcw className="mr-2 size-4" />}
+            Reactivar
           </Button>
         </div>
       )}
