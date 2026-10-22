@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { getTenantId } from "@/lib/tenant"
 
-const SELECT = "id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, connection_degree, location, email, icp_score, is_premium, status, started_role_months, highlights, created_at, campaign_id, campaigns(week_label, rep_name, industry)"
+const SELECT = "id, first_name, last_name, full_name, job_title, company_name, company_domain, linkedin_url, connection_degree, location, email, icp_score, is_premium, status, started_role_months, highlights, created_at, campaign_id, campaigns(week_label, rep_name, industry, notes)"
 
 export type ProspectRow = {
   id: string; first_name: string; last_name: string; full_name: string
@@ -14,7 +14,7 @@ export type ProspectRow = {
   is_premium: boolean; status: string
   started_role_months: number | null; highlights: string | null
   created_at: string; campaign_id: string
-  campaigns: { week_label: string; rep_name: string; industry: string } | null
+  campaigns: { week_label: string; rep_name: string; industry: string; notes: string | null } | null
 }
 
 export async function getFilteredProspects(
@@ -62,12 +62,12 @@ export async function getFilteredProspects(
 
 export async function getCampaignsForFilter(rep: string, industry: string) {
   const tenantId = await getTenantId()
-  let query = supabaseAdmin.from("campaigns").select("id, week_label, rep_name, industry").eq("tenant_id", tenantId)
+  let query = supabaseAdmin.from("campaigns").select("id, week_label, rep_name, industry, notes").eq("tenant_id", tenantId)
   if (rep !== "all") query = query.eq("rep_name", rep)
   if (industry !== "all") query = query.eq("industry", industry)
   const { data, error } = await query.order("created_at", { ascending: false })
   if (error) throw new Error(error.message)
-  return (data ?? []) as { id: string; week_label: string; rep_name: string; industry: string }[]
+  return (data ?? []) as { id: string; week_label: string; rep_name: string; industry: string; notes: string | null }[]
 }
 
 export async function getAllFilteredProspects(

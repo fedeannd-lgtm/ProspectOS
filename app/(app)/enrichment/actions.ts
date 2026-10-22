@@ -16,7 +16,7 @@ export async function getCampaigns() {
   const tenantId = await getTenantId()
   const { data, error } = await supabase
     .from("campaigns")
-    .select("id, week_label, rep_name, industry, status, prospects_found")
+    .select("id, week_label, rep_name, industry, status, prospects_found, notes")
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
   if (error) throw new Error(error.message)

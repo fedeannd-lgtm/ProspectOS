@@ -43,7 +43,7 @@ function formatCondition(c: Condition): string {
 
 function RouteFlowPreview({ routes, campaigns, integrationCampaigns }: {
   routes: DistributionRoute[]
-  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
+  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null; notes: string | null }[]
   integrationCampaigns: { smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null
 }) {
   const [campaignId, setCampaignId] = useState("")
@@ -94,7 +94,7 @@ function RouteFlowPreview({ routes, campaigns, integrationCampaigns }: {
           <SelectContent>
             {campaigns.map((c) => (
               <SelectItem key={c.id} value={c.id} className="text-xs">
-                {c.week_label} · {c.rep_name} · {c.industry}
+                {c.week_label} · {c.rep_name} · {c.industry}{c.notes ? ` · ${c.notes}` : ""}
               </SelectItem>
             ))}
           </SelectContent>
@@ -568,7 +568,7 @@ function RouteCard({ route, index, total, onChange, onMoveUp, onMoveDown, onClon
 
 function RunModal({ template, campaigns, onClose, onRun }: {
   template: DistributionTemplate
-  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
+  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null; notes: string | null }[]
   onClose: () => void
   onRun: (campaignId: string, includePrev: boolean) => void
 }) {
@@ -602,7 +602,7 @@ function RunModal({ template, campaigns, onClose, onRun }: {
               <SelectContent>
                 {campaigns.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.week_label} · {c.rep_name} · {c.industry}
+                    {c.week_label} · {c.rep_name} · {c.industry}{c.notes ? ` · ${c.notes}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -718,7 +718,7 @@ function RunHistory({ runs, linkedinTool }: { runs: DistributionRun[]; linkedinT
 
 function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, icpCategories = [] }: {
   template: DistributionTemplate | null
-  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
+  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null; notes: string | null }[]
   onSaved: (id: string) => void
   onClose: () => void
   linkedinTool?: string
@@ -965,7 +965,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, i
 
 export function DistributionClient({ templates: initialTemplates, campaigns, linkedinTool = "HeyReach", icpCategories = [] }: {
   templates: DistributionTemplate[]
-  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null }[]
+  campaigns: { id: string; week_label: string; rep_name: string; industry: string; prospects_found: number | null; notes: string | null }[]
   linkedinTool?: string
   icpCategories?: string[]
 }) {

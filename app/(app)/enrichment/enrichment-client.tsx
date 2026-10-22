@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { getCampaigns, getProspectsForEnrichment, enrichOneProspect, classifyAllIcp, enrichPhoneForProspect, setProspectWhatsappPhone, normalizeNamesForCampaign, addToShortlist, backfillLinkedInUrlsFromApollo, lookupDomainsForCampaign } from "./actions"
 import { calculateOsScore } from "@/lib/scoring"
 
-type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null }
+type Campaign = { id: string; week_label: string; rep_name: string; industry: string; status: string; prospects_found: number | null; notes: string | null }
 type Prospect = {
   id: string; first_name: string; last_name: string; full_name: string
   job_title: string; company_name: string; company_domain: string | null
@@ -481,7 +481,7 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
               <Popover open={comboOpen} onOpenChange={setComboOpen}>
                 <PopoverTrigger className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   {selectedCampaign
-                    ? <span className="truncate">{selectedCampaign.week_label} — {selectedCampaign.rep_name}</span>
+                    ? <span className="truncate">{selectedCampaign.week_label} — {selectedCampaign.rep_name} / {selectedCampaign.industry}{selectedCampaign.notes ? ` · ${selectedCampaign.notes}` : ""}</span>
                     : <span className="text-muted-foreground">Seleccionar campaña…</span>}
                   <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
                 </PopoverTrigger>
@@ -495,11 +495,11 @@ export function EnrichmentClient({ campaigns, providerStatus, osScore2Segments =
                       ).map(([rep, items]) => (
                         <CommandGroup key={rep} heading={rep}>
                           {items.map((c) => (
-                            <CommandItem key={c.id} value={`${c.week_label} ${c.rep_name} ${c.industry}`}
+                            <CommandItem key={c.id} value={`${c.week_label} ${c.rep_name} ${c.industry} ${c.notes ?? ""}`}
                               onSelect={() => { setCampaignId(c.id); setComboOpen(false); loadProspects(c.id) }}>
                               <Check className={`mr-2 size-4 ${campaignId === c.id ? "opacity-100" : "opacity-0"}`} />
                               <span>{c.week_label}</span>
-                              <span className="ml-2 text-muted-foreground text-xs">{c.industry}</span>
+                              <span className="ml-2 text-muted-foreground text-xs">{c.industry}{c.notes ? ` · ${c.notes}` : ""}</span>
                             </CommandItem>
                           ))}
                         </CommandGroup>

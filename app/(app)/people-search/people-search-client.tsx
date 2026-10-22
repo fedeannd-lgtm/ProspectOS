@@ -44,6 +44,7 @@ type Campaign = {
   status: string
   list_id: string | null
   list_name: string | null
+  notes: string | null
 }
 
 type SearchJob = {
@@ -523,7 +524,7 @@ export function PeopleSearchClient({
                   className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs ring-offset-background hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {selectedCampaign
-                    ? <span>{selectedCampaign.week_label} — <span className="text-muted-foreground">{selectedCampaign.rep_name} / {selectedCampaign.industry}</span></span>
+                    ? <span>{selectedCampaign.week_label} — <span className="text-muted-foreground">{selectedCampaign.rep_name} / {selectedCampaign.industry}{selectedCampaign.notes ? ` · ${selectedCampaign.notes}` : ""}</span></span>
                     : <span className="text-muted-foreground">Seleccionar campaña…</span>}
                   <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
                 </PopoverTrigger>
@@ -541,11 +542,11 @@ export function PeopleSearchClient({
                       ).map(([rep, items]) => (
                         <CommandGroup key={rep} heading={rep}>
                           {items.map((c) => (
-                            <CommandItem key={c.id} value={`${c.week_label} ${c.rep_name} ${c.industry}`}
+                            <CommandItem key={c.id} value={`${c.week_label} ${c.rep_name} ${c.industry} ${c.notes ?? ""}`}
                               onSelect={() => { setCampaignId(c.id); localStorage.setItem("ps_last_campaign", c.id); setComboOpen(false) }}>
                               <Check className={`mr-2 size-4 ${campaignId === c.id ? "opacity-100" : "opacity-0"}`} />
                               <span>{c.week_label}</span>
-                              <span className="ml-2 text-muted-foreground text-xs">{c.industry}</span>
+                              <span className="ml-2 text-muted-foreground text-xs">{c.industry}{c.notes ? ` · ${c.notes}` : ""}</span>
                             </CommandItem>
                           ))}
                         </CommandGroup>

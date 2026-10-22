@@ -17,7 +17,8 @@ const STATUS_LABELS: Record<string, { label: string; class: string }> = {
 
 function campaignLabel(p: ProspectRow) {
   if (!p.campaigns) return ""
-  return `${p.campaigns.week_label} · ${p.campaigns.rep_name} · ${p.campaigns.industry}`
+  const note = p.campaigns.notes ? ` · ${p.campaigns.notes}` : ""
+  return `${p.campaigns.week_label} · ${p.campaigns.rep_name} · ${p.campaigns.industry}${note}`
 }
 
 function exportCsv(rows: ProspectRow[]) {
@@ -51,7 +52,7 @@ export function ProspectsClient({ reps = [], niches = [] }: { reps?: string[]; n
 
   const [prospects, setProspects] = useState<ProspectRow[]>([])
   const [total, setTotal] = useState(0)
-  const [campaigns, setCampaigns] = useState<{ id: string; week_label: string; rep_name: string; industry: string }[]>([])
+  const [campaigns, setCampaigns] = useState<{ id: string; week_label: string; rep_name: string; industry: string; notes: string | null }[]>([])
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -172,7 +173,7 @@ export function ProspectsClient({ reps = [], niches = [] }: { reps?: string[]; n
                 <option value="all">Todas las campañas</option>
                 {campaigns.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.week_label} · {c.rep_name} · {c.industry}
+                    {c.week_label} · {c.rep_name} · {c.industry}{c.notes ? ` · ${c.notes}` : ""}
                   </option>
                 ))}
               </select>
