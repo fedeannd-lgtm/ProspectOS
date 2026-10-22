@@ -55,6 +55,25 @@ export async function getOwners(apiKey: string): Promise<HubspotOwner[]> {
   }))
 }
 
+export type HubspotContactProperty = { name: string; label: string; groupName: string }
+
+export async function getContactProperties(apiKey: string): Promise<HubspotContactProperty[]> {
+  const res = await fetch(`${BASE}/crm/v3/properties/contacts`, {
+    headers: hs_headers(apiKey),
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`HubSpot contact properties ${res.status}: ${body.slice(0, 300)}`)
+  }
+  const json = await res.json()
+  return (json.results ?? []).map((p: { name: string; label?: string; groupName?: string }) => ({
+    name: p.name,
+    label: p.label ?? p.name,
+    groupName: p.groupName ?? "",
+  }))
+}
+
 export async function updateContactProperties(apiKey: string, contactId: string, extraProps: Record<string, string>): Promise<void> {
   const res = await fetch(`${BASE}/crm/v3/objects/contacts/${contactId}`, {
     method: "PATCH",

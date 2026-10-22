@@ -7,7 +7,7 @@ import { generateSequences, generateLinkedinOnly, generateEmailOnly, type Sequen
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
 import { addLeadsToSmartlead, fetchSmartleadCampaigns } from "@/lib/smartlead"
 import { addLeadsToHeyReach, fetchHeyReachCampaigns } from "@/lib/heyreach"
-import { getSequences, getOwners, findContactByEmail, createContact, updateContactProperties, enrollInSequence, type HubspotSequence, type HubspotOwner } from "@/lib/hubspot"
+import { getSequences, getOwners, findContactByEmail, createContact, updateContactProperties, enrollInSequence, getContactProperties, type HubspotSequence, type HubspotOwner } from "@/lib/hubspot"
 import { getTenantConfig } from "@/lib/tenant-config"
 import { enrichOneProspect, enrichPhoneForProspect } from "@/app/(app)/enrichment/actions"
 import { normalizePersonName, normalizeCompanyName } from "@/lib/process-search-results"
@@ -20,6 +20,16 @@ async function getHubspotApiKey(): Promise<string> {
   const key = cfg?.hubspot_api_key
   if (!key) throw new Error("HubSpot API key no configurada en Settings")
   return key
+}
+
+export async function fetchHubspotContactProperties(): Promise<{ properties: { name: string; label: string; groupName: string }[]; error?: string }> {
+  try {
+    const apiKey = await getHubspotApiKey()
+    const properties = await getContactProperties(apiKey)
+    return { properties: properties.sort((a, b) => a.label.localeCompare(b.label, "es", { sensitivity: "base" })) }
+  } catch (e: unknown) {
+    return { properties: [], error: (e as Error)?.message ?? String(e) }
+  }
 }
 
 export async function fetchHubspotSequences(): Promise<HubspotSequence[]> {

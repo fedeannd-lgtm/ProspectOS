@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { ShortlistedProspect, ManualProspectInput, MessageTemplate } from "./actions"
-import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, fetchHubspotSequences, fetchHubspotOwners, pushToHubspot, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask, getMessageTemplates, saveMessageTemplate, deleteMessageTemplate } from "./actions"
+import { removeFromShortlist, generateAndSaveSequences, regenerateLinkedinOnly, regenerateEmailOnly, updateShortlistStatus, addManualProspect, saveEditedSequences, pushToSmartlead, fetchSmartleadCampaigns, pushToHeyReach, fetchHeyReachCampaigns, fetchHubspotSequences, fetchHubspotOwners, fetchHubspotContactProperties, pushToHubspot, enrichEmailForShortlist, enrichPhoneForShortlist, normalizeNameForShortlist, assignIndustryToCompany, saveProspectTask, getMessageTemplates, saveMessageTemplate, deleteMessageTemplate } from "./actions"
 
 type HubspotSequence = { id: string; name: string }
 type HubspotOwner = { id: string; email: string; name: string }
@@ -722,6 +722,7 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
   const [selectedHsOwner, setSelectedHsOwner] = useState("")
   const [hsPushResult, setHsPushResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [hsContactProps, setHsContactProps] = useState<Array<{ key: string; value: string }>>([{ key: "referido", value: "" }])
+  const [hsContactPropOptions, setHsContactPropOptions] = useState<Array<{ name: string; label: string; groupName: string }> | null>(null)
   const [taskDate, setTaskDate] = useState(selected?.next_task_date ?? "")
   const [taskNote, setTaskNote] = useState(selected?.next_task_note ?? "")
   const [savingTask, startSaveTask] = useTransition()
@@ -817,6 +818,9 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
 
   function handleLoadHsData() {
     if (hsSequences !== null) return
+    if (!hsContactPropOptions) {
+      fetchHubspotContactProperties().then(({ properties }) => setHsContactPropOptions(properties))
+    }
     Promise.all([fetchHubspotSequences(), fetchHubspotOwners()]).then(([seqs, owners]) => {
       setHsSequences(seqs)
       setHsOwners(owners)
@@ -1492,11 +1496,17 @@ export function ShortlistClient({ initialProspects, inboxConfig }: { initialPros
                           <Plus className="size-3 mr-1" /> Agregar
                         </Button>
                       </div>
+                      <datalist id="hs-contact-props">
+                        {hsContactPropOptions?.map(p => (
+                          <option key={p.name} value={p.name}>{p.label}</option>
+                        ))}
+                      </datalist>
                       {hsContactProps.map((prop, i) => (
                         <div key={i} className="flex gap-1.5 items-center">
                           <Input
+                            list="hs-contact-props"
                             className="h-7 text-xs flex-1 font-mono"
-                            placeholder="nombre propiedad"
+                            placeholder={hsContactPropOptions ? "buscar propiedad…" : "nombre propiedad"}
                             value={prop.key}
                             onChange={(e) => setHsContactProps((prev) => prev.map((p, j) => j === i ? { ...p, key: e.target.value } : p))}
                           />
