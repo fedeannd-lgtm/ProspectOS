@@ -370,6 +370,7 @@ export function InboxClient({ initialReplies }: { initialReplies: ProspectReply[
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all")
   const [intentFilter, setIntentFilter] = useState<IntentFilter>("all")
+  const [repFilter, setRepFilter] = useState<string>("all")
   const [refreshing, startRefresh] = useTransition()
 
   function handleRefresh() {
@@ -388,10 +389,13 @@ export function InboxClient({ initialReplies }: { initialReplies: ProspectReply[
     if (selected?.id === id) setSelected((prev) => prev ? { ...prev, status } : prev)
   }
 
+  const reps = [...new Set(replies.map((r) => r.campaigns?.rep_name).filter(Boolean))] as string[]
+
   const filtered = replies.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false
     if (sourceFilter !== "all" && r.source !== sourceFilter) return false
     if (intentFilter !== "all" && r.intent !== intentFilter) return false
+    if (repFilter !== "all" && r.campaigns?.rep_name !== repFilter) return false
     return true
   })
 
@@ -438,6 +442,17 @@ export function InboxClient({ initialReplies }: { initialReplies: ProspectReply[
           <FilterChip active={intentFilter === "not_interested"} onClick={() => setIntentFilter("not_interested")}>No interesados</FilterChip>
           <FilterChip active={intentFilter === "question"} onClick={() => setIntentFilter("question")}>Preguntas</FilterChip>
         </div>
+        {reps.length > 1 && (
+          <>
+            <div className="w-px h-4 bg-border mx-1" />
+            <div className="flex items-center gap-1">
+              <FilterChip active={repFilter === "all"} onClick={() => setRepFilter("all")}>Todos</FilterChip>
+              {reps.map((rep) => (
+                <FilterChip key={rep} active={repFilter === rep} onClick={() => setRepFilter(rep)}>{rep}</FilterChip>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Main */}
