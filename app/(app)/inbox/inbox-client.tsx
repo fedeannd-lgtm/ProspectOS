@@ -97,6 +97,11 @@ function ReplyCard({ reply, selected, onClick }: { reply: ProspectReply; selecte
           <div className="text-xs text-muted-foreground mt-0.5 truncate">
             {p?.job_title ?? ""}{p?.job_title && p?.company_name ? " · " : ""}{p?.company_name ?? ""}
           </div>
+          {reply.campaigns && (
+            <div className="text-xs text-muted-foreground/70 truncate">
+              {reply.campaigns.rep_name}{reply.campaigns.rep_name && reply.campaigns.week_label ? " · " : ""}{reply.campaigns.week_label}
+            </div>
+          )}
           <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
             {reply.subject ? <span className="font-medium">{reply.subject} — </span> : null}
             {stripHtml(reply.body).slice(0, 120)}
@@ -224,6 +229,11 @@ function DetailPanel({ reply, onStatusChange }: { reply: ProspectReply; onStatus
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {(p?.accounts as any)?.industry ? ` · ${(p?.accounts as any).industry}` : ""}
             </div>
+            {reply.campaigns && (
+              <div className="mt-0.5 text-xs text-muted-foreground/70">
+                {[reply.campaigns.rep_name, reply.campaigns.week_label, reply.campaigns.industry].filter(Boolean).join(" · ")}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {reply.source === "heyreach" && p?.linkedin_url && (

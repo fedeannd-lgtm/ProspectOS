@@ -36,6 +36,7 @@ export type ProspectReply = {
     icp_category: string | null
     accounts: { industry: string | null } | null
   } | null
+  campaigns: { rep_name: string | null; week_label: string | null; industry: string | null } | null
 }
 
 import type { LinkedinSequenceConfig, EmailSequenceConfig } from "@/lib/sequence-configs"
@@ -66,7 +67,8 @@ export async function getReplies(filter: "pending_review" | "draft_ready" | "sen
         full_name, first_name, last_name, job_title, company_name,
         linkedin_url, icp_category,
         accounts ( industry )
-      )
+      ),
+      campaigns ( rep_name, week_label, industry )
     `)
     .in("campaign_id", campIds)
     .order("replied_at", { ascending: false })
