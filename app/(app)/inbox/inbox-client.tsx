@@ -266,48 +266,33 @@ function DetailPanel({ reply, onStatusChange }: { reply: ProspectReply; onStatus
           <ThreadHistory history={reply.thread_history} />
         </div>
 
-        {/* AI Draft */}
+        {/* Draft */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Borrador IA
+              Respuesta
             </span>
-            {!noDraft && (
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleRegen}
                 disabled={isPending}
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
               >
-                {action === "regen" ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-                Regenerar
+                {action === "regen"
+                  ? <><Loader2 className="size-3 animate-spin" /> Generando…</>
+                  : <><Sparkles className="size-3" /> {draft ? "Regenerar IA" : "Generar con IA"}</>}
               </button>
-            )}
+            </div>
           </div>
 
-          {noDraft ? (
-            <div className="rounded-lg border bg-muted/20 px-4 py-8 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-              <p className="text-center text-xs">El borrador no fue generado automáticamente.</p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleRegen}
-                disabled={action === "regen"}
-              >
-                {action === "regen"
-                  ? <><Loader2 className="mr-2 size-3.5 animate-spin" /> Generando…</>
-                  : <><Sparkles className="mr-2 size-3.5" /> Generar borrador IA</>}
-              </Button>
-            </div>
-          ) : (
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              disabled={reply.status === "sent" || reply.status === "dismissed"}
-              rows={10}
-              placeholder="El borrador aparecerá aquí…"
-              className="w-full rounded-lg border bg-background px-4 py-3 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed"
-            />
-          )}
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={reply.status === "sent" || reply.status === "dismissed"}
+            rows={10}
+            placeholder="Escribí tu respuesta o usá 'Generar con IA'…"
+            className="w-full rounded-lg border bg-background px-4 py-3 text-sm leading-relaxed resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 disabled:cursor-not-allowed"
+          />
 
           {errorMsg && (
             <p className="mt-1.5 text-xs text-destructive">{errorMsg}</p>
@@ -322,7 +307,7 @@ function DetailPanel({ reply, onStatusChange }: { reply: ProspectReply; onStatus
             <Button
               size="sm"
               onClick={handleSend}
-              disabled={isPending || !draft.trim() || noDraft}
+              disabled={isPending || !draft.trim()}
             >
               {action === "send" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
               Enviar respuesta
