@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { supabase, supabaseAdmin } from "@/lib/supabase"
 import { sendSmartleadReply } from "@/lib/smartlead"
+import { sendHeyReachMessage } from "@/lib/heyreach"
 import { getTenantId } from "@/lib/tenant"
 
 export type ProspectReply = {
@@ -141,7 +142,14 @@ export async function sendReply(replyId: string, draftBody: string): Promise<{ o
     })
     if (!result.ok) return { ok: false, error: result.error }
   }
-  // HeyReach: no reply API confirmed yet — just mark as sent
+  if (reply.source === "heyreach") {
+    if (!reply.external_lead_id) {
+      return { ok: false, error: "Faltan datos para enviar por HeyReach (sin lead ID)" }
+    }
+    const result = await sendHeyReachMessage(reply.external_lead_id, draftBody)
+    if (!result.ok) return { ok: false, error: result.error }
+  }
+  // Other sources: just mark as sent
 
   await supabaseAdmin
     .from("prospect_replies")

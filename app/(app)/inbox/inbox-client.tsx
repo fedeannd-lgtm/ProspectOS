@@ -166,7 +166,8 @@ function DetailPanel({ reply, onStatusChange }: { reply: ProspectReply; onStatus
   const p = reply.prospects
   const intent = reply.intent ? INTENT_CFG[reply.intent] : null
   const noDraft = !reply.ai_draft && !draft
-  const canSend = reply.source === "smartlead" && reply.reply_message_id
+  const canSend = (reply.source === "smartlead" && !!reply.reply_message_id) ||
+                  (reply.source === "heyreach" && !!reply.external_lead_id)
 
   function handleSend() {
     if (!draft.trim()) return

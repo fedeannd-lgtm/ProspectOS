@@ -47,6 +47,27 @@ export async function fetchHeyReachCampaigns(): Promise<{ id: string; name: stri
   }
 }
 
+export async function sendHeyReachMessage(leadId: string, message: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BASE}/conversation/SendMessageToLead`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "text/plain",
+        "X-API-KEY": API_KEY,
+      },
+      body: JSON.stringify({ leadId: parseInt(leadId, 10), message }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      return { ok: false, error: `HeyReach ${res.status}: ${text.slice(0, 200)}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error desconocido" }
+  }
+}
+
 export async function addLeadsToHeyReach(
   campaignId: string,
   linkedInAccountIdOrLeads: number | HeyReachLead[],
