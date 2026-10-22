@@ -245,6 +245,19 @@ function DetailPanel({ reply, onStatusChange }: { reply: ProspectReply; onStatus
                 {[reply.campaigns.rep_name, reply.campaigns.week_label, reply.campaigns.industry].filter(Boolean).join(" · ")}
               </div>
             )}
+            {(p?.sl_campaign_name || p?.hr_campaign_name) && (
+              <div className="mt-0.5 text-xs text-muted-foreground/60">
+                {p.sl_campaign_name
+                  ? <span>SL: {p.sl_campaign_name}</span>
+                  : <span className="line-through opacity-50">Smartlead</span>
+                }
+                {" · "}
+                {p.hr_campaign_name
+                  ? <span>HR: {p.hr_campaign_name}</span>
+                  : <span className="line-through opacity-50">HeyReach</span>
+                }
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {reply.source === "heyreach" && p?.linkedin_url && (

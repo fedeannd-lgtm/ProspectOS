@@ -380,6 +380,14 @@ export async function runDistribution(
       allProspects = allProspects.filter((p) => p.shortlisted !== true)
     }
 
+    // Fetch integration campaign names for later annotation
+    const [slCampaigns, hrCampaigns] = await Promise.all([
+      fetchSmartleadCampaigns().catch(() => [] as { id: string; name: string }[]),
+      fetchHeyReachCampaigns().catch(() => [] as { id: string; name: string }[]),
+    ])
+    const slNameMap: Record<string, string> = Object.fromEntries(slCampaigns.map((c) => [c.id, c.name]))
+    const hrNameMap: Record<string, string> = Object.fromEntries(hrCampaigns.map((c) => [c.id, c.name]))
+
     // Tenant LinkedIn config
     const tenantId = await getTenantId()
     const tenantCfg = await getTenantConfig(tenantId)
@@ -389,6 +397,7 @@ export async function runDistribution(
     // Evaluate each route
     const routeResults: RunResults["routes"] = []
     const sentProspectIds = new Set<string>()
+    const now = new Date().toISOString()
 
     for (const route of routes) {
       const matched = allProspects.filter((p) => prospectMatchesRoute(p, route))
@@ -444,20 +453,27 @@ export async function runDistribution(
         errors,
       })
 
-      // Mark as sent
-      const toMark = matched
+      // Mark as sent with campaign attribution
+      const newlySent = matched
         .filter((p) => !sentProspectIds.has(p.id))
-        .filter((p) => slCount > 0 || hrCount > 0)
-      for (const p of toMark) sentProspectIds.add(p.id)
-    }
+        .filter((_) => slCount > 0 || hrCount > 0)
 
-    // Update prospects as sent
-    if (sentProspectIds.size > 0) {
-      const ids = Array.from(sentProspectIds)
-      await supabaseAdmin
-        .from("prospects")
-        .update({ status: "sent", sent_at: new Date().toISOString() })
-        .in("id", ids)
+      if (newlySent.length > 0) {
+        const updateData: Record<string, unknown> = { status: "sent", sent_at: now }
+        if (route.smartlead_campaign_id && slCount > 0) {
+          updateData.sl_campaign_id   = route.smartlead_campaign_id
+          updateData.sl_campaign_name = slNameMap[route.smartlead_campaign_id] ?? null
+        }
+        if (route.heyreach_campaign_id && hrCount > 0) {
+          updateData.hr_campaign_id   = route.heyreach_campaign_id
+          updateData.hr_campaign_name = hrNameMap[route.heyreach_campaign_id] ?? null
+        }
+        await supabaseAdmin
+          .from("prospects")
+          .update(updateData)
+          .in("id", newlySent.map((p) => p.id))
+        newlySent.forEach((p) => sentProspectIds.add(p.id))
+      }
     }
 
     const totalSent = sentProspectIds.size

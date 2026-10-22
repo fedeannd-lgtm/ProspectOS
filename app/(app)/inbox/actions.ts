@@ -35,6 +35,10 @@ export type ProspectReply = {
     company_name: string | null
     linkedin_url: string | null
     icp_category: string | null
+    sl_campaign_id: string | null
+    sl_campaign_name: string | null
+    hr_campaign_id: string | null
+    hr_campaign_name: string | null
     accounts: { industry: string | null } | null
   } | null
   campaigns: { rep_name: string | null; week_label: string | null; industry: string | null } | null
@@ -67,6 +71,7 @@ export async function getReplies(filter: "pending_review" | "draft_ready" | "sen
       prospects (
         full_name, first_name, last_name, job_title, company_name,
         linkedin_url, icp_category,
+        sl_campaign_id, sl_campaign_name, hr_campaign_id, hr_campaign_name,
         accounts ( industry )
       ),
       campaigns ( rep_name, week_label, industry )

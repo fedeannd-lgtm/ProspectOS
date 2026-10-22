@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { cn } from "@/lib/utils"
-import { Plus, Play, Copy, Trash2, ChevronUp, ChevronDown, X, Loader2, CheckCircle2, AlertCircle, RotateCcw, Eye } from "lucide-react"
+import { Plus, Play, Copy, Trash2, ChevronUp, ChevronDown, ChevronRight, X, Loader2, CheckCircle2, AlertCircle, RotateCcw, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -733,7 +733,7 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, i
   const [running, startRun] = useTransition()
   const [showRunModal, setShowRunModal] = useState(false)
   const [runs, setRuns] = useState<DistributionRun[]>([])
-  const [runsOpen, setRunsOpen] = useState(true)
+  const [runsOpen, setRunsOpen] = useState(false)
   const [loadingRuns, startLoadRuns] = useTransition()
   const [runSuccess, setRunSuccess] = useState<string | null>(null)
   const [integrationCampaigns, setIntegrationCampaigns] = useState<{ smartlead: IntegrationCampaign[]; heyreach: IntegrationCampaign[] } | null>(null)
@@ -793,11 +793,8 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, i
   }
 
   useEffect(() => {
-    if (!template?.id) return
-    startLoadRuns(async () => {
-      const r = await getRunsForTemplate(template.id)
-      setRuns(r)
-    })
+    setRunsOpen(false)
+    setRuns([])
   }, [template?.id])
 
   function handleLoadRuns() {
@@ -923,12 +920,18 @@ function TemplateEditor({ template, campaigns, onSaved, onClose, linkedinTool, i
       {!isNew && (
         <div className="border-t pt-3">
           <button
-            onClick={() => { if (runs.length === 0) handleLoadRuns(); else setRunsOpen((v) => !v) }}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-2"
+            onClick={() => { setRunsOpen((v) => !v); handleLoadRuns() }}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
-            <RotateCcw className={`size-3 ${loadingRuns ? "animate-spin" : ""}`} />
+            {loadingRuns
+              ? <RotateCcw className="size-3 animate-spin" />
+              : runsOpen
+                ? <ChevronDown className="size-3" />
+                : <ChevronRight className="size-3" />}
             Historial de corridas
-            {runs.length > 0 && <ChevronDown className={`size-3 transition-transform ${runsOpen ? "" : "-rotate-90"}`} />}
+            {runs.length > 0 && !runsOpen && (
+              <span className="text-muted-foreground/60">({runs.length})</span>
+            )}
           </button>
           {runsOpen && <RunHistory runs={runs} linkedinTool={linkedinTool} />}
         </div>
