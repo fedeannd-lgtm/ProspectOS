@@ -398,6 +398,9 @@ function WeeklyView({ campaigns, autoActionMap = {} }: { campaigns: Campaign[]; 
                         <div>
                           <p className="font-medium text-sm">{c.rep_name}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">{c.industry}</p>
+                          {c.notes && (
+                            <p className="text-xs text-muted-foreground/70 mt-0.5 italic">{c.notes}</p>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1">
                           <StatusBadge status={c.status} />
@@ -1599,11 +1602,11 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
                   </Popover>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-muted-foreground">Notas (opcional)</label>
+                  <label className="text-sm font-medium text-muted-foreground">Nota / diferenciador (opcional)</label>
                   <Input
                     value={form.notes}
                     onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                    placeholder="Notas..."
+                    placeholder="ej: 2da búsqueda, segmento PyME, retargeting..."
                   />
                 </div>
               </>
