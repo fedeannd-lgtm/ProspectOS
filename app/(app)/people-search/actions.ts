@@ -156,7 +156,7 @@ export async function upsertPeopleSearchConfig(
 export async function getAccountsForCampaign(campaignId: string) {
   const { data, error } = await supabase
     .from("accounts")
-    .select("company_name, domain")
+    .select("company_name, domain, sales_nav_id")
     .eq("campaign_id", campaignId)
     .order("company_name")
   if (error) throw new Error(error.message)

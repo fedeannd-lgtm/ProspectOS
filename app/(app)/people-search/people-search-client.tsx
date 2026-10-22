@@ -30,6 +30,7 @@ import {
   triggerPeopleSearch,
   getJobStatus,
   getProspectsForCampaign,
+  getAccountsForCampaign,
   deleteSearchJobs,
 } from "./actions"
 import { updateAccountListInUrl } from "@/lib/sales-nav-lists"
@@ -114,28 +115,76 @@ function formatCountdown(ms: number) {
 
 type Prospect = { id: string; first_name: string; last_name: string; full_name: string; job_title: string; company_name: string; linkedin_url: string; connection_degree: string; location: string }
 
+type CompanyReport = {
+  company_name: string
+  sales_nav_id: string | null
+  count: number
+  prospects: Prospect[]
+}
+
 function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
   const cfg = JOB_STATUS_CONFIG[job.status as keyof typeof JOB_STATUS_CONFIG] ?? JOB_STATUS_CONFIG.pending
   const Icon = cfg.icon
   const remaining = useCountdown(job.status === "running" ? job.estimated_ready_at : null)
   const [expanded, setExpanded] = useState(false)
-  const [prospects, setProspects] = useState<Prospect[] | null>(null)
-  const [loadingProspects, setLoadingProspects] = useState(false)
+  const [companyReport, setCompanyReport] = useState<CompanyReport[] | null>(null)
+  const [loadingReport, setLoadingReport] = useState(false)
+  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set())
+  const [selectedZero, setSelectedZero] = useState<Set<string>>(new Set())
 
   async function toggleExpand() {
-    if (!expanded && prospects === null) {
-      setLoadingProspects(true)
+    if (!expanded && companyReport === null) {
+      setLoadingReport(true)
       try {
-        const data = await getProspectsForCampaign(job.campaign_id)
-        setProspects(data)
+        const [accounts, prospects] = await Promise.all([
+          getAccountsForCampaign(job.campaign_id),
+          getProspectsForCampaign(job.campaign_id),
+        ])
+        const map = new Map<string, CompanyReport>()
+        for (const acc of accounts) {
+          map.set(acc.company_name, {
+            company_name: acc.company_name,
+            sales_nav_id: acc.sales_nav_id ?? null,
+            count: 0,
+            prospects: [],
+          })
+        }
+        for (const p of prospects) {
+          const entry = map.get(p.company_name)
+          if (entry) {
+            entry.count++
+            entry.prospects.push(p)
+          } else {
+            map.set(p.company_name, { company_name: p.company_name, sales_nav_id: null, count: 1, prospects: [p] })
+          }
+        }
+        setCompanyReport(Array.from(map.values()).sort((a, b) => b.count - a.count))
       } catch {
-        setProspects([])
+        setCompanyReport([])
       } finally {
-        setLoadingProspects(false)
+        setLoadingReport(false)
       }
     }
     setExpanded((v) => !v)
   }
+
+  function toggleCompanyDrill(name: string) {
+    setExpandedCompanies((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name); else next.add(name)
+      return next
+    })
+  }
+
+  function toggleZero(name: string) {
+    setSelectedZero((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name); else next.add(name)
+      return next
+    })
+  }
+
+  const zeroCompanies = companyReport?.filter((c) => c.count === 0) ?? []
 
   return (
     <div className="rounded-lg border overflow-hidden">
@@ -159,6 +208,10 @@ function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
           {job.campaigns && (
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {job.campaigns.week_label} · {job.campaigns.rep_name} · {job.campaigns.industry}
+              {" · "}
+              <Link href={`/campaigns/${job.campaign_id}`} className="underline hover:text-foreground">
+                ver campaña
+              </Link>
             </p>
           )}
         </div>
@@ -171,7 +224,7 @@ function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
               onClick={toggleExpand}
               className="rounded p-1 hover:bg-muted/50 text-muted-foreground transition-colors"
             >
-              {loadingProspects
+              {loadingReport
                 ? <Loader2 className="size-3.5 animate-spin" />
                 : expanded
                   ? <ChevronUp className="size-3.5" />
@@ -184,43 +237,106 @@ function JobCard({ job, onDelete }: { job: SearchJob; onDelete: () => void }) {
         </div>
       </div>
 
-      {expanded && prospects !== null && (
-        <div className="border-t bg-muted/30 max-h-72 overflow-y-auto">
-          {prospects.length === 0 ? (
-            <p className="px-3 py-4 text-xs text-muted-foreground text-center">Sin personas guardadas para esta campaña</p>
+      {expanded && companyReport !== null && (
+        <div className="border-t bg-muted/30">
+          {companyReport.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-muted-foreground text-center">Sin empresas registradas para esta campaña</p>
           ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Nombre</th>
-                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Apellido</th>
-                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Nombre completo</th>
-                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Cargo</th>
-                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Empresa</th>
-                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Ubicación</th>
-                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Grado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prospects.map((p) => (
-                  <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
-                    <td className="px-3 py-1.5">{p.first_name || "—"}</td>
-                    <td className="px-3 py-1.5">{p.last_name || "—"}</td>
-                    <td className="px-3 py-1.5">
-                      {p.linkedin_url ? (
-                        <a href={p.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                          {p.full_name || "—"}
-                        </a>
-                      ) : (p.full_name || "—")}
-                    </td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{p.job_title || "—"}</td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{p.company_name || "—"}</td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{p.location || "—"}</td>
-                    <td className="px-3 py-1.5 text-muted-foreground">{p.connection_degree || "—"}</td>
-                  </tr>
+            <>
+              <div className="max-h-80 overflow-y-auto divide-y">
+                {companyReport.map((company) => (
+                  <div key={company.company_name}>
+                    <div
+                      className={`flex items-center gap-2 px-3 py-2 hover:bg-muted/50 ${company.count > 0 ? "cursor-pointer" : ""}`}
+                      onClick={() => company.count > 0 && toggleCompanyDrill(company.company_name)}
+                    >
+                      {company.count === 0 ? (
+                        <input
+                          type="checkbox"
+                          className="size-3.5 shrink-0 cursor-pointer"
+                          checked={selectedZero.has(company.company_name)}
+                          onChange={() => toggleZero(company.company_name)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="size-3.5 shrink-0" />
+                      )}
+                      <span className="flex-1 text-xs truncate">{company.company_name}</span>
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
+                        company.count === 0
+                          ? "bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
+                          : "bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
+                      }`}>
+                        {company.count}
+                      </span>
+                      {company.count > 0 && (
+                        expandedCompanies.has(company.company_name)
+                          ? <ChevronUp className="size-3 text-muted-foreground shrink-0" />
+                          : <ChevronDown className="size-3 text-muted-foreground shrink-0" />
+                      )}
+                    </div>
+                    {expandedCompanies.has(company.company_name) && (
+                      <table className="w-full text-xs border-t">
+                        <tbody>
+                          {company.prospects.map((p) => (
+                            <tr key={p.id} className="border-b last:border-0 bg-background hover:bg-muted/30">
+                              <td className="pl-8 pr-3 py-1.5 w-40">
+                                {p.linkedin_url ? (
+                                  <a href={p.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                                    {p.full_name || "—"}
+                                  </a>
+                                ) : (p.full_name || "—")}
+                              </td>
+                              <td className="px-3 py-1.5 text-muted-foreground">{p.job_title || "—"}</td>
+                              <td className="px-3 py-1.5 text-muted-foreground">{p.location || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+              {zeroCompanies.length > 0 && (
+                <div className="px-3 py-2 border-t flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {selectedZero.size > 0
+                      ? `${selectedZero.size} empresa${selectedZero.size !== 1 ? "s" : ""} seleccionada${selectedZero.size !== 1 ? "s" : ""}`
+                      : `${zeroCompanies.length} sin personas — marcalas para recrear lista`}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-xs shrink-0"
+                    disabled={selectedZero.size === 0}
+                    onClick={() => {
+                      const selected = companyReport.filter((c) => selectedZero.has(c.company_name))
+                      const withId = selected.filter((c) => c.sales_nav_id)
+                      const withoutId = selected.filter((c) => !c.sales_nav_id)
+                      const listNameRaw = job.campaigns
+                        ? `Rerun ${job.campaigns.week_label} - ${job.campaigns.industry}`
+                        : "Rerun"
+                      const callbackUrl = `${window.location.origin}/api/webhooks/extension/list-created`
+                      const params = new URLSearchParams({
+                        prospectOS: "create",
+                        campaignId: job.campaign_id,
+                        listName: btoa(unescape(encodeURIComponent(listNameRaw))),
+                        callback: callbackUrl,
+                      })
+                      if (withId.length > 0) {
+                        params.set("companyIds", btoa(JSON.stringify(withId.map((c) => c.sales_nav_id!))))
+                      }
+                      if (withoutId.length > 0) {
+                        params.set("companyNames", btoa(JSON.stringify(withoutId.map((c) => c.company_name))))
+                      }
+                      window.open(`https://www.linkedin.com/sales/lists/company?${params}`, "_blank")
+                    }}
+                  >
+                    Crear lista de cuentas
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
