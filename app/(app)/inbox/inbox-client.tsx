@@ -95,7 +95,9 @@ function ReplyCard({ reply, selected, onClick }: { reply: ProspectReply; selecte
             )}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5 truncate">
-            {p?.job_title ?? ""}{p?.job_title && p?.company_name ? " · " : ""}{p?.company_name ?? ""}
+            {p
+              ? `${p.job_title ?? ""}${p.job_title && p.company_name ? " · " : ""}${p.company_name ?? ""}`
+              : (reply.sender_email ?? "")}
           </div>
           {reply.campaigns && (
             <div className="text-xs text-muted-foreground/70 truncate">

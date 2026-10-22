@@ -48,8 +48,8 @@ export async function POST(req: NextRequest) {
 
   // Sender (the lead who replied)
   const sender          = (body.sender ?? {}) as Record<string, unknown>
-  const senderFirstName = String(sender.first_name ?? sender.firstName ?? lead.first_name ?? "")
-  const senderLastName  = String(sender.last_name  ?? sender.lastName  ?? lead.last_name  ?? "")
+  const senderFirstName = String(lead.first_name ?? lead.firstName ?? sender.first_name ?? sender.firstName ?? "")
+  const senderLastName  = String(lead.last_name  ?? lead.lastName  ?? sender.last_name  ?? sender.lastName  ?? "")
   const senderName      = [senderFirstName, senderLastName].filter(Boolean).join(" ")
 
   // Timestamps & IDs
