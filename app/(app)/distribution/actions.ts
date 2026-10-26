@@ -218,6 +218,30 @@ function normalizeConditions(raw: unknown): ConditionGroup[] {
   return raw as ConditionGroup[]
 }
 
+// ─── Paginated prospect fetch (Supabase default cap is 1000 rows) ────────────
+
+const PROSPECT_SELECT = "id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, job_title, started_role_months, sent_at, shortlisted"
+
+async function fetchAllProspects(campaignId: string, includePreviouslySent: boolean): Promise<ProspectForDistribution[]> {
+  const PAGE = 1000
+  const all: ProspectForDistribution[] = []
+  let from = 0
+  while (true) {
+    let q = supabaseAdmin
+      .from("prospects")
+      .select(PROSPECT_SELECT)
+      .eq("campaign_id", campaignId)
+      .range(from, from + PAGE - 1)
+    if (!includePreviouslySent) q = q.is("sent_at", null)
+    const { data } = await q
+    if (!data || data.length === 0) break
+    all.push(...(data as ProspectForDistribution[]))
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
 // ─── Condition evaluator ──────────────────────────────────────────────────────
 
 type ProspectForDistribution = {
@@ -359,18 +383,8 @@ export async function runDistribution(
   if (runErr || !run) throw new Error(runErr?.message ?? "Error al crear corrida")
 
   try {
-    // Fetch prospects
-    let query = supabaseAdmin
-      .from("prospects")
-      .select("id, first_name, last_name, full_name, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, company_name, job_title, started_role_months, sent_at, shortlisted")
-      .eq("campaign_id", sourceCampaignId)
-
-    if (!includePreviouslySent) {
-      query = query.is("sent_at", null)
-    }
-
-    const { data: prospects } = await query
-    let allProspects = (prospects ?? []) as ProspectForDistribution[]
+    // Fetch all prospects (paginated to bypass Supabase 1000-row default cap)
+    let allProspects = await fetchAllProspects(sourceCampaignId, includePreviouslySent)
 
     // Global shortlist pre-filter (stored on template, applied before route conditions)
     const shortlistFilter = (t.shortlist_filter ?? "all") as "all" | "only" | "exclude"
@@ -545,12 +559,7 @@ export async function previewDistributionRoutes(
   routes: DistributionRoute[],
   campaignId: string
 ): Promise<RoutePreviewResult> {
-  const { data: prospects } = await supabaseAdmin
-    .from("prospects")
-    .select("id, email, email_status, icp_score, icp_category, os_score, is_premium, connection_degree, linkedin_url, started_role_months, sent_at, shortlisted")
-    .eq("campaign_id", campaignId)
-
-  const all = (prospects ?? []) as ProspectForDistribution[]
+  const all = await fetchAllProspects(campaignId, true)
   const available = all.filter((p) => !p.sent_at)
 
   const perRoute = routes.map((route) => {
