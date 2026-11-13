@@ -16,6 +16,8 @@ type Keys = {
   findymail_api_key: string | null
   prospeo_api_key: string | null
   datagma_api_key: string | null
+  salesql_api_key: string | null
+  contactout_api_key: string | null
 }
 
 async function checkZeroBounce(key: string | null): Promise<ProviderStatus> {
@@ -111,14 +113,56 @@ async function checkDatagma(key: string | null): Promise<ProviderStatus> {
   }
 }
 
+async function checkSalesQL(key: string | null): Promise<ProviderStatus> {
+  if (!key) return { name: "salesql", label: "SalesQL", status: "unconfigured", detail: "API key no configurada" }
+  try {
+    const res = await fetch("https://api-public.salesql.com/v1/allowance", {
+      headers: { "Authorization": `Bearer ${key}` },
+    })
+    if (res.status === 401) return { name: "salesql", label: "SalesQL", status: "error", detail: "API key inválida" }
+    if (!res.ok) return { name: "salesql", label: "SalesQL", status: "error", detail: `HTTP ${res.status}` }
+    const data = await res.json()
+    const remaining = data?.remaining ?? data?.credits ?? null
+    if (remaining === null) return { name: "salesql", label: "SalesQL", status: "ok", detail: "Configurado" }
+    if (remaining <= 0) return { name: "salesql", label: "SalesQL", status: "out", credits: 0, detail: "Sin créditos" }
+    if (remaining < 20) return { name: "salesql", label: "SalesQL", status: "low", credits: remaining, detail: `${remaining} créditos restantes` }
+    return { name: "salesql", label: "SalesQL", status: "ok", credits: remaining, detail: `${remaining.toLocaleString()} créditos disponibles` }
+  } catch {
+    return { name: "salesql", label: "SalesQL", status: "error", detail: "Error al consultar" }
+  }
+}
+
+async function checkContactOut(key: string | null): Promise<ProviderStatus> {
+  if (!key) return { name: "contactout", label: "ContactOut", status: "unconfigured", detail: "API key no configurada" }
+  try {
+    const now = new Date()
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+    const res = await fetch(`https://api.contactout.com/v1/stats?period=${period}`, {
+      headers: { "token": key, "Content-Type": "application/json" },
+    })
+    if (res.status === 400 || res.status === 401) return { name: "contactout", label: "ContactOut", status: "error", detail: "API key inválida" }
+    if (!res.ok) return { name: "contactout", label: "ContactOut", status: "error", detail: `HTTP ${res.status}` }
+    const data = await res.json()
+    const emailRemaining = data?.usage?.email?.remaining ?? data?.usage?.email?.quota ?? null
+    if (emailRemaining === null) return { name: "contactout", label: "ContactOut", status: "ok", detail: "Configurado" }
+    if (emailRemaining <= 0) return { name: "contactout", label: "ContactOut", status: "out", credits: 0, detail: "Sin créditos de email" }
+    if (emailRemaining < 20) return { name: "contactout", label: "ContactOut", status: "low", credits: emailRemaining, detail: `${emailRemaining} créditos restantes` }
+    return { name: "contactout", label: "ContactOut", status: "ok", credits: emailRemaining, detail: `${emailRemaining.toLocaleString()} créditos disponibles` }
+  } catch {
+    return { name: "contactout", label: "ContactOut", status: "error", detail: "Error al consultar" }
+  }
+}
+
 export async function getProviderStatus(): Promise<ProviderStatus[]> {
   const keys = await getTenantApiKeys()
-  const [apollo, zb, findymail, prospeo, datagma] = await Promise.all([
+  const [apollo, zb, findymail, prospeo, datagma, salesql, contactout] = await Promise.all([
     checkApollo(keys.apollo_api_key ?? process.env.APOLLO_API_KEY ?? null),
     checkZeroBounce(keys.zerobounce_api_key ?? process.env.ZEROBOUNCE_API_KEY ?? null),
     checkFindymail(keys.findymail_api_key ?? process.env.FINDYMAIL_API_KEY ?? null),
     checkProspeo(keys.prospeo_api_key ?? process.env.PROSPEO_API_KEY ?? null),
     checkDatagma(keys.datagma_api_key ?? process.env.DATAGMA_API_KEY ?? null),
+    checkSalesQL(keys.salesql_api_key ?? null),
+    checkContactOut(keys.contactout_api_key ?? null),
   ])
-  return [apollo, findymail, prospeo, datagma, zb]
+  return [apollo, findymail, prospeo, datagma, salesql, contactout, zb]
 }

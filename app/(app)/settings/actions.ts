@@ -301,6 +301,8 @@ export type TenantApiKeys = {
   prospeo_api_key: string | null
   datagma_api_key: string | null
   hubspot_api_key: string | null
+  salesql_api_key: string | null
+  contactout_api_key: string | null
   cold_email_tool: string | null
   cold_email_api_key: string | null
   linkedin_tool: string | null
@@ -311,13 +313,14 @@ export async function getTenantApiKeys(): Promise<TenantApiKeys> {
   const tenantId = await getTenantId()
   const { data } = await supabaseAdmin
     .from("tenant_configs")
-    .select("anthropic_api_key, apify_token, apollo_api_key, zerobounce_api_key, findymail_api_key, prospeo_api_key, datagma_api_key, hubspot_api_key, cold_email_tool, cold_email_api_key, linkedin_tool, linkedin_api_key")
+    .select("anthropic_api_key, apify_token, apollo_api_key, zerobounce_api_key, findymail_api_key, prospeo_api_key, datagma_api_key, hubspot_api_key, salesql_api_key, contactout_api_key, cold_email_tool, cold_email_api_key, linkedin_tool, linkedin_api_key")
     .eq("tenant_id", tenantId)
     .maybeSingle()
   return (data as TenantApiKeys | null) ?? {
     anthropic_api_key: null, apify_token: null, apollo_api_key: null,
     zerobounce_api_key: null, findymail_api_key: null, prospeo_api_key: null,
-    datagma_api_key: null, hubspot_api_key: null, cold_email_tool: null,
+    datagma_api_key: null, hubspot_api_key: null, salesql_api_key: null,
+    contactout_api_key: null, cold_email_tool: null,
     cold_email_api_key: null, linkedin_tool: null, linkedin_api_key: null,
   }
 }

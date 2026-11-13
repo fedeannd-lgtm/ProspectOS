@@ -1624,6 +1624,8 @@ function TenantApiKeysCard({ initialKeys }: { initialKeys: TenantApiKeys }) {
           <ApiKeyField label="FindyMail" value={keys.findymail_api_key ?? ""} onChange={(v) => update("findymail_api_key", v)} />
           <ApiKeyField label="Prospeo" value={keys.prospeo_api_key ?? ""} onChange={(v) => update("prospeo_api_key", v)} />
           <ApiKeyField label="Datagma" value={keys.datagma_api_key ?? ""} onChange={(v) => update("datagma_api_key", v)} />
+          <ApiKeyField label="SalesQL" value={keys.salesql_api_key ?? ""} onChange={(v) => update("salesql_api_key", v)} />
+          <ApiKeyField label="ContactOut" value={keys.contactout_api_key ?? ""} onChange={(v) => update("contactout_api_key", v)} />
           <ApiKeyField label="HubSpot" value={keys.hubspot_api_key ?? ""} onChange={(v) => update("hubspot_api_key", v)} />
         </div>
 

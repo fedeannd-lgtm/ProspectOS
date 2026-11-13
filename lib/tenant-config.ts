@@ -10,6 +10,8 @@ export type TenantConfig = {
   prospeo_api_key: string | null
   datagma_api_key: string | null
   hubspot_api_key: string | null
+  salesql_api_key: string | null
+  contactout_api_key: string | null
   cold_email_tool: string | null
   cold_email_api_key: string | null
   linkedin_tool: string | null
