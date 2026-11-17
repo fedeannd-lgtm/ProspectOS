@@ -215,7 +215,7 @@ export function FunnelView({ reps }: { reps: string[] }) {
         </div>
 
         {/* Rep filter */}
-        <Select value={rep} onValueChange={setRep}>
+        <Select value={rep} onValueChange={(v) => setRep(v ?? "all")}>
           <SelectTrigger className="w-36 h-8 text-sm">
             <SelectValue placeholder="Todos los reps" />
           </SelectTrigger>
