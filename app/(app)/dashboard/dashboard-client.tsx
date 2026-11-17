@@ -2,7 +2,8 @@
 
 import { useState, useTransition, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp } from "lucide-react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp, KanbanSquare } from "lucide-react"
+import { FunnelView } from "./funnel-view"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from "recharts"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -1135,7 +1136,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
   const REP_OPTIONS = repsProp
   const NICHES = nichesProp
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns)
-  const [view, setView] = useState<"week" | "list" | "charts" | "scorecard">("week")
+  const [view, setView] = useState<"week" | "list" | "charts" | "scorecard" | "funnel">("week")
   const [selectedWeek, setSelectedWeek] = useState(() => getWeekMonday(new Date()))
   const [weekStats, setWeekStats] = useState<{ validEmails: number; scoreGte5: number; sent: number } | null>(null)
   const [, startWeekStats] = useTransition()
@@ -1336,10 +1337,17 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
             </button>
             <button
               onClick={() => setView("scorecard")}
-              className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "scorecard" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              className={`px-2.5 py-1.5 border-l transition-colors ${view === "scorecard" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
               title="Scorecard"
             >
               <TrendingUp className="size-4" />
+            </button>
+            <button
+              onClick={() => setView("funnel")}
+              className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "funnel" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              title="Funnel"
+            >
+              <KanbanSquare className="size-4" />
             </button>
           </div>
           <Button onClick={openCreate} disabled={isPending}>
@@ -1426,6 +1434,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
       {view === "week" && <WeeklyView campaigns={weekCampaigns} autoActionMap={autoActionMap} />}
       {view === "charts" && <ChartsView campaigns={campaigns} icpStats={icpStats} icpCategoryStats={icpCategoryStats} />}
       {view === "scorecard" && <ScorecardView data={scorecardData} meetings={meetingProspects} />}
+      {view === "funnel" && <FunnelView reps={REP_OPTIONS} />}
 
       {view === "list" && <Tabs defaultValue="Todos">
         <TabsList>

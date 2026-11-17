@@ -395,6 +395,81 @@ export async function getDistributionTemplatesForWizard() {
   return data ?? []
 }
 
+// ─── Funnel ───────────────────────────────────────────────────────────────────
+
+export type FunnelProspect = {
+  id: string
+  full_name: string | null
+  job_title: string | null
+  company_name: string | null
+  funnel_stage: string
+  campaigns: { rep_name: string } | null
+}
+
+export type FunnelAccount = {
+  id: string
+  company_name: string
+  industry: string | null
+  headcount_range: string | null
+  funnel_stage: string
+  campaigns: { rep_name: string; week_label: string } | null
+}
+
+export async function getFunnelProspects(filters: { rep: string; search: string }): Promise<FunnelProspect[]> {
+  const tenantId = await getTenantId()
+  let q = supabaseAdmin
+    .from("prospects")
+    .select("id, full_name, job_title, company_name, funnel_stage, campaigns!inner(rep_name, tenant_id)")
+    .eq("campaigns.tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(500)
+  if (filters.rep !== "all") q = q.eq("campaigns.rep_name", filters.rep)
+  if (filters.search) {
+    const s = filters.search.replace(/%/g, "\\%").replace(/_/g, "\\_")
+    q = q.or(`full_name.ilike.%${s}%,company_name.ilike.%${s}%`)
+  }
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []) as unknown as FunnelProspect[]
+}
+
+export async function getFunnelAccounts(filters: { rep: string; search: string }): Promise<FunnelAccount[]> {
+  const tenantId = await getTenantId()
+  let campQ = supabaseAdmin.from("campaigns").select("id, rep_name, week_label").eq("tenant_id", tenantId)
+  if (filters.rep !== "all") campQ = campQ.eq("rep_name", filters.rep)
+  const { data: camps } = await campQ
+  const campIds = (camps ?? []).map((c) => c.id as string)
+  if (!campIds.length) return []
+  const campMap = Object.fromEntries((camps ?? []).map((c) => [c.id, { rep_name: c.rep_name, week_label: c.week_label }]))
+
+  let q = supabaseAdmin
+    .from("accounts")
+    .select("id, company_name, industry, headcount_range, funnel_stage, campaign_id")
+    .in("campaign_id", campIds)
+    .order("created_at", { ascending: false })
+    .limit(500)
+  if (filters.search) {
+    const s = filters.search.replace(/%/g, "\\%").replace(/_/g, "\\_")
+    q = q.ilike("company_name", `%${s}%`)
+  }
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as unknown as (FunnelAccount & { campaign_id: string })[]).map((a) => ({
+    ...a,
+    campaigns: campMap[a.campaign_id] ?? null,
+  }))
+}
+
+export async function updateProspectFunnelStage(id: string, stage: string): Promise<void> {
+  await supabaseAdmin.from("prospects").update({ funnel_stage: stage }).eq("id", id)
+  revalidatePath("/dashboard")
+}
+
+export async function updateAccountFunnelStage(id: string, stage: string): Promise<void> {
+  await supabaseAdmin.from("accounts").update({ funnel_stage: stage }).eq("id", id)
+  revalidatePath("/dashboard")
+}
+
 // ─── Weekly stats ─────────────────────────────────────────────────────────────
 
 export async function getWeekStats(campaignIds: string[]): Promise<{
