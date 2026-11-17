@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp, KanbanSquare } from "lucide-react"
+import { Plus, Pencil, Trash2, Building2, Users, Send, Mail, ChevronLeft, ChevronRight, LayoutList, CalendarDays, CalendarIcon, BarChart3, ChevronsUpDown, Check, Zap, ChevronDown, TrendingUp, Kanban } from "lucide-react"
 import { FunnelView } from "./funnel-view"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from "recharts"
 import Link from "next/link"
@@ -1347,7 +1347,7 @@ export function DashboardClient({ initialCampaigns, icpStats, icpCategoryStats, 
               className={`px-2.5 py-1.5 rounded-r-md border-l transition-colors ${view === "funnel" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
               title="Funnel"
             >
-              <KanbanSquare className="size-4" />
+              <Kanban className="size-4" />
             </button>
           </div>
           <Button onClick={openCreate} disabled={isPending}>
